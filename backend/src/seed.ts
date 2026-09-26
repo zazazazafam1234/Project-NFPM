@@ -1,0 +1,75 @@
+import prisma from "./db";
+
+async function main() {
+  const rooms = [
+    { id: "room-1", name: "ROOM 01", label: "MIDNIGHT", capacity: 4 },
+    { id: "room-2", name: "ROOM 02", label: "VIOLET",   capacity: 4 },
+    { id: "room-3", name: "ROOM 03", label: "SUNSET",   capacity: 4 },
+    { id: "room-4", name: "ROOM 04", label: "NIGHT OUT", capacity: 4 },
+    { id: "room-5", name: "ROOM 05", label: "LATE SHOW", capacity: 4 },
+    { id: "room-6", name: "ROOM 06", label: "CINEMA",   capacity: 4 },
+  ];
+
+  for (const room of rooms) {
+    await prisma.room.upsert({
+      where: { id: room.id },
+      update: {},
+      create: room,
+    });
+  }
+
+  const plans = [
+    { id: "day",   name: "รายวัน",      price: 10,  duration: "24 ชั่วโมง", durationDays: 1  },
+    { id: "week",  name: "รายสัปดาห์", price: 49,  duration: "7 วัน",      durationDays: 7  },
+    { id: "month", name: "รายเดือน",   price: 129, duration: "30 วัน",     durationDays: 30 },
+  ];
+
+  for (const plan of plans) {
+    await prisma.plan.upsert({
+      where: { id: plan.id },
+      update: { durationDays: plan.durationDays },
+      create: plan,
+    });
+  }
+
+  const categories = [
+    { id: "cat-streaming", name: "Video Streaming", slug: "streaming", icon: "🎬", sortOrder: 1 },
+    { id: "cat-music",     name: "Music",           slug: "music",     icon: "🎵", sortOrder: 2 },
+    { id: "cat-gaming",    name: "Gaming",          slug: "gaming",    icon: "🎮", sortOrder: 3 },
+    { id: "cat-other",     name: "อื่นๆ",            slug: "other",     icon: "📦", sortOrder: 4 },
+  ];
+
+  for (const cat of categories) {
+    await prisma.category.upsert({
+      where: { slug: cat.slug },
+      update: { name: cat.name, icon: cat.icon, sortOrder: cat.sortOrder },
+      create: cat,
+    });
+  }
+
+  const products = [
+    { name: "Netflix Standard",   description: "Full HD · 2 หน้าจอพร้อมกัน",  badge: "ขายดี",  categoryId: "cat-streaming", price: 99,  stock: 8,  isActive: true },
+    { name: "Netflix Premium",    description: "4K UHD · 4 หน้าจอพร้อมกัน",   badge: "แนะนำ",  categoryId: "cat-streaming", price: 149, stock: 3,  isActive: true },
+    { name: "YouTube Premium",    description: "ไม่มีโฆษณา · ดาวน์โหลดได้",   badge: null,     categoryId: "cat-streaming", price: 59,  stock: 12, isActive: true },
+    { name: "Disney+",            description: "Marvel · Star Wars · Pixar",    badge: "ใหม่",   categoryId: "cat-streaming", price: 79,  stock: 5,  isActive: true },
+    { name: "HBO Max",            description: "Series & Movies จาก Warner",    badge: null,     categoryId: "cat-streaming", price: 89,  stock: 0,  isActive: true },
+    { name: "Spotify Premium",    description: "เพลงไม่มีโฆษณา · ดาวน์โหลด",  badge: "ขายดี",  categoryId: "cat-music",     price: 59,  stock: 10, isActive: true },
+    { name: "Apple Music",        description: "เพลง 100 ล้านเพลง · ไม่มีโฆษณา", badge: null,  categoryId: "cat-music",     price: 59,  stock: 7,  isActive: true },
+    { name: "YouTube Music",      description: "เพลง + MV · ไม่มีโฆษณา",       badge: null,     categoryId: "cat-music",     price: 49,  stock: 6,  isActive: true },
+    { name: "Xbox Game Pass",     description: "เกม 100+ เกม บน PC & Console", badge: "ใหม่",   categoryId: "cat-gaming",    price: 129, stock: 4,  isActive: true },
+    { name: "PlayStation Plus",   description: "PS4/PS5 Online + เกมฟรี",       badge: null,     categoryId: "cat-gaming",    price: 119, stock: 2,  isActive: true },
+  ];
+
+  for (const product of products) {
+    const existing = await prisma.product.findFirst({ where: { name: product.name } });
+    if (!existing) {
+      await prisma.product.create({ data: product });
+    }
+  }
+
+  console.log("Seed completed: 6 rooms, 3 plans, 4 categories, 10 products");
+}
+
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());

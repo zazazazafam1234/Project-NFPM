@@ -2,82 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { fetchPlans, fetchRooms, type Plan, type Room } from "./lib/api";
 import styles from "./page.module.css";
-
-const rooms = [
-  {
-    id: "room-1",
-    name: "ROOM 01",
-    label: "MIDNIGHT",
-    available: true,
-    members: 1,
-    capacity: 4,
-  },
-  {
-    id: "room-2",
-    name: "ROOM 02",
-    label: "VIOLET",
-    available: true,
-    members: 2,
-    capacity: 4,
-  },
-  {
-    id: "room-3",
-    name: "ROOM 03",
-    label: "SUNSET",
-    available: true,
-    members: 0,
-    capacity: 4,
-  },
-  {
-    id: "room-4",
-    name: "ROOM 04",
-    label: "NIGHT OUT",
-    available: false,
-    members: 4,
-    capacity: 4,
-  },
-  {
-    id: "room-5",
-    name: "ROOM 05",
-    label: "LATE SHOW",
-    available: true,
-    members: 3,
-    capacity: 4,
-  },
-  {
-    id: "room-6",
-    name: "ROOM 06",
-    label: "CINEMA",
-    available: true,
-    members: 2,
-    capacity: 4,
-  },
-];
-
-const plans = [
-  {
-    id: "day",
-    name: "รายวัน",
-    price: 10,
-    duration: "24 ชั่วโมง",
-    tag: "เริ่มต้นง่าย",
-  },
-  {
-    id: "week",
-    name: "รายสัปดาห์",
-    price: 49,
-    duration: "7 วัน",
-    tag: "คุ้มค่า",
-  },
-  {
-    id: "month",
-    name: "รายเดือน",
-    price: 129,
-    duration: "30 วัน",
-    tag: "ขายดี",
-  },
-];
 
 type RevealSectionProps = {
   children: ReactNode;
@@ -122,8 +48,16 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
 
 export default function Home() {
   const stageRef = useRef<HTMLElement>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
+  const availableCount = rooms.filter((r) => r.available).length;
+
+  useEffect(() => {
+    void fetchRooms().then(setRooms).catch(() => undefined);
+    void fetchPlans().then(setPlans).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -173,10 +107,11 @@ export default function Home() {
             <a href="#rooms">เลือกห้อง</a>
             <a href="#how-it-works">ขั้นตอน</a>
             <a href="#faq">ช่วยเหลือ</a>
+            <Link href="/shop">ร้านค้า</Link>
             <Link href="/profile">บัญชี</Link>
           </div>
           <a className={styles.navCta} href="#rooms">
-            <i /> ห้องว่าง 5 ห้อง
+            <i /> ห้องว่าง {availableCount} ห้อง
           </a>
         </nav>
         <div className={styles.heroContent}>
