@@ -173,6 +173,7 @@ export default function Home() {
             <a href="#rooms">เลือกห้อง</a>
             <a href="#how-it-works">ขั้นตอน</a>
             <a href="#faq">ช่วยเหลือ</a>
+            <Link href="/profile">บัญชี</Link>
           </div>
           <a className={styles.navCta} href="#rooms">
             <i /> ห้องว่าง 5 ห้อง

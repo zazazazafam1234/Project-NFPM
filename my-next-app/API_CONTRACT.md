@@ -1,0 +1,63 @@
+# Fast Movie API contract
+
+Set `NEXT_PUBLIC_API_URL` to your API root. The frontend sends cookies using `credentials: "include"`; configure CORS to allow the web origin and credentials, and issue the session cookie as `HttpOnly`, `Secure` in production, and `SameSite=Lax`.
+
+## Authentication
+
+### `GET /auth/google?redirectTo={url}`
+
+Starts Google OAuth on the server. On success, create a session cookie and redirect to `redirectTo`.
+
+### `GET /auth/session`
+
+Returns the logged-in account and the current point balance.
+
+```json
+{
+  "user": {
+    "id": "usr_123",
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "image": "https://...",
+    "points": 320
+  }
+}
+```
+
+Return `{ "user": null }` for a guest.
+
+### `POST /auth/logout`
+
+Clears the session cookie and returns `204` or JSON.
+
+## Checkout
+
+### `POST /orders`
+
+```json
+{
+  "roomId": "room-1",
+  "planId": "week",
+  "paymentMethod": "points"
+}
+```
+
+Allowed `paymentMethod`: `points`, `promptpay`, `wallet`.
+
+For `points`, verify room availability and balance server-side, atomically deduct points, create the order, then return the new balance. Never trust the point balance or price sent by the client.
+
+```json
+{
+  "orderId": "ord_123",
+  "status": "paid",
+  "points": 271
+}
+```
+
+For PromptPay/Wallet, create a pending order and return your payment payload/QR reference.
+
+## Point history (for the Profile page)
+
+`GET /profile/transactions`
+
+Return transactions with `id`, `type`, `amount`, `description`, and `createdAt`.

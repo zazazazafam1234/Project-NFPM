@@ -129,7 +129,7 @@
 }
 .methods {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 9px;
 }
 .methods button {
@@ -174,7 +174,8 @@
   background: #a98fff;
 }
 .promptpayIcon,
-.walletIcon {
+.walletIcon,
+.pointIcon {
   display: grid;
   place-items: center;
   width: 28px;
@@ -189,6 +190,52 @@
 }
 .walletIcon {
   background: #ff6b21;
+}
+.pointIcon {
+  background: linear-gradient(135deg, #b695ff, #7248ed);
+}
+.pointBalance {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  align-content: center;
+  border-radius: 15px;
+  color: #17121e;
+  background: linear-gradient(135deg, #d4c0ff, #8c67f5);
+}
+.pointBalance span {
+  font-size: 20px;
+}
+.pointBalance b {
+  font-size: 29px;
+  letter-spacing: -2px;
+}
+.pointBalance small {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.profileLink {
+  display: inline-block;
+  margin-top: 11px;
+  color: #bda5ff;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.message {
+  margin: 0 0 13px;
+  padding: 10px;
+  border: 1px solid #b49aff44;
+  border-radius: 9px;
+  color: #d7cbef;
+  background: #8e69ee16;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.paidButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 .paymentDetail {
   display: grid;

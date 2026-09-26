@@ -1,0 +1,140 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 24px;
+  color: #f7f5ff;
+  background: #09080f;
+}
+.glow {
+  position: fixed;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: #7a4bea;
+  opacity: 0.26;
+  filter: blur(135px);
+  animation: drift 8s ease-in-out infinite alternate;
+}
+.card {
+  position: relative;
+  width: min(100%, 510px);
+  padding: 38px;
+  border: 1px solid #ffffff1e;
+  border-radius: 28px;
+  background: #17141fca;
+  box-shadow: 0 35px 90px #0009;
+  backdrop-filter: blur(20px);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  color: #fff;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 800;
+}
+.brand span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  place-items: center;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #a980ff, #7145ff);
+}
+.eyebrow {
+  margin: 65px 0 13px;
+  color: #b195ff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+.card h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.04;
+  letter-spacing: -2.5px;
+}
+.card h1 em {
+  color: #b99fff;
+  font-style: normal;
+}
+.copy {
+  max-width: 390px;
+  margin: 21px 0 30px;
+  color: #a8a1b0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.google,
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 15px;
+  border-radius: 13px;
+  color: #1d1824;
+  background: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+.google span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: conic-gradient(
+    #4285f4 0 25%,
+    #34a853 0 50%,
+    #fbbc05 0 75%,
+    #ea4335 0
+  );
+  font-size: 11px;
+}
+.primary {
+  justify-content: space-between;
+  margin-top: 25px;
+  color: #fff;
+  background: linear-gradient(135deg, #8b62ff, #6841ed);
+}
+.note {
+  margin: 17px 0 0;
+  color: #80798c;
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+.loader {
+  width: 30px;
+  height: 30px;
+  margin: 80px auto;
+  border: 3px solid #ffffff20;
+  border-top-color: #aa8eff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes drift {
+  to {
+    transform: translate(60px, -40px) scale(1.08);
+  }
+}
+@media (max-width: 540px) {
+  .card {
+    padding: 28px 23px;
+  }
+  .eyebrow {
+    margin-top: 48px;
+  }
+}

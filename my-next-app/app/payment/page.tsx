@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/api";
+import { useSession } from "../providers";
 import styles from "./page.module.css";
 
 const plans = {
@@ -22,7 +24,12 @@ const roomNames = {
 export default function PaymentPage() {
   const [planId, setPlanId] = useState<keyof typeof plans>("week");
   const [roomId, setRoomId] = useState<keyof typeof roomNames>("room-1");
-  const [method, setMethod] = useState<"promptpay" | "wallet">("promptpay");
+  const [method, setMethod] = useState<"points" | "promptpay" | "wallet">(
+    "points",
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const { user, refreshSession } = useSession();
   const plan = plans[planId];
 
   useEffect(() => {
@@ -37,6 +44,33 @@ export default function PaymentPage() {
     if (requestedRoom && requestedRoom in roomNames)
       setRoomId(requestedRoom as keyof typeof roomNames);
   }, []);
+
+  async function createOrder() {
+    if (method === "points" && !user) {
+      window.location.assign("/register");
+      return;
+    }
+    setIsSubmitting(true);
+    setMessage("");
+    try {
+      await apiFetch("/orders", {
+        method: "POST",
+        body: JSON.stringify({ roomId, planId, paymentMethod: method }),
+      });
+      await refreshSession();
+      setMessage(
+        method === "points"
+          ? "ใช้ Point สำเร็จ ระบบกำลังเตรียมข้อมูลห้องให้คุณ"
+          : "สร้างรายการแล้ว กรุณาชำระเงินตามช่องทางที่เลือก",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "ไม่สามารถสร้างรายการได้",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <main className={styles.page}>
@@ -68,6 +102,22 @@ export default function PaymentPage() {
           <p className={styles.label}>เลือกช่องทางชำระเงิน</p>
           <div className={styles.methods}>
             <button
+              className={method === "points" ? styles.active : ""}
+              type="button"
+              onClick={() => setMethod("points")}
+            >
+              <span className={styles.pointIcon}>✦</span>
+              <span>
+                Fast Points
+                <small>
+                  {user
+                    ? `${user.points.toLocaleString()} Point พร้อมใช้`
+                    : "เข้าสู่ระบบเพื่อใช้งาน"}
+                </small>
+              </span>
+              <i />
+            </button>
+            <button
               className={method === "promptpay" ? styles.active : ""}
               type="button"
               onClick={() => setMethod("promptpay")}
@@ -90,7 +140,33 @@ export default function PaymentPage() {
               <i />
             </button>
           </div>
-          {method === "promptpay" ? (
+          {method === "points" ? (
+            <div className={styles.paymentDetail}>
+              <div className={styles.pointBalance}>
+                <span>✦</span>
+                <b>{user?.points.toLocaleString() ?? "—"}</b>
+                <small>POINTS</small>
+              </div>
+              <div>
+                <h2>
+                  ใช้ {plan.price} Point สำหรับ {plan.name}
+                </h2>
+                <p>
+                  {user
+                    ? user.points >= plan.price
+                      ? "Point จะถูกตัดเมื่อยืนยันการเลือกโปร"
+                      : "Point ของคุณไม่เพียงพอสำหรับโปรนี้"
+                    : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point ในการเลือกโปร"}
+                </p>
+                <Link
+                  className={styles.profileLink}
+                  href={user ? "/profile" : "/register"}
+                >
+                  {user ? "ดู Point Wallet" : "เข้าสู่ระบบ"} →
+                </Link>
+              </div>
+            </div>
+          ) : method === "promptpay" ? (
             <div className={styles.paymentDetail}>
               <div className={styles.qrPlaceholder}>
                 <div className={styles.qrMark}>QR</div>
@@ -128,10 +204,26 @@ export default function PaymentPage() {
           )}
           <div className={styles.divider} />
           <p className={styles.afterPay}>
-            หลังชำระเงินแล้ว ส่งสลิปให้แอดมินเพื่อรับรายละเอียดเข้าใช้งาน
+            {method === "points"
+              ? "ยืนยันแล้วระบบจะตัด Point และสร้างคำสั่งซื้อทันที"
+              : "หลังชำระเงินแล้ว ส่งสลิปให้แอดมินเพื่อรับรายละเอียดเข้าใช้งาน"}
           </p>
-          <button className={styles.paidButton} type="button">
-            ฉันชำระเงินแล้ว <span>→</span>
+          {message && <p className={styles.message}>{message}</p>}
+          <button
+            className={styles.paidButton}
+            type="button"
+            disabled={
+              isSubmitting ||
+              (method === "points" && Boolean(user && user.points < plan.price))
+            }
+            onClick={() => void createOrder()}
+          >
+            {isSubmitting
+              ? "กำลังดำเนินการ…"
+              : method === "points"
+                ? "ยืนยันใช้ Point"
+                : "สร้างรายการชำระเงิน"}{" "}
+            <span>→</span>
           </button>
         </div>
       </section>
