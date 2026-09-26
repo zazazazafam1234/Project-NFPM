@@ -1,0 +1,79 @@
+.page {
+  display: grid;
+  min-height: 100vh;
+  overflow: hidden;
+  place-items: center;
+  color: #f7f5ff;
+  background: #09080f;
+}
+
+.orb {
+  position: fixed;
+  width: 430px;
+  height: 430px;
+  border-radius: 50%;
+  background: #7d4cff;
+  filter: blur(105px);
+  opacity: 0.3;
+  animation: drift 4s ease-in-out infinite alternate;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  min-width: 260px;
+  justify-items: center;
+  padding: 35px 38px;
+  border: 1px solid #ffffff1c;
+  border-radius: 24px;
+  background: #17141fbd;
+  box-shadow: 0 25px 65px #0008;
+  backdrop-filter: blur(18px);
+}
+
+.logo {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  margin-bottom: 25px;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #a980ff, #7145ff);
+  box-shadow: 0 8px 22px #754aff7d;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.spinner {
+  width: 29px;
+  height: 29px;
+  border: 3px solid #ffffff20;
+  border-top-color: #b394ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.card p {
+  margin: 20px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.card span {
+  color: #a99bbd;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes drift {
+  to { transform: translate(35px, -25px) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb, .spinner { animation: none; }
+}
