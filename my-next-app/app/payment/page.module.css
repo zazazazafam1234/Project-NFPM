@@ -127,9 +127,42 @@
   font-size: 12px;
   font-weight: 800;
 }
-.methods {
+.topUpGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin: 0 0 25px;
+}
+.topUpGrid button {
+  display: grid;
+  gap: 3px;
+  padding: 13px 9px;
+  border: 1px solid #ffffff16;
+  border-radius: 13px;
+  color: #cfc7da;
+  background: #100e16;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.topUpGrid button.activePackage {
+  border-color: #a783ff;
+  background: #7953ed25;
+  box-shadow: 0 0 0 3px #7d58ec18;
+}
+.topUpGrid small,
+.topUpGrid span {
+  color: #948c9e;
+  font-size: 9px;
+}
+.topUpGrid strong {
+  color: #f7f4ff;
+  font-size: 21px;
+  letter-spacing: -1px;
+}
+.methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 9px;
 }
 .methods button {
@@ -350,6 +383,9 @@
     padding: 19px;
   }
   .methods {
+    grid-template-columns: 1fr;
+  }
+  .topUpGrid {
     grid-template-columns: 1fr;
   }
   .intro h1 {

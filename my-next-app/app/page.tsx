@@ -300,7 +300,9 @@ export default function Home() {
                   <small> บาท</small>
                 </strong>
                 <span>{plan.duration}</span>
-                <Link href={`/payment?plan=${plan.id}&room=${selectedRoom.id}`}>
+                <Link
+                  href={`/checkout?plan=${plan.id}&room=${selectedRoom.id}`}
+                >
                   เลือกโปรนี้ <b>→</b>
                 </Link>
               </article>

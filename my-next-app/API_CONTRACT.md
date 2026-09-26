@@ -56,6 +56,20 @@ For `points`, verify room availability and balance server-side, atomically deduc
 
 For PromptPay/Wallet, create a pending order and return your payment payload/QR reference.
 
+## Point top-up
+
+### `POST /points/top-ups`
+
+```json
+{
+  "points": 150,
+  "amount": 150,
+  "paymentMethod": "promptpay"
+}
+```
+
+Allowed `paymentMethod`: `promptpay`, `wallet`. Create a pending top-up and return the QR/payment reference. Only add points after your payment provider or slip-verification flow confirms the payment server-side.
+
 ## Point history (for the Profile page)
 
 `GET /profile/transactions`
