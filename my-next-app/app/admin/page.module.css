@@ -1,0 +1,504 @@
+.page {
+  display: grid;
+  grid-template-columns: 238px 1fr;
+  min-height: 100vh;
+  color: #f5f2fc;
+  background: #0b0910;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 14px;
+  border-right: 1px solid #ffffff12;
+  background: #11101a;
+}
+.brand {
+  display: grid;
+  grid-template-columns: 31px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px 33px;
+  color: #fff;
+  text-decoration: none;
+}
+.brand span {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #a980ff, #7145ff);
+  font-weight: 900;
+}
+.brand b {
+  font-size: 15px;
+}
+.brand small {
+  grid-column: 2;
+  color: #9175db;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+.sidebar nav {
+  display: grid;
+  gap: 5px;
+}
+.sidebar nav button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  color: #9992a5;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar nav button i {
+  width: 19px;
+  color: #8878a0;
+  font-style: normal;
+  font-size: 16px;
+  text-align: center;
+}
+.sidebar nav button:hover,
+.sidebar nav .activeNav {
+  color: #fff;
+  background: #7a52ee24;
+}
+.sidebar nav .activeNav i {
+  color: #bba4ff;
+}
+.sidebarBottom {
+  margin-top: auto;
+  padding: 13px 11px;
+}
+.viewSite {
+  color: #c0b5d0;
+  font-size: 11px;
+  text-decoration: none;
+}
+.sidebarBottom p {
+  margin: 22px 0 0;
+  color: #686274;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.workspace {
+  min-width: 0;
+  padding: 34px clamp(25px, 5vw, 76px);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: auto;
+}
+.eyebrow {
+  margin: 0 0 7px;
+  color: #aa8eff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.4px;
+}
+.header h1,
+.workspace h2,
+.workspace h3 {
+  margin: 0;
+  letter-spacing: -1.2px;
+}
+.header h1 {
+  font-size: 29px;
+}
+.adminIdentity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.adminIdentity > span {
+  display: grid;
+  width: 35px;
+  height: 35px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #de1824, #7649ed);
+  font-size: 10px;
+  font-weight: 900;
+}
+.adminIdentity div {
+  display: grid;
+  gap: 2px;
+}
+.adminIdentity b {
+  font-size: 12px;
+}
+.adminIdentity small {
+  color: #918a9c;
+  font-size: 10px;
+}
+.notice {
+  max-width: 1200px;
+  margin: 25px auto 0;
+  padding: 12px 14px;
+  border: 1px solid #9d7af052;
+  border-radius: 11px;
+  color: #ded4f5;
+  background: #7755d21f;
+  font-size: 11px;
+}
+.notice span {
+  margin-right: 8px;
+  color: #b99fff;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 13px;
+  max-width: 1200px;
+  margin: 32px auto 13px;
+}
+.metric {
+  position: relative;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid #ffffff14;
+  border-radius: 17px;
+  background: #15131e;
+}
+.metric > span {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  color: #a98eff;
+  font-size: 17px;
+}
+.metric p {
+  margin: 0;
+  color: #9c94a7;
+  font-size: 11px;
+}
+.metric strong {
+  display: block;
+  margin: 11px 0 3px;
+  font-size: 25px;
+  letter-spacing: -1.5px;
+}
+.metric small {
+  color: #75d79d;
+  font-size: 10px;
+}
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: 1.3fr 0.85fr;
+  gap: 13px;
+  max-width: 1200px;
+  margin: auto;
+}
+.panel {
+  max-width: 1200px;
+  margin: 32px auto 0;
+  padding: 23px;
+  border: 1px solid #ffffff14;
+  border-radius: 18px;
+  background: #15131e;
+}
+.dashboardGrid .panel {
+  margin: 0;
+}
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+.panel h2 {
+  font-size: 20px;
+}
+.panelHead > button {
+  border: 0;
+  color: #bca5ff;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.roomList {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 19px;
+}
+.roomList > div,
+.table > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #0f0e15;
+  font-size: 11px;
+}
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.green {
+  color: #78d89d;
+}
+.statusDot.green {
+  background: #78d89d;
+  box-shadow: 0 0 9px #78d89d;
+}
+.red {
+  color: #ef6872;
+}
+.statusDot.red {
+  background: #ef6872;
+}
+.yellow {
+  color: #f0c36f;
+}
+.statusDot.yellow {
+  background: #f0c36f;
+}
+.roomList b {
+  font-size: 11px;
+}
+.roomList span:not(.statusDot) {
+  margin-left: auto;
+  color: #9d95a5;
+}
+.roomList em {
+  font-style: normal;
+}
+.activity h2 {
+  margin-bottom: 17px;
+}
+.activityRow {
+  display: flex;
+  gap: 11px;
+  padding: 12px 0;
+  border-top: 1px solid #ffffff0e;
+}
+.activityRow i {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 3px;
+}
+.activityRow i.purple {
+  background: #9b7fff;
+}
+.activityRow i.yellow {
+  background: #e8bc65;
+}
+.activityRow i.red {
+  background: #e6414d;
+}
+.activityRow div {
+  display: grid;
+  gap: 3px;
+}
+.activityRow b {
+  font-size: 11px;
+}
+.activityRow span {
+  color: #8e8798;
+  font-size: 10px;
+}
+.primary {
+  padding: 10px 13px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #7a52ee;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.table {
+  display: grid;
+  gap: 7px;
+  margin-top: 20px;
+}
+.table > div span {
+  margin-left: auto;
+  color: #948c9d;
+}
+.table > div em {
+  width: 70px;
+  font-style: normal;
+}
+.table > div button,
+.packageAdmin button {
+  padding: 6px 9px;
+  border: 1px solid #ffffff1d;
+  border-radius: 7px;
+  color: #bca8e9;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.packageAdmin {
+  display: grid;
+  gap: 8px;
+  margin-top: 19px;
+}
+.packageAdmin > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #0f0e15;
+}
+.packageAdmin b {
+  margin-left: auto;
+  font-size: 12px;
+}
+.packageAdmin span {
+  color: #b79bff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.formRows {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.formRows label {
+  display: grid;
+  grid-template-columns: 1fr 145px;
+  align-items: center;
+  gap: 12px;
+  color: #c9c2d2;
+  font-size: 12px;
+}
+.formRows input,
+.search {
+  padding: 10px;
+  border: 1px solid #ffffff1a;
+  border-radius: 8px;
+  outline: 0;
+  color: #eee9f5;
+  background: #0f0e15;
+  font: inherit;
+  font-size: 11px;
+}
+.formRows input:focus,
+.search:focus {
+  border-color: #a582fb;
+}
+.formRows .primary {
+  justify-self: start;
+  margin-top: 6px;
+}
+.search {
+  width: 220px;
+}
+.emptyState {
+  display: grid;
+  min-height: 265px;
+  place-items: center;
+  align-content: center;
+  color: #938b9d;
+  text-align: center;
+}
+.emptyState > span {
+  color: #a182fb;
+  font-size: 27px;
+}
+.emptyState h3 {
+  margin-top: 15px;
+  color: #ded8e7;
+  font-size: 15px;
+}
+.emptyState p {
+  max-width: 350px;
+  color: #928b9c;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.emptyState code {
+  color: #b89eff;
+}
+.hint {
+  margin: 20px 0 0;
+  color: #8e8797;
+  font-size: 10px;
+  line-height: 1.6;
+}
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 15px 20px;
+    border-right: 0;
+    border-bottom: 1px solid #ffffff12;
+  }
+  .brand {
+    padding: 0;
+  }
+  .sidebar nav {
+    display: flex;
+    overflow-x: auto;
+    margin-top: 16px;
+  }
+  .sidebar nav button {
+    white-space: nowrap;
+  }
+  .sidebarBottom {
+    display: none;
+  }
+  .workspace {
+    padding: 26px 20px 50px;
+  }
+  .metrics,
+  .dashboardGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .roomList {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 580px) {
+  .metrics,
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+  .header h1 {
+    font-size: 24px;
+  }
+  .adminIdentity div {
+    display: none;
+  }
+  .panel {
+    padding: 18px;
+  }
+  .formRows label {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .search {
+    width: 145px;
+  }
+  .table > div span {
+    display: none;
+  }
+}

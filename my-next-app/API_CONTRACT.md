@@ -75,3 +75,14 @@ Allowed `paymentMethod`: `promptpay`, `wallet`. Create a pending top-up and retu
 `GET /profile/transactions`
 
 Return transactions with `id`, `type`, `amount`, `description`, and `createdAt`.
+
+## Admin
+
+All `/admin/*` endpoints must require an admin role on the server. Never rely on hiding frontend routes as authorization.
+
+- `GET /admin/overview` — metrics, room status, live activity
+- `GET /admin/rooms`, `POST /admin/rooms`, `PATCH /admin/rooms/:id`
+- `GET /admin/users`
+- `GET /admin/config`, `PATCH /admin/config`
+- `GET /admin/point-packages`, `PATCH /admin/point-packages/:id`
+- `GET /admin/promotions`, `PATCH /admin/promotions/:id`
