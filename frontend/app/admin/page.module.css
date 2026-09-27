@@ -600,3 +600,9 @@
     display: none;
   }
 }
+
+.muted {
+  margin: 6px 0 0;
+  color: #8f89a3;
+  font-size: 12px;
+}

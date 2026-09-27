@@ -294,6 +294,7 @@ function PackagesPanel({
     priceAmount: 49,
   });
   const canSave = form.slug && form.name && form.durationDays > 0;
+  const isEditing = (inventory?.packages ?? []).some((pkg) => pkg.slug === form.slug);
 
   async function submit() {
     await saveAdminPackage(form);
@@ -313,6 +314,20 @@ function PackagesPanel({
               <em className={pkg.status === "active" ? styles.green : styles.yellow}>
                 {pkg.availableStock} stock
               </em>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm({
+                    slug: pkg.slug,
+                    name: pkg.name,
+                    service: pkg.service,
+                    durationDays: Number(pkg.duration_days),
+                    priceAmount: Number(pkg.price_amount),
+                  })
+                }
+              >
+                แก้ไข
+              </button>
             </div>
           ))}
         </div>
@@ -320,6 +335,9 @@ function PackagesPanel({
       <section className={styles.panel}>
         <p className={styles.eyebrow}>UPSERT PACKAGE</p>
         <h2>เพิ่ม/แก้แพ็กเกจ</h2>
+        <p className={styles.muted}>
+          {isEditing ? `กำลังแก้ ${form.slug} — แก้ slug จะกลายเป็นแพ็กเกจใหม่` : "slug ใหม่ = เพิ่มแพ็กเกจใหม่"}
+        </p>
         <div className={styles.formRows}>
           <label>
             Slug
