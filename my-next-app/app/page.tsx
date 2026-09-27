@@ -124,15 +124,16 @@ export default function Home() {
             </h1>
             <p className={styles.lead}>
               เลือกห้องที่ว่างก่อน แล้วค่อยเลือกโปรที่เหมาะกับคุณ
-              <br className={styles.desktopOnly} /> จบในไม่กี่ขั้นตอน
+              <br className={styles.desktopOnly} /> จบใน 3 ขั้นตอน
             </p>
             <a className={styles.primaryButton} href="#rooms">
               เลือกห้องของคุณ <span>→</span>
             </a>
             <div className={styles.trustRow}>
-              <span>ตอบกลับเร็ว</span>
-              <span>ราคาเริ่ม 10 บาท</span>
+              <span>จบใน 3 นาที</span>
+              <span>ราคาเริ่ม 12 บาท</span>
               <span>มีแอดมินดูแล</span>
+              <span>ระบบ Auto</span>
             </div>
           </div>
           <div className={styles.heroPoster} aria-hidden="true">
@@ -249,13 +250,13 @@ export default function Home() {
       <RevealSection className={styles.section} id="how-it-works">
         <div className={styles.sectionHeading}>
           <p className={styles.eyebrow}>HOW IT WORKS</p>
-          <h2>เลือกห้อง เลือกโปร ชำระเงิน</h2>
+          <h2>เติม Point เลือกห้อง เลือกโปร</h2>
         </div>
         <div className={styles.steps}>
           {[
-            ["01", "เลือกห้อง", "เลือกจาก Room ที่ยังว่าง"],
-            ["02", "เลือกโปร", "เลือกระยะเวลาที่เหมาะกับคุณ"],
-            ["03", "ชำระเงิน", "เลือก PromptPay หรือ Wallet"],
+            ["01", "เติม Point", "เลือก PromptPay หรือ Wallet"],
+            ["02", "เลือกห้อง", "เลือกจาก Room ที่ยังว่าง"],
+            ["03", "เลือกโปร", "เลือกระยะเวลาที่เหมาะกับคุณ"],
           ].map(([number, title, copy]) => (
             <article key={number}>
               <span>{number}</span>
@@ -273,13 +274,12 @@ export default function Home() {
         <div className={styles.faqList}>
           <details>
             <summary>ทำไมต้องเลือกห้องก่อน?</summary>
-            <p>เพื่อให้ระบบล็อก Room ที่ว่างให้คุณก่อนเลือกโปรและไปชำระเงิน</p>
+            <p>เพื่อให้ระบบล็อก Room ที่ว่างให้คุณก่อนเลือกโปรและตัด Point ตามค่าบริการ</p>
           </details>
           <details>
-            <summary>หลังชำระเงินต้องทำอะไรต่อ?</summary>
+            <summary>หลังเติม Pointต้องทำอะไรต่อ?</summary>
             <p>
-              เก็บหลักฐานการชำระเงินไว้
-              แล้วส่งให้แอดมินตามช่องทางที่ระบุในหน้าชำระเงิน
+              เลือกโปรที่ต้องการ แล้วระบบจะหัก Point อัตโนมัติ และล็อก Room ให้คุณทันที
             </p>
           </details>
         </div>
