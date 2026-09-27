@@ -59,6 +59,44 @@ export function fetchPlans() {
   return apiFetch<Plan[]>("/catalog/plans");
 }
 
+export type StreamingPackage = {
+  id: string;
+  slug: string;
+  name: string;
+  service: string;
+  description: string | null;
+  durationDays: number;
+  priceAmount: number;
+  currency: string;
+  status: string;
+  availableStock: number;
+};
+
+export function fetchPackages() {
+  return apiFetch<StreamingPackage[]>("/catalog/packages");
+}
+
+export type PurchaseSubscriptionResponse = {
+  subscriptionId: string;
+  status: string;
+  startedAt: string;
+  expiresAt: string;
+  points: number;
+  credentials: {
+    email: string;
+    password: string | null;
+    profileName: string;
+    pin: string | null;
+  };
+};
+
+export function purchaseSubscription(packageSlug: string) {
+  return apiFetch<PurchaseSubscriptionResponse>("/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ packageSlug, paymentMethod: "points" }),
+  });
+}
+
 export type Transaction = {
   id: string;
   type: "topup" | "debit" | string;
@@ -86,6 +124,139 @@ export function fetchTransactions() {
 
 export function fetchOrders() {
   return apiFetch<{ orders: Order[] }>("/profile/orders");
+}
+
+export type Subscription = {
+  id: string;
+  status: string;
+  paymentMethod: string;
+  pricePaid: number;
+  startedAt: string;
+  expiresAt: string;
+  createdAt: string;
+  packageName: string;
+  service: string;
+  durationDays: number;
+  profileName: string;
+  masterEmail: string;
+};
+
+export function fetchSubscriptions() {
+  return apiFetch<{ subscriptions: Subscription[] }>("/subscriptions");
+}
+
+export type AdminInventory = {
+  metrics: {
+    activePackages: number;
+    activeMasterEmails: number;
+    availableProfiles: number;
+    activeSubscriptions: number;
+  };
+  packages: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    service: string;
+    duration_days: number;
+    price_amount: number;
+    status: string;
+    availableStock: number;
+  }>;
+  masterEmails: Array<{
+    id: string;
+    service: string;
+    email: string;
+    status: string;
+    purchased_at: string;
+    master_expired_at: string;
+    note: string | null;
+    profileCount: number;
+    availableProfiles: number;
+  }>;
+  profiles: Array<{
+    id: string;
+    master_email_id: string;
+    profile_name: string;
+    status: string;
+    profile_expires_at: string | null;
+    note: string | null;
+    masterEmail: string;
+    service: string;
+  }>;
+};
+
+function adminHeaders(adminKey: string) {
+  return { "x-admin-key": adminKey };
+}
+
+export function fetchAdminInventory(adminKey: string) {
+  return apiFetch<AdminInventory>("/admin/inventory", {
+    headers: adminHeaders(adminKey),
+  });
+}
+
+export function saveAdminPackage(
+  adminKey: string,
+  body: {
+    slug: string;
+    name: string;
+    service: string;
+    durationDays: number;
+    priceAmount: number;
+    status?: string;
+  },
+) {
+  return apiFetch("/admin/packages", {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify(body),
+  });
+}
+
+export function saveMasterEmail(
+  adminKey: string,
+  body: {
+    service: string;
+    email: string;
+    password: string;
+    masterExpiredAt: string;
+    note?: string;
+  },
+) {
+  return apiFetch("/admin/master-emails", {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify(body),
+  });
+}
+
+export function saveProfile(
+  adminKey: string,
+  body: {
+    masterEmailId: string;
+    profileName: string;
+    pin?: string;
+    profileExpiresAt?: string;
+    note?: string;
+  },
+) {
+  return apiFetch("/admin/profiles", {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateProfileStatus(
+  adminKey: string,
+  profileId: string,
+  status: string,
+) {
+  return apiFetch(`/admin/profiles/${profileId}`, {
+    method: "PATCH",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify({ status }),
+  });
 }
 
 export type Category = {

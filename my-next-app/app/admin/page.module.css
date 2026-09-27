@@ -159,6 +159,27 @@
   margin-right: 8px;
   color: #b99fff;
 }
+.keyBar {
+  display: flex;
+  gap: 10px;
+  max-width: 1200px;
+  margin: 24px auto 0;
+}
+.keyBar input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #ffffff1a;
+  border-radius: 9px;
+  outline: 0;
+  color: #eee9f5;
+  background: #0f0e15;
+  font: inherit;
+  font-size: 11px;
+}
+.keyBar input:focus {
+  border-color: #a582fb;
+}
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -369,6 +390,12 @@
   margin-left: auto;
   font-size: 12px;
 }
+.packageAdmin em {
+  width: 74px;
+  font-style: normal;
+  font-size: 10px;
+  text-align: right;
+}
 .packageAdmin span {
   color: #b79bff;
   font-size: 11px;
@@ -388,6 +415,7 @@
   font-size: 12px;
 }
 .formRows input,
+.formRows select,
 .search {
   padding: 10px;
   border: 1px solid #ffffff1a;
@@ -399,6 +427,7 @@
   font-size: 11px;
 }
 .formRows input:focus,
+.formRows select:focus,
 .search:focus {
   border-color: #a582fb;
 }
@@ -465,6 +494,9 @@
   }
   .sidebarBottom {
     display: none;
+  }
+  .keyBar {
+    flex-direction: column;
   }
   .workspace {
     padding: 26px 20px 50px;

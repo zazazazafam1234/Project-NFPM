@@ -539,6 +539,7 @@
   border-radius: 28px;
   color: #fff;
   background: linear-gradient(145deg, #26203a, #17131f 59%, #110f17);
+  text-decoration: none;
   text-align: left;
   cursor: pointer;
   transition:
@@ -588,7 +589,7 @@
   background: #e50914;
 }
 
-.roomCard:hover:not(:disabled),
+.roomCard:hover:not(:disabled):not(.roomUnavailable),
 .roomSelected {
   z-index: 1;
   border-color: #b394ff;

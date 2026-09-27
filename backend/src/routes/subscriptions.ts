@@ -17,6 +17,51 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
+subscriptions.get("/", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อนใช้งาน" }, 401);
+
+  const rows = await sql`
+    SELECT
+      s.id,
+      s.status,
+      s.payment_method,
+      s.price_paid,
+      s.started_at,
+      s.expires_at,
+      s.created_at,
+      pkg.name AS "packageName",
+      pkg.service,
+      pkg.duration_days AS "durationDays",
+      p.profile_name AS "profileName",
+      me.email AS "masterEmail"
+    FROM subscriptions s
+    JOIN packages pkg ON pkg.id = s.package_id
+    JOIN profiles p ON p.id = s.profile_id
+    JOIN master_emails me ON me.id = p.master_email_id
+    WHERE s.user_id = ${userId}
+    ORDER BY s.created_at DESC
+    LIMIT 50
+  `;
+
+  return c.json({
+    subscriptions: rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      paymentMethod: row.payment_method,
+      pricePaid: row.price_paid,
+      startedAt: row.started_at,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      packageName: row.packageName,
+      service: row.service,
+      durationDays: row.durationDays,
+      profileName: row.profileName,
+      masterEmail: row.masterEmail,
+    })),
+  });
+});
+
 subscriptions.post("/", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อนใช้งาน" }, 401);

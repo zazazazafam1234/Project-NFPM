@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   fetchOrders,
+  fetchSubscriptions,
   fetchTransactions,
   type Order,
+  type Subscription,
   type Transaction,
 } from "../lib/api";
 import { useSession } from "../providers";
@@ -36,6 +38,7 @@ export default function ProfilePage() {
   const { user, isLoading, signOut } = useSession();
   const [tab, setTab] = useState<Tab>("orders");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
 
@@ -47,6 +50,7 @@ export default function ProfilePage() {
     if (!user) return;
     setActivityLoading(true);
     Promise.all([
+      fetchSubscriptions().then((r) => setSubscriptions(r.subscriptions)).catch(() => undefined),
       fetchOrders().then((r) => setOrders(r.orders)).catch(() => undefined),
       fetchTransactions().then((r) => setTransactions(r.transactions)).catch(() => undefined),
     ]).finally(() => setActivityLoading(false));
@@ -89,8 +93,8 @@ export default function ProfilePage() {
           <small>POINTS AVAILABLE</small>
           <div className={styles.walletRule} />
           <p>ใช้ Point เพื่อเลือกซื้อโปรได้ทันทีในหน้าชำระเงิน</p>
-          <Link href="/#rooms">
-            ไปเลือกห้อง <b>→</b>
+          <Link href="/#packages">
+            ไปเลือกแพ็กเกจ <b>→</b>
           </Link>
         </div>
 
@@ -107,8 +111,10 @@ export default function ProfilePage() {
                 onClick={() => setTab("orders")}
               >
                 คำสั่งซื้อ
-                {orders.length > 0 && (
-                  <span className={styles.badge}>{orders.length}</span>
+                {orders.length + subscriptions.length > 0 && (
+                  <span className={styles.badge}>
+                    {orders.length + subscriptions.length}
+                  </span>
                 )}
               </button>
               <button
@@ -127,11 +133,37 @@ export default function ProfilePage() {
           {activityLoading ? (
             <p className={styles.activityEmpty}>กำลังโหลด…</p>
           ) : tab === "orders" ? (
-            orders.length === 0 ? (
+            orders.length === 0 && subscriptions.length === 0 ? (
               <p className={styles.activityEmpty}>ยังไม่มีคำสั่งซื้อ</p>
             ) : (
               <div className={styles.listWrapper}>
               <ul className={styles.list}>
+                {subscriptions.map((s) => {
+                  const expiry = formatExpiry(s.expiresAt);
+                  return (
+                    <li key={s.id} className={styles.item}>
+                      <span className={styles.itemIcon} data-status={s.status}>
+                        {s.status === "active" ? "✓" : "⏳"}
+                      </span>
+                      <div className={styles.itemBody}>
+                        <strong>{s.packageName}</strong>
+                        <span className={styles.itemSub}>
+                          {s.profileName} · {s.masterEmail}
+                          {expiry && (
+                            <em className={expiry.expired ? styles.expired : styles.active}>
+                              {expiry.expired ? " · หมดอายุ " : " · ถึง "}
+                              {expiry.label}
+                            </em>
+                          )}
+                        </span>
+                      </div>
+                      <div className={styles.itemRight}>
+                        <strong className={styles.debit}>−{s.pricePaid} Point</strong>
+                        <span className={styles.itemDate}>{formatDate(s.createdAt)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
                 {orders.map((o) => {
                   const expiry = formatExpiry(o.expiresAt);
                   return (

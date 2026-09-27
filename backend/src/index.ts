@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import admin from "./routes/admin";
 import auth from "./routes/auth";
 import catalog from "./routes/catalog";
 import orders from "./routes/orders";
@@ -23,6 +24,7 @@ app.use(
 );
 
 const api = new Hono();
+api.route("/admin", admin);
 api.route("/auth", auth);
 api.route("/catalog", catalog);
 api.route("/orders", orders);

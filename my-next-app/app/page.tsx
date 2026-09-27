@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { fetchPlans, fetchRooms, type Plan, type Room } from "./lib/api";
+import { fetchPackages, type StreamingPackage } from "./lib/api";
 import styles from "./page.module.css";
 
 type RevealSectionProps = {
@@ -48,15 +48,14 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
 
 export default function Home() {
   const stageRef = useRef<HTMLElement>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
-  const availableCount = rooms.filter((r) => r.available).length;
+  const [packages, setPackages] = useState<StreamingPackage[]>([]);
+  const availableCount = packages.reduce(
+    (total, item) => total + item.availableStock,
+    0,
+  );
 
   useEffect(() => {
-    void fetchRooms().then(setRooms).catch(() => undefined);
-    void fetchPlans().then(setPlans).catch(() => undefined);
+    void fetchPackages().then(setPackages).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -86,15 +85,6 @@ export default function Home() {
     };
   }, []);
 
-  function selectRoom(roomId: string) {
-    setSelectedRoomId(roomId);
-    window.setTimeout(() => {
-      document
-        .getElementById("plans")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
-  }
-
   return (
     <main ref={stageRef} className={styles.scrollStage} data-scroll-stage>
       <section className={styles.hero} id="home">
@@ -104,7 +94,7 @@ export default function Home() {
             <span>F</span> Fast Movie
           </a>
           <div className={styles.navLinks}>
-            <a href="#rooms">เลือกห้อง</a>
+            <a href="#packages">แพ็กเกจ</a>
             <a href="#how-it-works">ขั้นตอน</a>
             <a href="#faq">ช่วยเหลือ</a>
             <Link href="/shop">ร้านค้า</Link>
@@ -113,8 +103,8 @@ export default function Home() {
           <Link className={styles.mobileLogin} href="/register">
             เข้าสู่ระบบ
           </Link>
-          <a className={styles.navCta} href="#rooms">
-            <i /> ห้องว่าง {availableCount} ห้อง
+          <a className={styles.navCta} href="#packages">
+            <i /> พร้อมเช่า {availableCount} โปรไฟล์
           </a>
         </nav>
         <div className={styles.heroContent}>
@@ -126,11 +116,11 @@ export default function Home() {
               <em>แล้วหรือยัง?</em>
             </h1>
             <p className={styles.lead}>
-              เลือกห้องที่ว่างก่อน แล้วค่อยเลือกโปรที่เหมาะกับคุณ
-              <br className={styles.desktopOnly} /> จบใน 3 ขั้นตอน
+              เลือกแพ็กเกจที่มีสต็อกจากโปรไฟล์จริง
+              <br className={styles.desktopOnly} /> ระบบล็อกโปรไฟล์ให้ตอนชำระ Point
             </p>
-            <a className={styles.primaryButton} href="#rooms">
-              เลือกห้องของคุณ <span>→</span>
+            <a className={styles.primaryButton} href="#packages">
+              เลือกแพ็กเกจ <span>→</span>
             </a>
             <div className={styles.trustRow}>
               <span>จบใน 3 นาที</span>
@@ -158,22 +148,23 @@ export default function Home() {
 
       <RevealSection
         className={`${styles.section} ${styles.roomsSection}`}
-        id="rooms"
+        id="packages"
       >
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>01 — PICK A ROOM</p>
-          <h2>เลือกห้องที่ว่าง</h2>
-          <p>เลือก Room ก่อน แล้วค่อยเลือกโปรในขั้นตอนถัดไป</p>
+          <p className={styles.eyebrow}>01 — PICK A PACKAGE</p>
+          <h2>เลือกแพ็กเกจที่พร้อมใช้งาน</h2>
+          <p>Stock มาจาก Profile ที่ว่างภายใต้ Email แม่ที่ยัง Active</p>
         </div>
         <div className={styles.roomGrid}>
-          {rooms.map((room, index) => (
-            <button
-              className={`${styles.roomCard} ${selectedRoomId === room.id ? styles.roomSelected : ""} ${!room.available ? styles.roomUnavailable : ""}`}
-              key={room.id}
-              type="button"
-              disabled={!room.available}
-              onClick={() => selectRoom(room.id)}
-              aria-pressed={selectedRoomId === room.id}
+          {packages.map((pkg, index) => (
+            <Link
+              className={`${styles.roomCard} ${pkg.availableStock <= 0 ? styles.roomUnavailable : ""}`}
+              key={pkg.id}
+              href={
+                pkg.availableStock > 0
+                  ? `/checkout?package=${pkg.slug}`
+                  : "/payment"
+              }
             >
               <span className={styles.roomIndex}>0{index + 1}</span>
               <span className={styles.netflixMark}>N</span>
@@ -185,70 +176,35 @@ export default function Home() {
 
               <span className={styles.roomFooter}>
                 <small>
-                  {room.available ? "พร้อมใช้งาน" : "ไม่พร้อมใช้งาน"}
+                  {pkg.availableStock > 0 ? "พร้อมเช่า" : "รอเติมสต็อก"}
                 </small>
                 <span className={styles.roomCapacity}>
                   <span className={styles.capacityDots} aria-hidden="true">
-                    {Array.from({ length: room.capacity }, (_, member) => (
+                    {Array.from({ length: 4 }, (_, member) => (
                       <i
                         className={
-                          member < room.members ? styles.capacityUsed : ""
+                          member >= Math.min(pkg.availableStock, 4)
+                            ? styles.capacityUsed
+                            : ""
                         }
                         key={member}
                       />
                     ))}
                   </span>
-                  ใช้งาน {room.members} / {room.capacity} คน
+                  เหลือ {pkg.availableStock} โปรไฟล์
                 </span>
-                <strong>{room.name}</strong>
-                {/* <em>{room.label}</em> */}
+                <strong>{pkg.name}</strong>
+                <em>
+                  {pkg.priceAmount} Point · {pkg.durationDays} วัน
+                </em>
               </span>
-              {selectedRoomId === room.id && (
-                <span className={styles.selectedBadge}>เลือกแล้ว ✓</span>
-              )}
-            </button>
+              <span className={styles.selectedBadge}>
+                {pkg.availableStock > 0 ? "เลือกโปรนี้ →" : "เติม Point / แจ้งแอดมิน"}
+              </span>
+            </Link>
           ))}
         </div>
       </RevealSection>
-
-      {selectedRoom && (
-        <RevealSection className={styles.planSection} id="plans">
-          <div className={styles.planHeader}>
-            <div>
-              <p className={styles.eyebrow}>02 — PICK A PLAN</p>
-              <h2>เลือกโปรสำหรับ {selectedRoom.name}</h2>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                document
-                  .getElementById("rooms")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
-            >
-              เปลี่ยนห้อง
-            </button>
-          </div>
-          <div className={styles.planGrid}>
-            {plans.map((plan) => (
-              <article className={styles.planCard} key={plan.id}>
-                <p>{plan.tag}</p>
-                <h3>{plan.name}</h3>
-                <strong>
-                  {plan.price}
-                  <small> บาท</small>
-                </strong>
-                <span>{plan.duration}</span>
-                <Link
-                  href={`/checkout?plan=${plan.id}&room=${selectedRoom.id}`}
-                >
-                  เลือกโปรนี้ <b>→</b>
-                </Link>
-              </article>
-            ))}
-          </div>
-        </RevealSection>
-      )}
 
       <RevealSection className={styles.section} id="how-it-works">
         <div className={styles.sectionHeading}>
@@ -258,8 +214,8 @@ export default function Home() {
         <div className={styles.steps}>
           {[
             ["01", "เติม Point", "เลือก PromptPay หรือ Wallet"],
-            ["02", "เลือกห้อง", "เลือกจาก Room ที่ยังว่าง"],
-            ["03", "เลือกโปร", "เลือกระยะเวลาที่เหมาะกับคุณ"],
+            ["02", "เลือกแพ็กเกจ", "ระบบนับ stock จาก Profile ที่ว่าง"],
+            ["03", "รับข้อมูล", "ระบบล็อกโปรไฟล์และแสดงข้อมูลเข้าชม"],
           ].map(([number, title, copy]) => (
             <article key={number}>
               <span>{number}</span>
@@ -277,7 +233,7 @@ export default function Home() {
         <div className={styles.faqList}>
           <details>
             <summary>ทำไมต้องเลือกห้องก่อน?</summary>
-            <p>เพื่อให้ระบบล็อก Room ที่ว่างให้คุณก่อนเลือกโปรและตัด Point ตามค่าบริการ</p>
+            <p>ระบบใหม่ไม่ต้องเลือกห้องเองแล้ว ระบบจะเลือก Profile ที่ว่างและล็อกให้ใน Transaction เดียว</p>
           </details>
           <details>
             <summary>หลังเติม Pointต้องทำอะไรต่อ?</summary>
