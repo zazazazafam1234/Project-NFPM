@@ -32,7 +32,62 @@ Clears the session cookie and returns `204` or JSON.
 
 ## Checkout
 
+### `GET /catalog/packages`
+
+Returns active streaming packages with live stock calculated from available profiles under active master emails.
+
+```json
+[
+  {
+    "id": "pkg_uuid",
+    "slug": "netflix-week",
+    "name": "Netflix รายสัปดาห์",
+    "service": "netflix",
+    "durationDays": 7,
+    "priceAmount": 49,
+    "currency": "THB",
+    "availableStock": 3
+  }
+]
+```
+
+### `POST /subscriptions`
+
+New streaming-profile purchase flow.
+
+```json
+{
+  "packageSlug": "netflix-week",
+  "paymentMethod": "points"
+}
+```
+
+For `points`, the server locks the user row, selects one available profile using `FOR UPDATE SKIP LOCKED`, deducts points, creates a subscription, and returns credentials only after the transaction succeeds.
+
+```json
+{
+  "subscriptionId": "sub_uuid",
+  "status": "active",
+  "startedAt": "2026-09-27T07:00:00.000Z",
+  "expiresAt": "2026-10-04T07:00:00.000Z",
+  "points": 271,
+  "credentials": {
+    "email": "account@example.com",
+    "password": "decrypted-once",
+    "profileName": "Profile 1",
+    "pin": "1234"
+  }
+}
+```
+
+### `POST /subscriptions/:id/renew`
+
+Creates a renewal subscription for the same profile. The database prevents overlapping rental periods for the same profile.
+
 ### `POST /orders`
+
+Legacy Room/Plan checkout flow used by the current UI.
+
 
 ```json
 {

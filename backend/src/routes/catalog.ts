@@ -13,6 +13,62 @@ const ADMIN_KEY = process.env.ADMIN_KEY ?? "admin-secret";
 const isAdmin = (c: { req: { header: (h: string) => string | undefined } }) =>
   c.req.header("x-admin-key") === ADMIN_KEY;
 
+// ─── Streaming Packages ─────────────────────────────────────────
+
+catalog.get("/packages", async (c) => {
+  const rows = await sql`
+    SELECT
+      pkg.id,
+      pkg.slug,
+      pkg.name,
+      pkg.service,
+      pkg.description,
+      pkg.duration_days,
+      pkg.price_amount,
+      pkg.currency,
+      pkg.status,
+      COUNT(p.id)::int AS "availableStock"
+    FROM packages pkg
+    LEFT JOIN profiles p
+      ON p.status = 'available'
+      AND p.deleted_at IS NULL
+      AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
+    LEFT JOIN master_emails me
+      ON me.id = p.master_email_id
+      AND me.service = pkg.service
+      AND me.status = 'active'
+      AND me.deleted_at IS NULL
+      AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval
+    WHERE pkg.status = 'active'
+      AND pkg.deleted_at IS NULL
+      AND (p.id IS NULL OR me.id IS NOT NULL)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM subscriptions s
+        WHERE s.profile_id = p.id
+          AND s.status IN ('pending', 'active')
+          AND s.expires_at > NOW()
+      )
+    GROUP BY pkg.id
+    ORDER BY pkg.sort_order, pkg.price_amount
+  `;
+
+  return c.json(
+    rows.map((pkg) => ({
+      id: pkg.id,
+      slug: pkg.slug,
+      name: pkg.name,
+      service: pkg.service,
+      description: pkg.description,
+      durationDays: pkg.duration_days,
+      priceAmount: pkg.price_amount,
+      currency: pkg.currency,
+      status: pkg.status,
+      availableStock: pkg.availableStock,
+    })),
+  );
+});
+
 // ─── Rooms ────────────────────────────────────────────────────────
 
 catalog.get("/rooms", async (c) => {

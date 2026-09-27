@@ -6,6 +6,7 @@ import catalog from "./routes/catalog";
 import orders from "./routes/orders";
 import points from "./routes/points";
 import profile from "./routes/profile";
+import subscriptions from "./routes/subscriptions";
 
 const app = new Hono();
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
@@ -27,6 +28,7 @@ api.route("/catalog", catalog);
 api.route("/orders", orders);
 api.route("/points", points);
 api.route("/profile", profile);
+api.route("/subscriptions", subscriptions);
 
 app.route("/api", api);
 

@@ -1,5 +1,8 @@
 import sql from "../db";
 
+await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+await sql`CREATE EXTENSION IF NOT EXISTS btree_gist`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS "User" (
     id          TEXT PRIMARY KEY,
@@ -79,6 +82,183 @@ await sql`
     "isActive"   BOOLEAN NOT NULL DEFAULT TRUE,
     "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
+`;
+
+await sql`
+  DO $$
+  BEGIN
+    CREATE TYPE package_status AS ENUM ('active', 'inactive', 'archived');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;
+`;
+
+await sql`
+  DO $$
+  BEGIN
+    CREATE TYPE master_email_status AS ENUM ('active', 'inactive', 'expired', 'suspended');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;
+`;
+
+await sql`
+  DO $$
+  BEGIN
+    CREATE TYPE profile_status AS ENUM ('available', 'rented', 'inactive', 'expired', 'reserved');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;
+`;
+
+await sql`
+  DO $$
+  BEGIN
+    CREATE TYPE subscription_status AS ENUM ('pending', 'active', 'expired', 'cancelled', 'refunded');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS packages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug            TEXT NOT NULL UNIQUE,
+    name            TEXT NOT NULL,
+    service         TEXT NOT NULL DEFAULT 'netflix',
+    description     TEXT,
+    duration_days   INTEGER NOT NULL CHECK (duration_days > 0),
+    price_amount    INTEGER NOT NULL CHECK (price_amount >= 0),
+    currency        TEXT NOT NULL DEFAULT 'THB',
+    status          package_status NOT NULL DEFAULT 'active',
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS master_emails (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service               TEXT NOT NULL DEFAULT 'netflix',
+    email                 TEXT NOT NULL,
+    password_ciphertext   TEXT NOT NULL,
+    status                master_email_status NOT NULL DEFAULT 'active',
+    purchased_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    master_expired_at     TIMESTAMPTZ NOT NULL,
+    note                  TEXT,
+    metadata              JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at            TIMESTAMPTZ,
+    CONSTRAINT master_emails_valid_lifetime CHECK (master_expired_at > purchased_at)
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS profiles (
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    master_email_id          UUID NOT NULL REFERENCES master_emails(id) ON DELETE RESTRICT,
+    profile_name             TEXT NOT NULL,
+    profile_pin_ciphertext   TEXT,
+    status                   profile_status NOT NULL DEFAULT 'available',
+    profile_expires_at       TIMESTAMPTZ,
+    note                     TEXT,
+    metadata                 JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at               TIMESTAMPTZ
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                   TEXT NOT NULL REFERENCES "User"(id) ON DELETE RESTRICT,
+    profile_id                UUID NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+    package_id                UUID NOT NULL REFERENCES packages(id) ON DELETE RESTRICT,
+    parent_subscription_id    UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
+    status                    subscription_status NOT NULL DEFAULT 'active',
+    payment_method            TEXT NOT NULL DEFAULT 'points',
+    price_paid                INTEGER NOT NULL CHECK (price_paid >= 0),
+    started_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at                TIMESTAMPTZ NOT NULL,
+    cancelled_at              TIMESTAMPTZ,
+    metadata                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT subscriptions_valid_lifetime CHECK (expires_at > started_at),
+    CONSTRAINT subscriptions_valid_cancel CHECK (cancelled_at IS NULL OR cancelled_at >= started_at)
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS subscription_events (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subscription_id   UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+    actor_user_id     TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+    event_type        TEXT NOT NULL,
+    message           TEXT,
+    metadata          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id   TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+    action          TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,
+    entity_id       TEXT,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+
+await sql`CREATE INDEX IF NOT EXISTS packages_active_idx ON packages (service, sort_order, price_amount) WHERE status = 'active' AND deleted_at IS NULL`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_active_unique ON master_emails (LOWER(email), service) WHERE deleted_at IS NULL`;
+await sql`CREATE INDEX IF NOT EXISTS master_emails_stock_idx ON master_emails (service, status, master_expired_at) WHERE deleted_at IS NULL`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS profiles_master_name_unique ON profiles (master_email_id, LOWER(profile_name)) WHERE deleted_at IS NULL`;
+await sql`CREATE INDEX IF NOT EXISTS profiles_available_idx ON profiles (master_email_id, status, profile_expires_at) WHERE deleted_at IS NULL`;
+await sql`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (user_id, created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS subscriptions_profile_idx ON subscriptions (profile_id, expires_at DESC)`;
+await sql`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = 'subscriptions_no_profile_time_overlap'
+    ) THEN
+      ALTER TABLE subscriptions
+      ADD CONSTRAINT subscriptions_no_profile_time_overlap
+      EXCLUDE USING gist (
+        profile_id WITH =,
+        tstzrange(started_at, expires_at, '[)') WITH &&
+      )
+      WHERE (status IN ('pending', 'active'));
+    END IF;
+  END $$;
+`;
+await sql`CREATE INDEX IF NOT EXISTS subscription_events_subscription_idx ON subscription_events (subscription_id, created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS admin_audit_logs_entity_idx ON admin_audit_logs (entity_type, entity_id, created_at DESC)`;
+
+await sql`
+  INSERT INTO packages (slug, name, service, duration_days, price_amount, sort_order)
+  VALUES
+    ('netflix-day', 'Netflix รายวัน', 'netflix', 1, 10, 10),
+    ('netflix-week', 'Netflix รายสัปดาห์', 'netflix', 7, 49, 20),
+    ('netflix-month', 'Netflix รายเดือน', 'netflix', 30, 129, 30)
+  ON CONFLICT (slug) DO UPDATE SET
+    name = EXCLUDED.name,
+    service = EXCLUDED.service,
+    duration_days = EXCLUDED.duration_days,
+    price_amount = EXCLUDED.price_amount,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = NOW()
 `;
 
 console.log("Migration completed");
