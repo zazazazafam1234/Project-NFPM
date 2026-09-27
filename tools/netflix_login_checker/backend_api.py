@@ -71,7 +71,15 @@ class BackendApiClient:
 
         data = None
         headers = {
+            "Accept": "application/json, text/plain, */*",
             "Content-Type": "application/json",
+            "Origin": "https://fastmovie.sysbright.dev",
+            "Referer": "https://fastmovie.sysbright.dev/",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0.0.0 Safari/537.36"
+            ),
             "x-admin-key": self.admin_key,
         }
         if body is not None:
