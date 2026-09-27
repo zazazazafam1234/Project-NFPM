@@ -5,19 +5,16 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "db:generate": "bunx prisma generate",
-    "db:push": "bunx prisma db push",
     "db:seed": "bun run src/seed.ts",
-    "db:studio": "bunx prisma studio"
+    "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "bun": "^1.4.2",
     "hono": "^4.6.0",
-    "jose": "^5.9.0"
+    "jose": "^5.9.0",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@types/npm": "latest",
-    "prisma": "^5.22.0"
+    "@types/npm": "latest"
   }
 }

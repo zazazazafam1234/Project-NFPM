@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: fastmovie_dev_2026
       POSTGRES_DB: fastmovie
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,6 +16,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  backend:
+    build: ./backend
+    container_name: fastmovie-backend
+    restart: unless-stopped
+    command: ["bun", "run", "dev"]
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://fastmovie:fastmovie_dev_2026@postgres:5432/fastmovie
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend/src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
