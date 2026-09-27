@@ -45,6 +45,9 @@ export default function ShopPage() {
           <Link href="/shop" aria-current="page">ร้านค้า</Link>
           <Link href="/profile">บัญชี</Link>
         </nav>
+        <Link className={styles.mobileLogin} href="/register">
+          เข้าสู่ระบบ
+        </Link>
         <div className={styles.pointsBadge}>
           <span>✦</span>
           {user ? user.points.toLocaleString() : "—"}

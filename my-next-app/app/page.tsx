@@ -110,6 +110,9 @@ export default function Home() {
             <Link href="/shop">ร้านค้า</Link>
             <Link href="/profile">บัญชี</Link>
           </div>
+          <Link className={styles.mobileLogin} href="/register">
+            เข้าสู่ระบบ
+          </Link>
           <a className={styles.navCta} href="#rooms">
             <i /> ห้องว่าง {availableCount} ห้อง
           </a>

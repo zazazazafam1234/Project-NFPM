@@ -50,6 +50,9 @@
 .navLinks a[aria-current="page"] {
   color: #fff;
 }
+.mobileLogin {
+  display: none;
+}
 .pointsBadge {
   display: flex;
   align-items: center;
@@ -368,6 +371,17 @@
 @media (max-width: 540px) {
   .navLinks {
     display: none;
+  }
+  .mobileLogin {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: 10px;
+    color: #f3efff;
+    background: #ffffff10;
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 700;
   }
   .grid {
     grid-template-columns: 1fr 1fr;
