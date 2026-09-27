@@ -33,6 +33,7 @@ a = Analysis(
             "greenlet",
             "pyee",
             "netflix_login_checker",
+            "netflix_login_checker.backend_api",
             "netflix_login_checker.core",
             "netflix_login_checker.gui",
             "netflix_login_checker.post_login_workflow",

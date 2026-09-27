@@ -31,7 +31,25 @@ else:
     PYSIDE_IMPORT_ERROR = None
 
 from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, login_netflix
+from .backend_api import BackendApiClient, MasterEmailAccount
 from .post_login_workflow import WorkflowResult, run_post_login_workflow
+
+
+class MasterEmailLoader(QThread):
+    loaded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, *, api_url: str, admin_key: str) -> None:
+        super().__init__()
+        self.api_url = api_url
+        self.admin_key = admin_key
+
+    def run(self) -> None:
+        try:
+            client = BackendApiClient(base_url=self.api_url, admin_key=self.admin_key)
+            self.loaded.emit(client.fetch_master_emails(service="netflix"))
+        except Exception as exc:  # pragma: no cover - GUI fallback
+            self.failed.emit(str(exc))
 
 
 class ProfileWorker(QThread):
@@ -51,6 +69,9 @@ class ProfileWorker(QThread):
         headless: bool,
         slow_mo_ms: int,
         proxy_server: str | None,
+        api_url: str | None,
+        admin_key: str | None,
+        master_email_id: str | None,
     ) -> None:
         super().__init__()
         self.email = email
@@ -60,9 +81,16 @@ class ProfileWorker(QThread):
         self.headless = headless
         self.slow_mo_ms = slow_mo_ms
         self.proxy_server = proxy_server
+        self.api_url = api_url
+        self.admin_key = admin_key
+        self.master_email_id = master_email_id
 
     def run(self) -> None:
         debug = lambda message: self.log.emit(message)
+        backend_client = None
+        if self.api_url and self.admin_key and self.master_email_id:
+            backend_client = BackendApiClient(base_url=self.api_url, admin_key=self.admin_key)
+
         try:
             self.log.emit("login_start")
             login_result = login_netflix(
@@ -97,6 +125,20 @@ class ProfileWorker(QThread):
                     debug=debug,
                 )
                 self.profile_result.emit(index, result)
+                if result.success and backend_client and result.profile_name:
+                    saved = backend_client.save_profiles(
+                        master_email_id=self.master_email_id or "",
+                        profiles=[
+                            {
+                                "profileName": result.profile_name,
+                                "pin": result.profile_pin,
+                                "status": "available",
+                                "note": "Created by NetflixProfileCreator",
+                            }
+                        ],
+                    )
+                    saved_id = saved[0].get("id") if saved else "-"
+                    self.log.emit(f"backend_profile_saved index={index} id={saved_id}")
                 if not result.success:
                     self.log.emit(f"profile_{index}_failed reason={result.reason}")
                     break
@@ -110,8 +152,19 @@ class NetflixProfileCreatorWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.worker: ProfileWorker | None = None
+        self.loader: MasterEmailLoader | None = None
+        self.master_accounts: list[MasterEmailAccount] = []
         self.setWindowTitle("Netflix Profile Creator")
         self.resize(780, 720)
+
+        self.api_url_input = QLineEdit("http://localhost:4000/api")
+        self.admin_key_input = QLineEdit()
+        self.admin_key_input.setEchoMode(QLineEdit.Password)
+        self.master_email_input = QComboBox()
+        self.master_email_input.addItem("ใช้ข้อมูลที่กรอกเอง", None)
+        self.master_email_input.currentIndexChanged.connect(self._selected_master_email_changed)
+        self.load_master_button = QPushButton("โหลด Email แม่")
+        self.load_master_button.clicked.connect(self.load_master_emails)
 
         self.email_input = QLineEdit()
         self.password_input = QLineEdit()
@@ -161,6 +214,18 @@ class NetflixProfileCreatorWindow(QMainWindow):
         central = QWidget()
         root = QVBoxLayout(central)
 
+        api_box = QGroupBox("Backend API")
+        api_form = QFormLayout(api_box)
+        api_form.addRow("API URL", self.api_url_input)
+        api_form.addRow("Admin Key", self.admin_key_input)
+        master_row = QWidget()
+        master_layout = QHBoxLayout(master_row)
+        master_layout.setContentsMargins(0, 0, 0, 0)
+        master_layout.addWidget(self.master_email_input, stretch=1)
+        master_layout.addWidget(self.load_master_button)
+        api_form.addRow("Master Email", master_row)
+        root.addWidget(api_box)
+
         form_box = QGroupBox("ข้อมูลบัญชี")
         form = QFormLayout(form_box)
         form.addRow("Email แม่", self.email_input)
@@ -207,12 +272,60 @@ class NetflixProfileCreatorWindow(QMainWindow):
 
         self.setCentralWidget(central)
 
+    def load_master_emails(self) -> None:
+        if self.loader and self.loader.isRunning():
+            return
+
+        api_url = self.api_url_input.text().strip()
+        admin_key = self.admin_key_input.text().strip()
+        if not api_url or not admin_key:
+            QMessageBox.critical(self, "ข้อมูลไม่ครบ", "กรุณาใส่ API URL และ Admin Key")
+            return
+
+        self.load_master_button.setEnabled(False)
+        self._log("backend_load_master_emails")
+        self.loader = MasterEmailLoader(api_url=api_url, admin_key=admin_key)
+        self.loader.loaded.connect(self._master_emails_loaded)
+        self.loader.failed.connect(self._master_emails_failed)
+        self.loader.start()
+
+    def _master_emails_loaded(self, accounts: list[MasterEmailAccount]) -> None:
+        self.master_accounts = accounts
+        self.master_email_input.blockSignals(True)
+        self.master_email_input.clear()
+        self.master_email_input.addItem("ใช้ข้อมูลที่กรอกเอง", None)
+        for account in accounts:
+            label = f"{account.email} · {account.package_name or account.service} · {account.profile_count} profiles"
+            self.master_email_input.addItem(label, account)
+        self.master_email_input.blockSignals(False)
+        self.load_master_button.setEnabled(True)
+        self._log(f"backend_master_emails_loaded count={len(accounts)}")
+
+    def _master_emails_failed(self, message: str) -> None:
+        self.load_master_button.setEnabled(True)
+        self._log(f"backend_load_failed {message}")
+        QMessageBox.critical(self, "โหลด Backend ไม่สำเร็จ", message)
+
+    def _selected_master_email_changed(self) -> None:
+        account = self.master_email_input.currentData()
+        if not isinstance(account, MasterEmailAccount):
+            return
+        self.email_input.setText(account.email)
+        self.password_input.setText(account.password)
+
     def start(self) -> None:
         if self.worker and self.worker.isRunning():
             return
 
-        email = self.email_input.text().strip()
-        password = self.password_input.text().rstrip("\r\n")
+        selected_account = self.master_email_input.currentData()
+        if isinstance(selected_account, MasterEmailAccount):
+            email = selected_account.email
+            password = selected_account.password
+            master_email_id = selected_account.id
+        else:
+            email = self.email_input.text().strip()
+            password = self.password_input.text().rstrip("\r\n")
+            master_email_id = None
         pin = self.pin_input.text().strip() or None
         proxy_server = self._build_proxy_server()
         count = self.count_input.value()
@@ -237,6 +350,9 @@ class NetflixProfileCreatorWindow(QMainWindow):
             headless=self.headless_input.isChecked(),
             slow_mo_ms=self.slow_mo_input.value(),
             proxy_server=proxy_server,
+            api_url=self.api_url_input.text().strip() or None,
+            admin_key=self.admin_key_input.text().strip() or None,
+            master_email_id=master_email_id,
         )
         self.worker.log.connect(self._log)
         self.worker.status.connect(self._set_status)
