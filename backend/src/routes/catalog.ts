@@ -30,7 +30,7 @@ catalog.get("/packages", async (c) => {
       COUNT(p.id)::int AS "availableStock"
     FROM packages pkg
     LEFT JOIN master_emails me
-      ON me.package_id = pkg.id
+      ON me.service = pkg.service
       AND me.status = 'active'
       AND me.deleted_at IS NULL
       AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval

@@ -114,7 +114,7 @@ subscriptions.post("/", async (c) => {
         WHERE p.status = 'available'
           AND p.deleted_at IS NULL
           AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
-          AND me.package_id = ${pkg.id}
+          AND me.service = ${pkg.service}
           AND me.status = 'active'
           AND me.deleted_at IS NULL
           AND me.master_expired_at >= ${expiresAt.toISOString()}

@@ -28,7 +28,7 @@ admin.get("/inventory", async (c) => {
             )
         )::int AS "availableStock"
       FROM packages pkg
-      LEFT JOIN master_emails me ON me.package_id = pkg.id
+      LEFT JOIN master_emails me ON me.service = pkg.service
       LEFT JOIN profiles p ON p.master_email_id = me.id
       WHERE pkg.deleted_at IS NULL
       GROUP BY pkg.id
