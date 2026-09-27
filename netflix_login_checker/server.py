@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import asdict
 from datetime import datetime
 from uuid import uuid4
@@ -8,6 +9,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 
 from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, check_netflix_session, login_netflix
+from .post_login_workflow import run_post_login_workflow
 
 
 def create_app() -> Flask:
@@ -19,8 +21,18 @@ def create_app() -> Flask:
 
     @app.post("/check-netflix-login")
     def check_netflix_login():
-        data = request.get_json(silent=True) or {}
+        data = _request_json()
         request_id = uuid4().hex[:8]
+        if data is None:
+            return _json_response(
+                {
+                    "success": False,
+                    "reason": "invalid_json: send a valid JSON object",
+                    "url": "https://www.netflix.com/th-en/login",
+                },
+                400,
+            )
+
         email = _clean_credential(data.get("email"))
         password = _clean_credential(data.get("password"))
         mode = str(data.get("mode") or "login").strip().lower()
@@ -106,7 +118,128 @@ def create_app() -> Flask:
         )
         return _json_response(asdict(result), http_status)
 
+    @app.post("/doit")
+    def doit():
+        data = _request_json()
+        request_id = uuid4().hex[:8]
+        if data is None:
+            return _json_response(
+                {
+                    "success": False,
+                    "phase": "request",
+                    "reason": "invalid_json: send a valid JSON object",
+                    "url": "https://www.netflix.com/th-en/login",
+                },
+                400,
+            )
+
+        email = _clean_credential(data.get("email"))
+        password = _clean_credential(data.get("password"))
+        browser_profile_name = _clean_credential(data.get("profile_name")) or None
+        profiles_dir = data.get("profiles_dir") or DEFAULT_PROFILES_DIR
+        headless = _parse_bool(data.get("headless"), default=False)
+        debug_enabled = _parse_bool(data.get("debug"), default=True)
+        clear_cache = _parse_bool(data.get("clear_cache"), default=False)
+        timeout_ms = int(data.get("timeout_ms", 30000))
+        slow_mo_ms = int(data.get("slow_mo_ms", 0))
+
+        _server_debug(
+            request_id,
+            "doit_received "
+            f"email={_mask_email(email)} profile_name={browser_profile_name or '-'} "
+            f"headless={headless} debug={debug_enabled} clear_cache={clear_cache}",
+        )
+
+        if not email or not password:
+            return _json_response(
+                {
+                    "success": False,
+                    "phase": "request",
+                    "reason": "missing_credentials: send JSON email and password",
+                    "url": data.get("login_url") or "https://www.netflix.com/th-en/login",
+                },
+                400,
+            )
+
+        debug = (lambda message: _server_debug(request_id, message)) if debug_enabled else None
+        login_result = login_netflix(
+            email,
+            password,
+            login_url=data.get("login_url") or "https://www.netflix.com/th-en/login",
+            headless=headless,
+            timeout_ms=timeout_ms,
+            slow_mo_ms=slow_mo_ms,
+            clear_cache=clear_cache,
+            persistent_profile=True,
+            profile_name=browser_profile_name,
+            profiles_dir=profiles_dir,
+            debug=debug,
+        )
+        if not login_result.success:
+            http_status = _status_for_failure(login_result.reason)
+            _server_debug(
+                request_id,
+                f"doit_login_failed status={http_status} reason={login_result.reason} url={login_result.url}",
+            )
+            return _json_response(
+                {
+                    **asdict(login_result),
+                    "phase": "login",
+                },
+                http_status,
+            )
+
+        workflow_result = run_post_login_workflow(
+            email=email,
+            account_password=password,
+            account_pin=_clean_credential(data.get("pin")) or None,
+            browser_profile_name=browser_profile_name,
+            profiles_dir=profiles_dir,
+            session_url=data.get("session_url") or DEFAULT_SESSION_URL,
+            new_profile_name=_clean_credential(data.get("new_profile_name")) or None,
+            profile_lock_pin=_clean_credential(data.get("lock_pin")) or None,
+            headless=headless,
+            timeout_ms=timeout_ms,
+            slow_mo_ms=slow_mo_ms,
+            debug=debug,
+        )
+        http_status = 200 if workflow_result.success else _status_for_failure(workflow_result.reason)
+        _server_debug(
+            request_id,
+            f"doit_finished status={http_status} success={workflow_result.success} "
+            f"reason={workflow_result.reason} url={workflow_result.url}",
+        )
+        return _json_response(
+            {
+                **asdict(workflow_result),
+                "phase": "workflow",
+                "login": asdict(login_result),
+            },
+            http_status,
+        )
+
     return app
+
+
+def _request_json() -> dict | None:
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return data
+
+    raw = request.get_data(as_text=True).strip()
+    if not raw:
+        return {}
+
+    # Windows curl examples are often pasted with literal single quotes around
+    # the JSON. Accept that shape so PowerShell callers get useful behavior.
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+        raw = raw[1:-1]
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _clean_credential(value: object) -> str:

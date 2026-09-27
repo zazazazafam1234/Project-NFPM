@@ -35,6 +35,7 @@ except ImportError as exc:  # pragma: no cover - depends on local environment
     PLAYWRIGHT_IMPORT_ERROR = exc
     PlaywrightError = Exception
     PlaywrightTimeoutError = Exception
+    sync_playwright = None
 
 
 DEFAULT_LOGIN_URL = "https://www.netflix.com/th-en/login"
@@ -56,6 +57,14 @@ DebugCallback = Callable[[str], None]
 def emit_debug(debug: DebugCallback | None, message: str) -> None:
     if debug:
         debug(message)
+
+
+def wait_for_short_network_idle(page: Page, *, debug: DebugCallback | None = None, timeout_ms: int = 1000) -> None:
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        emit_debug(debug, f"network_idle timeout_ms={timeout_ms}")
+    except PlaywrightTimeoutError:
+        emit_debug(debug, f"network_idle_skipped timeout_ms={timeout_ms}")
 
 
 def profile_name_for_identifier(identifier: str) -> str:
@@ -548,10 +557,7 @@ def check_netflix_session(
         try:
             emit_debug(debug, "goto_session_page")
             page.goto(session_url, wait_until="domcontentloaded")
-            try:
-                page.wait_for_load_state("networkidle", timeout=timeout_ms)
-            except PlaywrightTimeoutError:
-                pass
+            wait_for_short_network_idle(page, debug=debug)
 
             if looks_logged_in(context, page):
                 emit_debug(debug, "session_valid")
@@ -665,10 +671,7 @@ def login_netflix(
                 emit_debug(debug, "continue_button_not_found")
                 return LoginResult(False, "continue_button_not_found", page.url, str(profile_dir) if profile_dir else None)
 
-            try:
-                page.wait_for_load_state("networkidle", timeout=timeout_ms)
-            except PlaywrightTimeoutError:
-                pass
+            wait_for_short_network_idle(page, debug=debug)
 
             next_step = wait_for_next_login_step(page, timeout_ms)
             emit_debug(debug, f"next_login_step={next_step}")
@@ -725,10 +728,7 @@ def login_netflix(
                 emit_debug(debug, "password_submit_not_found")
                 return LoginResult(False, "password_submit_not_found", page.url, str(profile_dir) if profile_dir else None)
 
-            try:
-                page.wait_for_load_state("networkidle", timeout=timeout_ms)
-            except PlaywrightTimeoutError:
-                pass
+            wait_for_short_network_idle(page, debug=debug)
 
             result = wait_for_login_result(context, page, timeout_ms)
             emit_debug(debug, f"login_result success={result.success} reason={result.reason} url={result.url}")
