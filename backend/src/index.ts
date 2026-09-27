@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import auth from "./routes/auth";
 import catalog from "./routes/catalog";
 import orders from "./routes/orders";
+import points from "./routes/points";
 import profile from "./routes/profile";
 
 const app = new Hono();
@@ -24,6 +25,7 @@ const api = new Hono();
 api.route("/auth", auth);
 api.route("/catalog", catalog);
 api.route("/orders", orders);
+api.route("/points", points);
 api.route("/profile", profile);
 
 app.route("/api", api);
