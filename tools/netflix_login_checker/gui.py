@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import shutil
+from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 try:
@@ -30,7 +32,7 @@ except ImportError as exc:  # pragma: no cover - depends on local environment
 else:
     PYSIDE_IMPORT_ERROR = None
 
-from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, login_netflix
+from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, login_netflix, resolve_profile_dir
 from .backend_api import BackendApiClient, MasterEmailAccount
 from .post_login_workflow import WorkflowResult, run_post_login_workflow
 
@@ -69,6 +71,7 @@ class ProfileWorker(QThread):
         headless: bool,
         slow_mo_ms: int,
         proxy_server: str | None,
+        clear_session_before_start: bool,
         api_url: str | None,
         admin_key: str | None,
         master_email_id: str | None,
@@ -81,6 +84,7 @@ class ProfileWorker(QThread):
         self.headless = headless
         self.slow_mo_ms = slow_mo_ms
         self.proxy_server = proxy_server
+        self.clear_session_before_start = clear_session_before_start
         self.api_url = api_url
         self.admin_key = admin_key
         self.master_email_id = master_email_id
@@ -92,6 +96,10 @@ class ProfileWorker(QThread):
             backend_client = BackendApiClient(base_url=self.api_url, admin_key=self.admin_key)
 
         try:
+            if self.clear_session_before_start:
+                removed = clear_profile_session(self.email)
+                self.log.emit(f"clear_session_before_start removed={removed}")
+
             self.log.emit("login_start")
             login_result = login_netflix(
                 self.email,
@@ -171,6 +179,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.password_input.setEchoMode(QLineEdit.Password)
         self.pin_input = QLineEdit()
         self.pin_input.setMaxLength(12)
+        self.use_proxy_input = QCheckBox("ใช้ Proxy")
         self.proxy_protocol_input = QComboBox()
         self.proxy_protocol_input.addItems(["SOCKS5", "HTTP", "HTTPS", "SOCKS4"])
         self.proxy_host_input = QLineEdit()
@@ -188,6 +197,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.count_input.setRange(1, 20)
         self.count_input.setValue(1)
         self.headless_input = QCheckBox("Headless")
+        self.clear_session_before_start_input = QCheckBox("ล้าง Cookies/Session ก่อนเริ่ม")
         self.slow_mo_input = QSpinBox()
         self.slow_mo_input.setRange(0, 1000)
         self.slow_mo_input.setSingleStep(50)
@@ -195,6 +205,10 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.status_label = QLabel("พร้อมใช้งาน")
         self.start_button = QPushButton("เริ่มสร้างโปรไฟล์")
         self.start_button.clicked.connect(self.start)
+        self.clear_cache_button = QPushButton("ล้าง Cache")
+        self.clear_cache_button.clicked.connect(self.clear_browser_cache)
+        self.clear_session_button = QPushButton("ล้าง Cookies/Session")
+        self.clear_session_button.clicked.connect(self.clear_browser_session)
 
         self.cards_layout = QVBoxLayout()
         self.cards_layout.addStretch(1)
@@ -234,6 +248,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         proxy_row = QWidget()
         proxy_layout = QHBoxLayout(proxy_row)
         proxy_layout.setContentsMargins(0, 0, 0, 0)
+        proxy_layout.addWidget(self.use_proxy_input)
         proxy_layout.addWidget(self.proxy_protocol_input)
         proxy_layout.addWidget(self.proxy_host_input, stretch=1)
         proxy_layout.addWidget(self.proxy_port_input)
@@ -246,6 +261,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         options_layout = QHBoxLayout(options)
         options_layout.setContentsMargins(0, 0, 0, 0)
         options_layout.addWidget(self.headless_input)
+        options_layout.addWidget(self.clear_session_before_start_input)
         options_layout.addWidget(QLabel("Slow motion ms"))
         options_layout.addWidget(self.slow_mo_input)
         options_layout.addStretch(1)
@@ -256,6 +272,8 @@ class NetflixProfileCreatorWindow(QMainWindow):
         actions_layout = QHBoxLayout(actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.addWidget(self.start_button)
+        actions_layout.addWidget(self.clear_cache_button)
+        actions_layout.addWidget(self.clear_session_button)
         actions_layout.addWidget(self.status_label)
         actions_layout.addStretch(1)
         root.addWidget(actions)
@@ -313,6 +331,34 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.email_input.setText(account.email)
         self.password_input.setText(account.password)
 
+    def clear_browser_cache(self) -> None:
+        removed = clear_playwright_cache_dirs()
+        self._log(f"clear_cache removed={removed}")
+        self.status_label.setText(f"ล้าง cache แล้ว {removed} รายการ")
+
+    def clear_browser_session(self) -> None:
+        email = self._current_email()
+        if not email:
+            QMessageBox.critical(self, "ข้อมูลไม่ครบ", "กรุณาเลือก/ใส่ Email ก่อนล้าง session")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "ยืนยันการล้าง session",
+            f"จะล้าง cookies/session ของ {email}\nต้อง login ใหม่หลังจากนี้ ต้องการต่อไหม?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        removed = clear_profile_session(email)
+        profile_dir = resolve_profile_dir(profile_name=None, identifier=email, profiles_dir=DEFAULT_PROFILES_DIR)
+        if removed:
+            self._log(f"clear_session profile={profile_dir}")
+            self.status_label.setText("ล้าง cookies/session แล้ว")
+        else:
+            self._log(f"clear_session profile_not_found={profile_dir}")
+            self.status_label.setText("ไม่พบ session ของ email นี้")
+
     def start(self) -> None:
         if self.worker and self.worker.isRunning():
             return
@@ -350,6 +396,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
             headless=self.headless_input.isChecked(),
             slow_mo_ms=self.slow_mo_input.value(),
             proxy_server=proxy_server,
+            clear_session_before_start=self.clear_session_before_start_input.isChecked(),
             api_url=self.api_url_input.text().strip() or None,
             admin_key=self.admin_key_input.text().strip() or None,
             master_email_id=master_email_id,
@@ -360,6 +407,12 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.worker.failed.connect(self._failed)
         self.worker.finished_ok.connect(self._finished)
         self.worker.start()
+
+    def _current_email(self) -> str:
+        selected_account = self.master_email_input.currentData()
+        if isinstance(selected_account, MasterEmailAccount):
+            return selected_account.email
+        return self.email_input.text().strip()
 
     def _set_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -416,6 +469,9 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.status_label.setText("copy แล้ว")
 
     def _build_proxy_server(self) -> str | None:
+        if not self.use_proxy_input.isChecked():
+            return None
+
         self._parse_proxy_text_from_host()
         host = self.proxy_host_input.text().strip()
         if not host:
@@ -460,6 +516,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
             self.proxy_user_input.setText(unquote(parsed.username))
         if parsed.password:
             self.proxy_password_input.setText(unquote(parsed.password))
+        self.use_proxy_input.setChecked(True)
 
     def _clear_cards(self) -> None:
         while self.cards_layout.count() > 1:
@@ -470,6 +527,38 @@ class NetflixProfileCreatorWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log_output.append(message)
+
+
+def clear_playwright_cache_dirs(profiles_dir: str | Path = DEFAULT_PROFILES_DIR) -> int:
+    cache_names = {
+        "Cache",
+        "Code Cache",
+        "GPUCache",
+        "DawnCache",
+        "ShaderCache",
+        "GrShaderCache",
+        "GraphiteDawnCache",
+        "blob_storage",
+        "CacheStorage",
+    }
+    root = Path(profiles_dir)
+    if not root.exists():
+        return 0
+
+    removed = 0
+    for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        if path.is_dir() and path.name in cache_names:
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def clear_profile_session(email: str, profiles_dir: str | Path = DEFAULT_PROFILES_DIR) -> int:
+    profile_dir = resolve_profile_dir(profile_name=None, identifier=email, profiles_dir=profiles_dir)
+    if not profile_dir.exists():
+        return 0
+    shutil.rmtree(profile_dir, ignore_errors=True)
+    return 1
 
 
 def main() -> None:
