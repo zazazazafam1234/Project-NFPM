@@ -9,9 +9,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# ─── PyInstaller ──────────────────────────────────────────────
-build/
-dist/
+# ─── PyInstaller build artifacts (root only) ──────────────────
+/build/
+/dist/
 *.spec.bak
 
 # ─── Playwright runtime data ───────────────────────────────────
