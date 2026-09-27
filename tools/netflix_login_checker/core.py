@@ -99,13 +99,13 @@ def wait_for_short_network_idle(page: Page, *, debug: DebugCallback | None = Non
 
 
 def is_stale_login_state(page: Page) -> bool:
-    if re.search(r"[?&](?:serverState|authURL|state)=", page.url, re.I):
-        return True
+    has_state_query = bool(re.search(r"[?&](?:serverState|authURL|state)=", page.url, re.I))
     try:
         text = page.locator("body").first.inner_text(timeout=1000)
     except PlaywrightError:
         return False
-    return bool(re.search(r"something went wrong|error code:\s*10\d{2}|serverState", text, re.I))
+    has_stale_error = bool(re.search(r"something went wrong|error code:\s*10\d{2}", text, re.I))
+    return has_stale_error or (has_state_query and bool(re.search(r"try again in a few minutes", text, re.I)))
 
 
 def clean_login_url(login_url: str | None) -> str:
