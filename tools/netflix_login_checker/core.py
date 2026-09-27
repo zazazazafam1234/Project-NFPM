@@ -12,9 +12,11 @@ to test.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import shutil
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +55,31 @@ class LoginResult:
 
 
 DebugCallback = Callable[[str], None]
+
+
+def _has_running_asyncio_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+def _run_in_plain_thread(function, *args, **kwargs):
+    result: dict[str, object] = {}
+
+    def target() -> None:
+        try:
+            result["value"] = function(*args, **kwargs)
+        except BaseException as exc:  # pragma: no cover - re-raised in caller thread
+            result["error"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in result:
+        raise result["error"]  # type: ignore[misc]
+    return result.get("value")
 
 
 def emit_debug(debug: DebugCallback | None, message: str) -> None:
@@ -552,6 +579,14 @@ def _with_profile(result: LoginResult, profile: str | None) -> LoginResult:
 
 
 def check_netflix_session(
+    **kwargs,
+) -> LoginResult:
+    if _has_running_asyncio_loop():
+        return _run_in_plain_thread(_check_netflix_session_impl, **kwargs)
+    return _check_netflix_session_impl(**kwargs)
+
+
+def _check_netflix_session_impl(
     *,
     profile_name: str | None = None,
     email: str | None = None,
@@ -613,6 +648,16 @@ def check_netflix_session(
 
 
 def login_netflix(
+    email: str,
+    password: str,
+    **kwargs,
+) -> LoginResult:
+    if _has_running_asyncio_loop():
+        return _run_in_plain_thread(_login_netflix_impl, email, password, **kwargs)
+    return _login_netflix_impl(email, password, **kwargs)
+
+
+def _login_netflix_impl(
     email: str,
     password: str,
     *,

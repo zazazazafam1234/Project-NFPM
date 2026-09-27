@@ -14,6 +14,8 @@ from .core import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _launch_context,
+    _has_running_asyncio_loop,
+    _run_in_plain_thread,
     click_text_candidate,
     emit_debug,
     fill_input_and_verify,
@@ -38,6 +40,14 @@ class WorkflowResult:
 
 
 def run_post_login_workflow(
+    **kwargs,
+) -> WorkflowResult:
+    if _has_running_asyncio_loop():
+        return _run_in_plain_thread(_run_post_login_workflow_impl, **kwargs)
+    return _run_post_login_workflow_impl(**kwargs)
+
+
+def _run_post_login_workflow_impl(
     *,
     email: str,
     account_password: str,
