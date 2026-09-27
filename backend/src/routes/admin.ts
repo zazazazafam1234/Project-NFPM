@@ -15,6 +15,7 @@ admin.get("/inventory", async (c) => {
         COUNT(p.id) FILTER (
           WHERE p.status = 'available'
             AND p.deleted_at IS NULL
+            AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
             AND me.status = 'active'
             AND me.deleted_at IS NULL
             AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval
@@ -27,7 +28,7 @@ admin.get("/inventory", async (c) => {
             )
         )::int AS "availableStock"
       FROM packages pkg
-      LEFT JOIN master_emails me ON me.service = pkg.service
+      LEFT JOIN master_emails me ON me.package_id = pkg.id
       LEFT JOIN profiles p ON p.master_email_id = me.id
       WHERE pkg.deleted_at IS NULL
       GROUP BY pkg.id
@@ -36,6 +37,9 @@ admin.get("/inventory", async (c) => {
     sql`
       SELECT
         me.id,
+        me.package_id AS "packageId",
+        pkg.name AS "packageName",
+        pkg.slug AS "packageSlug",
         me.service,
         me.email,
         me.status,
@@ -45,9 +49,10 @@ admin.get("/inventory", async (c) => {
         COUNT(p.id)::int AS "profileCount",
         COUNT(p.id) FILTER (WHERE p.status = 'available')::int AS "availableProfiles"
       FROM master_emails me
+      LEFT JOIN packages pkg ON pkg.id = me.package_id
       LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL
       WHERE me.deleted_at IS NULL
-      GROUP BY me.id
+      GROUP BY me.id, pkg.id
       ORDER BY me.created_at DESC
       LIMIT 100
     `,
@@ -61,9 +66,12 @@ admin.get("/inventory", async (c) => {
         p.note,
         p.created_at,
         me.email AS "masterEmail",
-        me.service
+        me.service,
+        pkg.name AS "packageName",
+        pkg.slug AS "packageSlug"
       FROM profiles p
       JOIN master_emails me ON me.id = p.master_email_id
+      LEFT JOIN packages pkg ON pkg.id = me.package_id
       WHERE p.deleted_at IS NULL
       ORDER BY p.created_at DESC
       LIMIT 150
@@ -133,6 +141,7 @@ admin.post("/packages", async (c) => {
 
 admin.post("/master-emails", async (c) => {
   const body = await c.req.json<{
+    packageId?: string;
     service?: string;
     email: string;
     password: string;
@@ -146,12 +155,27 @@ admin.post("/master-emails", async (c) => {
     return c.json({ message: "email, password, masterExpiredAt required" }, 400);
   }
 
+  if (!body.packageId) {
+    return c.json({ message: "กรุณาเลือก package ที่จะผูกกับ Email แม่" }, 400);
+  }
+
+  const [pkg] = await sql`
+    SELECT id, service
+    FROM packages
+    WHERE id = ${body.packageId}::uuid
+      AND deleted_at IS NULL
+    LIMIT 1
+  `;
+
+  if (!pkg) return c.json({ message: "ไม่พบ package ที่เลือก" }, 404);
+
   const [account] = await sql`
     INSERT INTO master_emails (
-      service, email, password_ciphertext, status, purchased_at, master_expired_at, note
+      package_id, service, email, password_ciphertext, status, purchased_at, master_expired_at, note
     )
     VALUES (
-      ${body.service ?? "netflix"},
+      ${pkg.id},
+      ${pkg.service},
       ${body.email},
       ${encryptSecret(body.password)},
       ${body.status ?? "active"},
@@ -159,7 +183,7 @@ admin.post("/master-emails", async (c) => {
       ${body.masterExpiredAt},
       ${body.note ?? null}
     )
-    RETURNING id, service, email, status, purchased_at, master_expired_at, note
+    RETURNING id, package_id AS "packageId", service, email, status, purchased_at, master_expired_at, note
   `;
 
   return c.json(account, 201);

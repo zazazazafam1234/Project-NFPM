@@ -29,19 +29,16 @@ catalog.get("/packages", async (c) => {
       pkg.status,
       COUNT(p.id)::int AS "availableStock"
     FROM packages pkg
-    LEFT JOIN profiles p
-      ON p.status = 'available'
-      AND p.deleted_at IS NULL
-      AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
     LEFT JOIN master_emails me
-      ON me.id = p.master_email_id
-      AND me.service = pkg.service
+      ON me.package_id = pkg.id
       AND me.status = 'active'
       AND me.deleted_at IS NULL
       AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval
-    WHERE pkg.status = 'active'
-      AND pkg.deleted_at IS NULL
-      AND (p.id IS NULL OR me.id IS NOT NULL)
+    LEFT JOIN profiles p
+      ON p.master_email_id = me.id
+      AND p.status = 'available'
+      AND p.deleted_at IS NULL
+      AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
       AND NOT EXISTS (
         SELECT 1
         FROM subscriptions s
@@ -49,6 +46,8 @@ catalog.get("/packages", async (c) => {
           AND s.status IN ('pending', 'active')
           AND s.expires_at > NOW()
       )
+    WHERE pkg.status = 'active'
+      AND pkg.deleted_at IS NULL
     GROUP BY pkg.id
     ORDER BY pkg.sort_order, pkg.price_amount
   `;

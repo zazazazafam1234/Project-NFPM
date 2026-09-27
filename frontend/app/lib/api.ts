@@ -165,6 +165,9 @@ export type AdminInventory = {
   }>;
   masterEmails: Array<{
     id: string;
+    packageId: string | null;
+    packageName: string | null;
+    packageSlug: string | null;
     service: string;
     email: string;
     status: string;
@@ -183,6 +186,8 @@ export type AdminInventory = {
     note: string | null;
     masterEmail: string;
     service: string;
+    packageName: string | null;
+    packageSlug: string | null;
   }>;
 };
 
@@ -205,7 +210,7 @@ export function saveAdminPackage(body: {
 }
 
 export function saveMasterEmail(body: {
-  service: string;
+  packageId: string;
   email: string;
   password: string;
   masterExpiredAt: string;

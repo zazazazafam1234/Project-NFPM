@@ -383,13 +383,20 @@ function AccountsPanel({
   inventory: AdminInventory | null;
   onDone: (message: string) => void;
 }) {
+  const firstPackageId = inventory?.packages[0]?.id ?? "";
   const [form, setForm] = useState({
-    service: "netflix",
+    packageId: firstPackageId,
     email: "",
     password: "",
     masterExpiredAt: tomorrow,
     note: "",
   });
+
+  useEffect(() => {
+    if (!form.packageId && firstPackageId) {
+      setForm((current) => ({ ...current, packageId: firstPackageId }));
+    }
+  }, [firstPackageId, form.packageId]);
 
   async function submit() {
     await saveMasterEmail({
@@ -409,7 +416,9 @@ function AccountsPanel({
           {(inventory?.masterEmails ?? []).map((account) => (
             <div key={account.id}>
               <b>{account.email}</b>
-              <span>{account.availableProfiles} / {account.profileCount} profile</span>
+              <span>
+                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} profile
+              </span>
               <em className={account.status === "active" ? styles.green : styles.yellow}>
                 {account.status}
               </em>
@@ -422,11 +431,18 @@ function AccountsPanel({
         <h2>เพิ่ม Email แม่</h2>
         <div className={styles.formRows}>
           <label>
-            Service
-            <input
-              value={form.service}
-              onChange={(event) => setForm({ ...form, service: event.target.value })}
-            />
+            แพ็กเกจที่ผูก
+            <select
+              value={form.packageId}
+              onChange={(event) => setForm({ ...form, packageId: event.target.value })}
+            >
+              <option value="">เลือกแพ็กเกจ</option>
+              {(inventory?.packages ?? []).map((pkg) => (
+                <option key={pkg.id} value={pkg.id}>
+                  {pkg.name} · {pkg.price_amount} Point · {pkg.duration_days} วัน
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Email
@@ -462,7 +478,7 @@ function AccountsPanel({
           </label>
           <button
             className={styles.primary}
-            disabled={!form.email || !form.password}
+            disabled={!form.packageId || !form.email || !form.password}
             onClick={() => void submit()}
             type="button"
           >
@@ -521,7 +537,7 @@ function ProfilesPanel({
           {(inventory?.profiles ?? []).map((profile) => (
             <div key={profile.id}>
               <b>{profile.profile_name}</b>
-              <span>{profile.masterEmail}</span>
+              <span>{profile.masterEmail} · {profile.packageName ?? profile.service}</span>
               <em className={profile.status === "available" ? styles.green : styles.yellow}>
                 {profile.status}
               </em>
@@ -555,7 +571,7 @@ function ProfilesPanel({
               <option value="">เลือก Email แม่</option>
               {(inventory?.masterEmails ?? []).map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.email}
+                  {account.email} · {account.packageName ?? account.service}
                 </option>
               ))}
             </select>

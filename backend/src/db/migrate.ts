@@ -144,6 +144,7 @@ await sql`
 await sql`
   CREATE TABLE IF NOT EXISTS master_emails (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    package_id            UUID REFERENCES packages(id) ON DELETE SET NULL,
     service               TEXT NOT NULL DEFAULT 'netflix',
     email                 TEXT NOT NULL,
     password_ciphertext   TEXT NOT NULL,
@@ -157,6 +158,20 @@ await sql`
     deleted_at            TIMESTAMPTZ,
     CONSTRAINT master_emails_valid_lifetime CHECK (master_expired_at > purchased_at)
   )
+`;
+
+await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES packages(id) ON DELETE SET NULL`;
+await sql`
+  UPDATE master_emails me
+  SET package_id = (
+    SELECT id
+    FROM packages
+    WHERE service = me.service
+      AND deleted_at IS NULL
+    ORDER BY status = 'active' DESC, sort_order, price_amount, created_at
+    LIMIT 1
+  )
+  WHERE me.package_id IS NULL
 `;
 
 await sql`
@@ -221,7 +236,9 @@ await sql`
 `;
 
 await sql`CREATE INDEX IF NOT EXISTS packages_active_idx ON packages (service, sort_order, price_amount) WHERE status = 'active' AND deleted_at IS NULL`;
+await sql`CREATE INDEX IF NOT EXISTS master_emails_package_idx ON master_emails (package_id, status, master_expired_at) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_active_unique ON master_emails (LOWER(email), service) WHERE deleted_at IS NULL`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_package_unique ON master_emails (LOWER(email), package_id) WHERE package_id IS NOT NULL AND deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS master_emails_stock_idx ON master_emails (service, status, master_expired_at) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS profiles_master_name_unique ON profiles (master_email_id, LOWER(profile_name)) WHERE deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS profiles_available_idx ON profiles (master_email_id, status, profile_expires_at) WHERE deleted_at IS NULL`;
