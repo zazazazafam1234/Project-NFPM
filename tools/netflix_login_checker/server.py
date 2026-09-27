@@ -43,12 +43,15 @@ def create_app() -> Flask:
         debug_enabled = _parse_bool(data.get("debug"), default=True)
         use_profile = _parse_bool(data.get("use_profile"), default=True)
         clear_cache = _parse_bool(data.get("clear_cache"), default=not use_profile)
+        allow_manual_login = _parse_bool(data.get("allow_manual_login"), default=not headless)
+        manual_login_timeout_ms = int(data.get("manual_login_timeout_ms", 300000))
 
         _server_debug(
             request_id,
             "request_received "
             f"mode={mode} email={_mask_email(email)} profile_name={profile_name or '-'} "
-            f"headless={headless} debug={debug_enabled} use_profile={use_profile} clear_cache={clear_cache}",
+            f"headless={headless} debug={debug_enabled} use_profile={use_profile} "
+            f"clear_cache={clear_cache} allow_manual_login={allow_manual_login}",
         )
 
         if mode == "check_session":
@@ -113,6 +116,8 @@ def create_app() -> Flask:
             profile_name=profile_name,
             profiles_dir=profiles_dir,
             debug=(lambda message: _server_debug(request_id, message)) if debug_enabled else None,
+            allow_manual_login=allow_manual_login,
+            manual_login_timeout_ms=manual_login_timeout_ms,
         )
         http_status = 200 if result.success else _status_for_failure(result.reason)
         _server_debug(
@@ -144,6 +149,8 @@ def create_app() -> Flask:
         headless = _parse_bool(data.get("headless"), default=False)
         debug_enabled = _parse_bool(data.get("debug"), default=True)
         clear_cache = _parse_bool(data.get("clear_cache"), default=False)
+        allow_manual_login = _parse_bool(data.get("allow_manual_login"), default=not headless)
+        manual_login_timeout_ms = int(data.get("manual_login_timeout_ms", 300000))
         timeout_ms = int(data.get("timeout_ms", 30000))
         slow_mo_ms = int(data.get("slow_mo_ms", 0))
 
@@ -151,7 +158,8 @@ def create_app() -> Flask:
             request_id,
             "doit_received "
             f"email={_mask_email(email)} profile_name={browser_profile_name or '-'} "
-            f"headless={headless} debug={debug_enabled} clear_cache={clear_cache}",
+            f"headless={headless} debug={debug_enabled} clear_cache={clear_cache} "
+            f"allow_manual_login={allow_manual_login}",
         )
 
         if not email or not password:
@@ -179,6 +187,8 @@ def create_app() -> Flask:
             profile_name=browser_profile_name,
             profiles_dir=profiles_dir,
             debug=debug,
+            allow_manual_login=allow_manual_login,
+            manual_login_timeout_ms=manual_login_timeout_ms,
         )
         if not login_result.success:
             http_status = _status_for_failure(login_result.reason)

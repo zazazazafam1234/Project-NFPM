@@ -575,6 +575,30 @@ def wait_for_login_result(context: BrowserContext, page: Page, timeout_ms: int) 
     return LoginResult(False, "login_result_timeout", page.url)
 
 
+def wait_for_manual_login(
+    context: BrowserContext,
+    page: Page,
+    *,
+    timeout_ms: int,
+    debug: DebugCallback | None = None,
+    reason: str = "manual_login_required",
+) -> LoginResult:
+    emit_debug(debug, f"manual_login_wait_start reason={reason} timeout_ms={timeout_ms}")
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        try:
+            if looks_logged_in(context, page):
+                emit_debug(debug, "manual_login_success")
+                return LoginResult(True, "login_success_manual", page.url)
+        except PlaywrightError as exc:
+            emit_debug(debug, f"manual_login_browser_closed {exc}")
+            return LoginResult(False, "manual_login_browser_closed", page.url)
+        page.wait_for_timeout(1000)
+
+    emit_debug(debug, "manual_login_timeout")
+    return LoginResult(False, f"manual_login_timeout:{reason}", page.url)
+
+
 def _launch_context(
     playwright,
     *,
@@ -718,6 +742,8 @@ def _login_netflix_impl(
     profiles_dir: str | Path = DEFAULT_PROFILES_DIR,
     proxy_server: str | None = None,
     debug: DebugCallback | None = None,
+    allow_manual_login: bool = False,
+    manual_login_timeout_ms: int = 300000,
     _stale_reset_count: int = 0,
 ) -> LoginResult:
     original_login_url = login_url
@@ -736,7 +762,7 @@ def _login_netflix_impl(
         debug,
         f"login_start url={login_url} headless={headless} timeout_ms={timeout_ms} "
         f"clear_cache={clear_cache} persistent_profile={persistent_profile} profile={profile_dir} "
-        f"proxy={_proxy_label(proxy_server)}",
+        f"proxy={_proxy_label(proxy_server)} allow_manual_login={allow_manual_login}",
     )
     if login_url != original_login_url:
         emit_debug(debug, f"login_url_sanitized original={original_login_url} clean={login_url}")
@@ -769,13 +795,25 @@ def _login_netflix_impl(
             nonlocal context_closed_for_retry
             stale_url = page.url
             emit_debug(debug, f"stale_login_state_detected stage={stage} url={stale_url}")
+            next_login_url = login_retry_url(login_url, _stale_reset_count)
+            if not next_login_url and allow_manual_login and not headless:
+                return _with_profile(
+                    wait_for_manual_login(
+                        context,
+                        page,
+                        timeout_ms=manual_login_timeout_ms,
+                        debug=debug,
+                        reason=f"stale_login_state:{stage}",
+                    ),
+                    str(profile_dir) if profile_dir else None,
+                )
+
             context.close()
             context_closed_for_retry = True
             if browser:
                 browser.close()
             clear_persistent_profile(profile_dir, debug=debug)
 
-            next_login_url = login_retry_url(login_url, _stale_reset_count)
             if not next_login_url:
                 return LoginResult(
                     False,
@@ -798,6 +836,8 @@ def _login_netflix_impl(
                 profiles_dir=profiles_dir,
                 proxy_server=proxy_server,
                 debug=debug,
+                allow_manual_login=allow_manual_login,
+                manual_login_timeout_ms=manual_login_timeout_ms,
                 _stale_reset_count=_stale_reset_count + 1,
             )
 
@@ -867,6 +907,17 @@ def _login_netflix_impl(
                 emit_debug(debug, f"login_error_before_password={error}")
                 if persistent_profile and is_stale_login_state(page):
                     return retry_after_stale_state("error_before_password")
+                if allow_manual_login and not headless:
+                    return _with_profile(
+                        wait_for_manual_login(
+                            context,
+                            page,
+                            timeout_ms=manual_login_timeout_ms,
+                            debug=debug,
+                            reason="error_before_password",
+                        ),
+                        str(profile_dir) if profile_dir else None,
+                    )
                 return LoginResult(False, f"login_failed: {error}", page.url, str(profile_dir) if profile_dir else None)
             if next_step == "otp":
                 emit_debug(debug, "otp_page_open_use_password_menu")
@@ -880,6 +931,17 @@ def _login_netflix_impl(
                     return LoginResult(False, "use_password_instead_not_clicked", page.url, str(profile_dir) if profile_dir else None)
             elif next_step == "timeout":
                 emit_debug(debug, "next_login_step_timeout")
+                if allow_manual_login and not headless:
+                    return _with_profile(
+                        wait_for_manual_login(
+                            context,
+                            page,
+                            timeout_ms=manual_login_timeout_ms,
+                            debug=debug,
+                            reason="next_login_step_timeout",
+                        ),
+                        str(profile_dir) if profile_dir else None,
+                    )
                 return LoginResult(False, "next_login_step_timeout", page.url, str(profile_dir) if profile_dir else None)
 
             emit_debug(debug, "wait_for_password_ready")
@@ -921,6 +983,14 @@ def _login_netflix_impl(
 
             result = wait_for_login_result(context, page, timeout_ms)
             emit_debug(debug, f"login_result success={result.success} reason={result.reason} url={result.url}")
+            if not result.success and allow_manual_login and not headless:
+                result = wait_for_manual_login(
+                    context,
+                    page,
+                    timeout_ms=manual_login_timeout_ms,
+                    debug=debug,
+                    reason=result.reason,
+                )
             return _with_profile(result, str(profile_dir) if profile_dir else None)
         finally:
             emit_debug(debug, "close_browser")

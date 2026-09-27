@@ -72,6 +72,7 @@ class ProfileWorker(QThread):
         slow_mo_ms: int,
         proxy_server: str | None,
         clear_session_before_start: bool,
+        allow_manual_login: bool,
         api_url: str | None,
         admin_key: str | None,
         master_email_id: str | None,
@@ -85,6 +86,7 @@ class ProfileWorker(QThread):
         self.slow_mo_ms = slow_mo_ms
         self.proxy_server = proxy_server
         self.clear_session_before_start = clear_session_before_start
+        self.allow_manual_login = allow_manual_login
         self.api_url = api_url
         self.admin_key = admin_key
         self.master_email_id = master_email_id
@@ -112,6 +114,8 @@ class ProfileWorker(QThread):
                 persistent_profile=True,
                 profiles_dir=DEFAULT_PROFILES_DIR,
                 debug=debug,
+                allow_manual_login=self.allow_manual_login,
+                manual_login_timeout_ms=300000,
             )
             self.log.emit(f"login_result success={login_result.success} reason={login_result.reason}")
             if not login_result.success:
@@ -198,6 +202,8 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.count_input.setValue(1)
         self.headless_input = QCheckBox("Headless")
         self.clear_session_before_start_input = QCheckBox("ล้าง Cookies/Session ก่อนเริ่ม")
+        self.manual_login_input = QCheckBox("รอ Login มือถ้าติด")
+        self.manual_login_input.setChecked(True)
         self.slow_mo_input = QSpinBox()
         self.slow_mo_input.setRange(0, 1000)
         self.slow_mo_input.setSingleStep(50)
@@ -262,6 +268,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         options_layout.setContentsMargins(0, 0, 0, 0)
         options_layout.addWidget(self.headless_input)
         options_layout.addWidget(self.clear_session_before_start_input)
+        options_layout.addWidget(self.manual_login_input)
         options_layout.addWidget(QLabel("Slow motion ms"))
         options_layout.addWidget(self.slow_mo_input)
         options_layout.addStretch(1)
@@ -397,6 +404,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
             slow_mo_ms=self.slow_mo_input.value(),
             proxy_server=proxy_server,
             clear_session_before_start=self.clear_session_before_start_input.isChecked(),
+            allow_manual_login=self.manual_login_input.isChecked(),
             api_url=self.api_url_input.text().strip() or None,
             admin_key=self.admin_key_input.text().strip() or None,
             master_email_id=master_email_id,

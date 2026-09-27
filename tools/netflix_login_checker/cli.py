@@ -17,6 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-ms", type=int, default=30000)
     parser.add_argument("--slow-mo-ms", type=int, default=0)
     parser.add_argument("--proxy-server", default=os.environ.get("NETFLIX_PROXY_SERVER"))
+    parser.add_argument("--manual-login", action="store_true", help="Wait for a manual login in headful mode if automation gets stuck.")
+    parser.add_argument("--manual-login-timeout-ms", type=int, default=300000)
     return parser.parse_args()
 
 
@@ -46,6 +48,8 @@ def main() -> int:
         timeout_ms=args.timeout_ms,
         slow_mo_ms=args.slow_mo_ms,
         proxy_server=args.proxy_server,
+        allow_manual_login=args.manual_login,
+        manual_login_timeout_ms=args.manual_login_timeout_ms,
     )
     print(json.dumps(asdict(result), ensure_ascii=True))
     return 0 if result.success else 1
