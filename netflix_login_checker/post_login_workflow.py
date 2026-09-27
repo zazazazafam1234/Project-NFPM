@@ -149,14 +149,7 @@ def run_post_login_workflow(
                 )
 
             step("save_new_profile")
-            if not force_click_first(
-                page,
-                (
-                    '[data-uia="profile-gate-add-profile-modal+primary-button"]',
-                    'button[type="submit"]',
-                ),
-                timeout_ms=4000,
-            ):
+            if not _save_new_profile(page, generated_profile_name, debug=debug):
                 return WorkflowResult(
                     False,
                     "new_profile_save_button_not_found",
@@ -334,6 +327,107 @@ def _wait_and_fill_new_profile_name(page, profile_name: str, *, timeout_ms: int)
             return True
         page.wait_for_timeout(250)
     return False
+
+
+def _save_new_profile(page, profile_name: str, *, debug: DebugCallback | None) -> bool:
+    deadline = time.monotonic() + 10
+    save_selectors = (
+        '[data-uia="profile-gate-add-profile-modal+primary-button"]:not([disabled])',
+        'button[data-uia="profile-gate-add-profile-modal+primary-button"]',
+        'button[type="submit"]',
+    )
+
+    while time.monotonic() < deadline:
+        clicked = False
+        if _click_enabled_visible_save_button(page):
+            emit_debug(debug, "new_profile_save_clicked_js")
+            clicked = True
+        elif force_click_first(page, save_selectors, timeout_ms=500):
+            emit_debug(debug, "new_profile_save_clicked_selector")
+            clicked = True
+
+        if not clicked:
+            name_input = first_visible(
+                page,
+                (
+                    'input[name="name"][data-uia="profile-gate-add-profile-modal+name-input"]',
+                    '[data-uia="profile-gate-add-profile-modal+name-input"]',
+                ),
+                timeout_ms=500,
+            )
+        else:
+            name_input = None
+
+        if not clicked and name_input:
+            try:
+                if name_input.input_value(timeout=500) != profile_name:
+                    fill_input_and_verify(
+                        page,
+                        (
+                            'input[name="name"][data-uia="profile-gate-add-profile-modal+name-input"]',
+                            '[data-uia="profile-gate-add-profile-modal+name-input"]',
+                        ),
+                        profile_name,
+                        timeout_ms=1000,
+                        require_interactable=False,
+                    )
+                name_input.press("Enter", timeout=500)
+                emit_debug(debug, "new_profile_save_pressed_enter")
+                clicked = True
+            except PlaywrightError:
+                pass
+
+        if clicked and _new_profile_save_finished(page, profile_name, timeout_ms=5000):
+            return True
+
+        page.wait_for_timeout(250)
+
+    return False
+
+
+def _new_profile_save_finished(page, profile_name: str, *, timeout_ms: int) -> bool:
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        if _profile_guid_for_name(page, profile_name):
+            return True
+        if first_visible(
+            page,
+            ('[data-uia="profile-gate-add-profile-modal"]',),
+            timeout_ms=250,
+        ) is None:
+            return True
+        page.wait_for_timeout(250)
+    return False
+
+
+def _click_enabled_visible_save_button(page) -> bool:
+    try:
+        return bool(
+            page.evaluate(
+                """() => {
+                    const buttons = Array.from(document.querySelectorAll(
+                        'button[data-uia="profile-gate-add-profile-modal+primary-button"], button[type="submit"]'
+                    ));
+                    const button = buttons.find((element) => {
+                        const text = (element.innerText || element.textContent || '').trim();
+                        const rect = element.getBoundingClientRect();
+                        const style = window.getComputedStyle(element);
+                        return !element.disabled
+                            && rect.width > 0
+                            && rect.height > 0
+                            && style.visibility !== 'hidden'
+                            && style.display !== 'none'
+                            && (!text || /save|บันทึก/i.test(text));
+                    });
+                    if (!button) return false;
+                    button.scrollIntoView({ block: 'center', inline: 'center' });
+                    button.click();
+                    return true;
+                }"""
+            )
+        )
+    except PlaywrightError:
+        return False
 
 
 def _wait_for_profile_guid(page, profile_name: str, *, timeout_ms: int) -> str | None:
