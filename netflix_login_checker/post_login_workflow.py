@@ -216,7 +216,9 @@ def run_post_login_workflow(
                 )
 
             step("choose_password_verification")
-            if not _choose_password_verification(page, debug=debug):
+            if _is_profile_lock_pin_entry(page):
+                emit_debug(debug, "already_on_profile_lock_pin_entry")
+            elif not _choose_password_verification(page, debug=debug):
                 return WorkflowResult(
                     False,
                     "password_verification_button_not_found",
@@ -228,7 +230,9 @@ def run_post_login_workflow(
                 )
 
             step("submit_account_password")
-            if not _submit_account_password(page, account_password):
+            if _is_profile_lock_pin_entry(page):
+                emit_debug(debug, "skip_account_password_already_on_pin_entry")
+            elif not _submit_account_password(page, account_password):
                 return WorkflowResult(
                     False,
                     "account_password_prompt_not_filled",
@@ -493,13 +497,18 @@ def _is_profile_settings_page(page) -> bool:
 
 
 def _choose_password_verification(page, *, debug: DebugCallback | None) -> bool:
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
+        if _is_profile_lock_pin_entry(page):
+            emit_debug(debug, "password_verification_skipped_pin_entry_ready")
+            return True
         if force_click_first(page, ('[data-uia="account-mfa-button-PASSWORD"] button',), timeout_ms=500):
             return True
         if first_visible(page, ('[data-uia="collect-password-input-modal-entry"]',), timeout_ms=500):
             return True
         if click_text_candidate(page, r"password"):
+            return True
+        if click_text_candidate(page, r"ยืนยันรหัสผ่าน"):
             return True
         page.wait_for_timeout(250)
     emit_debug(debug, "password_verification_not_found")
@@ -507,6 +516,9 @@ def _choose_password_verification(page, *, debug: DebugCallback | None) -> bool:
 
 
 def _submit_account_password(page, account_password: str) -> bool:
+    if _is_profile_lock_pin_entry(page):
+        return True
+
     if not fill_input_and_verify(
         page,
         (
@@ -535,6 +547,15 @@ def _submit_account_password(page, account_password: str) -> bool:
 
 
 def _save_profile_lock_pin(page, profile_lock_pin: str) -> bool:
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if _fill_and_submit_profile_lock_pin(page, profile_lock_pin):
+            return True
+        page.wait_for_timeout(250)
+    return False
+
+
+def _fill_and_submit_profile_lock_pin(page, profile_lock_pin: str) -> bool:
     if not fill_input_and_verify(
         page,
         (
@@ -558,6 +579,20 @@ def _save_profile_lock_pin(page, profile_lock_pin: str) -> bool:
         return True
     except PlaywrightError:
         return False
+
+
+def _is_profile_lock_pin_entry(page) -> bool:
+    if "/settings/lock/pinEntry/" in page.url:
+        return True
+    return first_visible(
+        page,
+        (
+            '[data-uia="profile-lock-pin-entry-page"]',
+            '[data-uia="profile-lock+pin-input"]',
+            'input[name="PIN"][data-uia="profile-lock+pin-input"]',
+        ),
+        timeout_ms=500,
+    ) is not None
 
 
 def _generate_profile_name() -> str:
