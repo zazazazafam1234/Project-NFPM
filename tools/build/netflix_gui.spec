@@ -1,21 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import playwright
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs
+from PyInstaller.building.datastruct import Tree
 
 TOOLS_DIR = Path(SPECPATH).parent   # tools/
+RUNTIME_HOOK = TOOLS_DIR / "build" / "pyi_playwright_runtime.py"
 
 pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all("PySide6")
-
-# Playwright Python package only — ไม่รวม Node driver/browser (ใหญ่มาก)
-# ผู้ใช้ต้อง run: playwright install chromium  ก่อนใช้งาน
-from PyInstaller.utils.hooks import collect_submodules
-playwright_hiddenimports = collect_submodules("playwright")
+playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all("playwright")
+playwright_browser_datas = []
+playwright_browsers_dir = Path(playwright.__file__).parent / "driver" / "package" / ".local-browsers"
+if playwright_browsers_dir.exists():
+    playwright_browser_datas.append(
+        Tree(str(playwright_browsers_dir), prefix="playwright/driver/package/.local-browsers")
+    )
 
 a = Analysis(
     [str(TOOLS_DIR / "scripts" / "netflix_gui.py")],
     pathex=[str(TOOLS_DIR)],
-    binaries=pyside6_binaries,
-    datas=pyside6_datas,
+    binaries=pyside6_binaries + playwright_binaries,
+    datas=pyside6_datas + playwright_datas + playwright_browser_datas,
     hiddenimports=(
         pyside6_hiddenimports
         + playwright_hiddenimports
@@ -37,7 +42,7 @@ a = Analysis(
     ),
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(RUNTIME_HOOK)],
     excludes=["tkinter", "unittest", "test"],
     noarchive=False,
 )

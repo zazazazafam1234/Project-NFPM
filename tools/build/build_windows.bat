@@ -21,7 +21,8 @@ pip install pyinstaller
 if errorlevel 1 goto error
 
 echo [3/4] ติดตั้ง Playwright browser...
-playwright install chromium --with-deps
+set PLAYWRIGHT_BROWSERS_PATH=0
+python -m playwright install chromium
 if errorlevel 1 goto error
 
 echo [4/4] Build EXE...
