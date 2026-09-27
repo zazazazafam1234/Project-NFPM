@@ -108,7 +108,7 @@ class ProfileWorker(QThread):
                 timeout_ms=30000,
                 slow_mo_ms=self.slow_mo_ms,
                 proxy_server=self.proxy_server,
-                clear_cache=False,
+                clear_cache=self.clear_session_before_start,
                 persistent_profile=True,
                 profiles_dir=DEFAULT_PROFILES_DIR,
                 debug=debug,

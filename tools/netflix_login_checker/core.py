@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 PLAYWRIGHT_IMPORT_ERROR: ImportError | None = None
 
@@ -42,8 +43,10 @@ except ImportError as exc:  # pragma: no cover - depends on local environment
 
 
 DEFAULT_LOGIN_URL = "https://www.netflix.com/th-en/login"
+FALLBACK_LOGIN_URL = "https://www.netflix.com/login"
 DEFAULT_SESSION_URL = "https://www.netflix.com/browse"
 DEFAULT_PROFILES_DIR = ".netflix_profiles"
+STALE_LOGIN_QUERY_KEYS = {"serverstate", "authurl", "state"}
 
 
 @dataclass
@@ -103,6 +106,50 @@ def is_stale_login_state(page: Page) -> bool:
     except PlaywrightError:
         return False
     return bool(re.search(r"something went wrong|error code:\s*10\d{2}|serverState", text, re.I))
+
+
+def clean_login_url(login_url: str | None) -> str:
+    candidate = (login_url or DEFAULT_LOGIN_URL).strip() or DEFAULT_LOGIN_URL
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return DEFAULT_LOGIN_URL
+
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return DEFAULT_LOGIN_URL
+
+    host = parsed.netloc.lower()
+    if host == "netflix.com" or host.endswith(".netflix.com"):
+        if "/login" in parsed.path.lower():
+            query = [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if key.lower() not in STALE_LOGIN_QUERY_KEYS
+            ]
+            return urlunparse(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path or "/login",
+                    "",
+                    urlencode(query, doseq=True),
+                    "",
+                )
+            )
+
+    return candidate
+
+
+def login_retry_url(original_login_url: str, retry_index: int) -> str | None:
+    candidates: list[str] = []
+    for candidate in (clean_login_url(original_login_url), DEFAULT_LOGIN_URL, FALLBACK_LOGIN_URL):
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    next_index = retry_index + 1
+    if next_index >= len(candidates):
+        return None
+    return candidates[next_index]
 
 
 def clear_persistent_profile(profile_dir: Path | None, *, debug: DebugCallback | None = None) -> bool:
@@ -671,8 +718,10 @@ def _login_netflix_impl(
     profiles_dir: str | Path = DEFAULT_PROFILES_DIR,
     proxy_server: str | None = None,
     debug: DebugCallback | None = None,
-    _stale_reset_used: bool = False,
+    _stale_reset_count: int = 0,
 ) -> LoginResult:
+    original_login_url = login_url
+    login_url = clean_login_url(login_url)
     profile_dir = None
     if persistent_profile:
         profile_dir = resolve_profile_dir(
@@ -689,6 +738,8 @@ def _login_netflix_impl(
         f"clear_cache={clear_cache} persistent_profile={persistent_profile} profile={profile_dir} "
         f"proxy={_proxy_label(proxy_server)}",
     )
+    if login_url != original_login_url:
+        emit_debug(debug, f"login_url_sanitized original={original_login_url} clean={login_url}")
     if PLAYWRIGHT_IMPORT_ERROR:
         emit_debug(debug, "playwright_import_error")
         return LoginResult(
@@ -697,6 +748,9 @@ def _login_netflix_impl(
             login_url,
             str(profile_dir) if profile_dir else None,
         )
+
+    if clear_cache and persistent_profile and profile_dir:
+        clear_persistent_profile(profile_dir, debug=debug)
 
     with sync_playwright() as playwright:
         browser, context = _launch_context(
@@ -721,18 +775,20 @@ def _login_netflix_impl(
                 browser.close()
             clear_persistent_profile(profile_dir, debug=debug)
 
-            if _stale_reset_used:
+            next_login_url = login_retry_url(login_url, _stale_reset_count)
+            if not next_login_url:
                 return LoginResult(
                     False,
-                    "stale_login_state_after_reset",
+                    f"stale_login_state_after_reset:{stage}",
                     stale_url,
                     str(profile_dir) if profile_dir else None,
                 )
 
+            emit_debug(debug, f"retry_clean_login_url url={next_login_url}")
             return login_netflix(
                 email,
                 password,
-                login_url=DEFAULT_LOGIN_URL,
+                login_url=next_login_url,
                 headless=headless,
                 timeout_ms=timeout_ms,
                 slow_mo_ms=slow_mo_ms,
@@ -742,7 +798,7 @@ def _login_netflix_impl(
                 profiles_dir=profiles_dir,
                 proxy_server=proxy_server,
                 debug=debug,
-                _stale_reset_used=True,
+                _stale_reset_count=_stale_reset_count + 1,
             )
 
         try:
