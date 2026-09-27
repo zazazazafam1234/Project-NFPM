@@ -446,10 +446,12 @@ def looks_logged_in(context: BrowserContext, page: Page) -> bool:
         return True
 
     success_selectors = (
+        '[data-uia="profile-gate-screen"]',
         '[data-uia="profile-gate-label"]',
         '[data-uia*="profile"]',
         'a[href*="/browse"]',
         'text=/Who.s watching/i',
+        'text=/เลือกผู้ชม/i',
     )
     if any(visible(page.locator(selector).first, timeout_ms=500) for selector in success_selectors):
         return True
