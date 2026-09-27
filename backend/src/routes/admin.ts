@@ -4,9 +4,9 @@ import { encryptSecret } from "../crypto";
 
 const admin = new Hono();
 
-const ADMIN_KEY = process.env.ADMIN_KEY ?? "admin-secret";
+const ADMIN_KEY = process.env.ADMIN_KEY;
 const isAdmin = (c: { req: { header: (h: string) => string | undefined } }) =>
-  c.req.header("x-admin-key") === ADMIN_KEY;
+  Boolean(ADMIN_KEY) && c.req.header("x-admin-key") === ADMIN_KEY;
 
 admin.use("*", async (c, next) => {
   if (!isAdmin(c)) return c.json({ message: "Unauthorized" }, 401);
