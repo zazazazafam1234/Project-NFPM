@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { requireAdmin } from "../adminAuth";
-import { encryptSecret } from "../crypto";
+import { decryptSecret, encryptSecret } from "../crypto";
 
 const admin = new Hono();
 
@@ -91,6 +91,110 @@ admin.get("/inventory", async (c) => {
     profiles,
     metrics: metrics[0],
   });
+});
+
+admin.get("/automation/master-emails", async (c) => {
+  const service = c.req.query("service") ?? "netflix";
+  const email = c.req.query("email");
+
+  const accounts = await sql`
+    SELECT
+      me.id,
+      me.package_id AS "packageId",
+      pkg.name AS "packageName",
+      pkg.slug AS "packageSlug",
+      me.service,
+      me.email,
+      me.password_ciphertext,
+      me.status,
+      me.master_expired_at,
+      me.note,
+      COUNT(p.id)::int AS "profileCount",
+      COUNT(p.id) FILTER (WHERE p.status = 'available' AND p.deleted_at IS NULL)::int AS "availableProfiles"
+    FROM master_emails me
+    LEFT JOIN packages pkg ON pkg.id = me.package_id
+    LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL
+    WHERE me.deleted_at IS NULL
+      AND me.status = 'active'
+      AND me.master_expired_at > NOW()
+      AND me.service = ${service}
+      AND (${email ?? null}::text IS NULL OR me.email = ${email ?? null})
+    GROUP BY me.id, pkg.id
+    ORDER BY me.created_at DESC
+    LIMIT 100
+  `;
+
+  const masterEmails = [];
+  const skipped = [];
+
+  for (const account of accounts) {
+    try {
+      masterEmails.push({
+        id: account.id,
+        packageId: account.packageId,
+        packageName: account.packageName,
+        packageSlug: account.packageSlug,
+        service: account.service,
+        email: account.email,
+        password: decryptSecret(account.password_ciphertext),
+        status: account.status,
+        masterExpiredAt: account.master_expired_at,
+        note: account.note,
+        profileCount: account.profileCount,
+        availableProfiles: account.availableProfiles,
+      });
+    } catch (error) {
+      skipped.push({
+        id: account.id,
+        email: account.email,
+        reason: error instanceof Error ? error.message : "decrypt_failed",
+      });
+    }
+  }
+
+  return c.json({
+    masterEmails,
+    skipped,
+  });
+});
+
+admin.post("/automation/profiles", async (c) => {
+  const body = await c.req.json<{
+    masterEmailId: string;
+    profiles: Array<{
+      profileName: string;
+      pin?: string;
+      status?: "available" | "rented" | "inactive" | "expired" | "reserved";
+      profileExpiresAt?: string;
+      note?: string;
+    }>;
+  }>();
+
+  if (!body.masterEmailId || !Array.isArray(body.profiles) || body.profiles.length === 0) {
+    return c.json({ message: "masterEmailId and profiles required" }, 400);
+  }
+
+  const created = [];
+  for (const item of body.profiles) {
+    if (!item.profileName) continue;
+    const [profile] = await sql`
+      INSERT INTO profiles (
+        master_email_id, profile_name, profile_pin_ciphertext, status, profile_expires_at, note
+      )
+      VALUES (
+        ${body.masterEmailId}::uuid,
+        ${item.profileName},
+        ${item.pin ? encryptSecret(item.pin) : null},
+        ${item.status ?? "available"},
+        ${item.profileExpiresAt ?? null},
+        ${item.note ?? "Created by NetflixProfileCreator"}
+      )
+      RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
+    `;
+    created.push(profile);
+  }
+
+  return c.json({ profiles: created }, 201);
 });
 
 admin.post("/packages", async (c) => {
