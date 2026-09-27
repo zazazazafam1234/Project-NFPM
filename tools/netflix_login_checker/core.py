@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,6 +66,25 @@ def wait_for_short_network_idle(page: Page, *, debug: DebugCallback | None = Non
         emit_debug(debug, f"network_idle timeout_ms={timeout_ms}")
     except PlaywrightTimeoutError:
         emit_debug(debug, f"network_idle_skipped timeout_ms={timeout_ms}")
+
+
+def is_stale_login_state(page: Page) -> bool:
+    if re.search(r"[?&](?:serverState|authURL|state)=", page.url, re.I):
+        return True
+    try:
+        text = page.locator("body").first.inner_text(timeout=1000)
+    except PlaywrightError:
+        return False
+    return bool(re.search(r"something went wrong|error code:\s*10\d{2}|serverState", text, re.I))
+
+
+def clear_persistent_profile(profile_dir: Path | None, *, debug: DebugCallback | None = None) -> bool:
+    if not profile_dir or not profile_dir.exists():
+        return False
+    shutil.rmtree(profile_dir, ignore_errors=True)
+    removed = not profile_dir.exists()
+    emit_debug(debug, f"persistent_profile_reset profile={profile_dir} removed={removed}")
+    return removed
 
 
 def profile_name_for_identifier(identifier: str) -> str:
@@ -663,6 +683,29 @@ def login_netflix(
 
             emit_debug(debug, "goto_login_page")
             page.goto(login_url, wait_until="domcontentloaded")
+            wait_for_short_network_idle(page, debug=debug)
+
+            if persistent_profile and is_stale_login_state(page):
+                stale_url = page.url
+                emit_debug(debug, f"stale_login_state_detected url={stale_url}")
+                context.close()
+                if browser:
+                    browser.close()
+                    browser = None
+                clear_persistent_profile(profile_dir, debug=debug)
+                browser, context = _launch_context(
+                    playwright,
+                    headless=headless,
+                    slow_mo_ms=slow_mo_ms,
+                    profile_dir=profile_dir,
+                    proxy_server=proxy_server,
+                    debug=debug,
+                )
+                page = context.pages[0] if context.pages else context.new_page()
+                page.set_default_timeout(timeout_ms)
+                emit_debug(debug, "goto_login_page_after_stale_reset")
+                page.goto(DEFAULT_LOGIN_URL, wait_until="domcontentloaded")
+                wait_for_short_network_idle(page, debug=debug)
 
             if looks_logged_in(context, page):
                 emit_debug(debug, "already_logged_in_before_login")
