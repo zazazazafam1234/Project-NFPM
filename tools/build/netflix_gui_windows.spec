@@ -2,7 +2,6 @@
 from pathlib import Path
 import playwright
 from PyInstaller.utils.hooks import collect_all, collect_submodules
-from PyInstaller.building.datastruct import Tree
 
 TOOLS_DIR = Path(SPECPATH).parent   # tools\
 RUNTIME_HOOK = TOOLS_DIR / "build" / "pyi_playwright_runtime.py"
@@ -12,9 +11,10 @@ playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all("p
 playwright_browser_datas = []
 playwright_browsers_dir = Path(playwright.__file__).parent / "driver" / "package" / ".local-browsers"
 if playwright_browsers_dir.exists():
-    playwright_browser_datas.append(
-        Tree(str(playwright_browsers_dir), prefix="playwright/driver/package/.local-browsers")
-    )
+    for path in playwright_browsers_dir.rglob("*"):
+        if path.is_file():
+            destination = Path("playwright") / "driver" / "package" / ".local-browsers" / path.relative_to(playwright_browsers_dir).parent
+            playwright_browser_datas.append((str(path), str(destination)))
 
 a = Analysis(
     [str(TOOLS_DIR / "scripts" / "netflix_gui.py")],
