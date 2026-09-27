@@ -27,7 +27,7 @@ services:
     environment:
       DATABASE_URL: postgresql://fastmovie:fastmovie_dev_2026@postgres:5432/fastmovie
       PORT: 4000
-      WEB_ORIGIN: http://localhost:8020
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8020}
     ports:
       - "4000:4000"
     volumes:
@@ -41,7 +41,7 @@ services:
     container_name: fastmovie-frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
       WATCHPACK_POLLING: "true"
     ports:
       - "8020:3000"
