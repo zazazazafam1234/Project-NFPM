@@ -626,6 +626,7 @@ def login_netflix(
     profiles_dir: str | Path = DEFAULT_PROFILES_DIR,
     proxy_server: str | None = None,
     debug: DebugCallback | None = None,
+    _stale_reset_used: bool = False,
 ) -> LoginResult:
     profile_dir = None
     if persistent_profile:
@@ -663,6 +664,41 @@ def login_netflix(
         )
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(timeout_ms)
+        context_closed_for_retry = False
+
+        def retry_after_stale_state(stage: str) -> LoginResult:
+            nonlocal context_closed_for_retry
+            stale_url = page.url
+            emit_debug(debug, f"stale_login_state_detected stage={stage} url={stale_url}")
+            context.close()
+            context_closed_for_retry = True
+            if browser:
+                browser.close()
+            clear_persistent_profile(profile_dir, debug=debug)
+
+            if _stale_reset_used:
+                return LoginResult(
+                    False,
+                    "stale_login_state_after_reset",
+                    stale_url,
+                    str(profile_dir) if profile_dir else None,
+                )
+
+            return login_netflix(
+                email,
+                password,
+                login_url=DEFAULT_LOGIN_URL,
+                headless=headless,
+                timeout_ms=timeout_ms,
+                slow_mo_ms=slow_mo_ms,
+                clear_cache=True,
+                persistent_profile=persistent_profile,
+                profile_name=profile_name,
+                profiles_dir=profiles_dir,
+                proxy_server=proxy_server,
+                debug=debug,
+                _stale_reset_used=True,
+            )
 
         try:
             if clear_cache:
@@ -686,26 +722,7 @@ def login_netflix(
             wait_for_short_network_idle(page, debug=debug)
 
             if persistent_profile and is_stale_login_state(page):
-                stale_url = page.url
-                emit_debug(debug, f"stale_login_state_detected url={stale_url}")
-                context.close()
-                if browser:
-                    browser.close()
-                    browser = None
-                clear_persistent_profile(profile_dir, debug=debug)
-                browser, context = _launch_context(
-                    playwright,
-                    headless=headless,
-                    slow_mo_ms=slow_mo_ms,
-                    profile_dir=profile_dir,
-                    proxy_server=proxy_server,
-                    debug=debug,
-                )
-                page = context.pages[0] if context.pages else context.new_page()
-                page.set_default_timeout(timeout_ms)
-                emit_debug(debug, "goto_login_page_after_stale_reset")
-                page.goto(DEFAULT_LOGIN_URL, wait_until="domcontentloaded")
-                wait_for_short_network_idle(page, debug=debug)
+                return retry_after_stale_state("initial_login_page")
 
             if looks_logged_in(context, page):
                 emit_debug(debug, "already_logged_in_before_login")
@@ -739,11 +756,16 @@ def login_netflix(
 
             wait_for_short_network_idle(page, debug=debug)
 
+            if persistent_profile and is_stale_login_state(page):
+                return retry_after_stale_state("after_email_continue")
+
             next_step = wait_for_next_login_step(page, timeout_ms)
             emit_debug(debug, f"next_login_step={next_step}")
             if next_step == "error":
                 error = has_visible_error(page)
                 emit_debug(debug, f"login_error_before_password={error}")
+                if persistent_profile and is_stale_login_state(page):
+                    return retry_after_stale_state("error_before_password")
                 return LoginResult(False, f"login_failed: {error}", page.url, str(profile_dir) if profile_dir else None)
             if next_step == "otp":
                 emit_debug(debug, "otp_page_open_use_password_menu")
@@ -801,6 +823,7 @@ def login_netflix(
             return _with_profile(result, str(profile_dir) if profile_dir else None)
         finally:
             emit_debug(debug, "close_browser")
-            context.close()
-            if browser:
+            if not context_closed_for_retry:
+                context.close()
+            if browser and not context_closed_for_retry:
                 browser.close()
