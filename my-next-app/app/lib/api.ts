@@ -8,7 +8,7 @@ export type User = {
 
 export type SessionResponse = { user: User | null };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://apifastmovie.sysbright.dev/api";
 
 export async function apiFetch<T>(
   path: string,

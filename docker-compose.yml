@@ -21,12 +21,13 @@ services:
     build: ./backend
     container_name: fastmovie-backend
     restart: unless-stopped
-    command: ["bun", "run", "dev"]
+    command: ["sh", "-c", "bun run db:migrate && bun run dev"]
     env_file:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql://fastmovie:fastmovie_dev_2026@postgres:5432/fastmovie
       PORT: 4000
+      WEB_ORIGIN: http://localhost:8010
     ports:
       - "4000:4000"
     volumes:
@@ -34,6 +35,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  frontend:
+    build: ./my-next-app
+    container_name: fastmovie-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "8010:3000"
+    volumes:
+      - ./my-next-app:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
