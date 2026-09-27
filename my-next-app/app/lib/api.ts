@@ -4,11 +4,12 @@ export type User = {
   email: string;
   image?: string;
   points: number;
+  role: "user" | "admin";
 };
 
 export type SessionResponse = { user: User | null };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://apifastmovie.sysbright.dev/api";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
 export async function apiFetch<T>(
   path: string,
@@ -185,76 +186,53 @@ export type AdminInventory = {
   }>;
 };
 
-function adminHeaders(adminKey: string) {
-  return { "x-admin-key": adminKey };
+export function fetchAdminInventory() {
+  return apiFetch<AdminInventory>("/admin/inventory");
 }
 
-export function fetchAdminInventory(adminKey: string) {
-  return apiFetch<AdminInventory>("/admin/inventory", {
-    headers: adminHeaders(adminKey),
-  });
-}
-
-export function saveAdminPackage(
-  adminKey: string,
-  body: {
-    slug: string;
-    name: string;
-    service: string;
-    durationDays: number;
-    priceAmount: number;
-    status?: string;
-  },
-) {
+export function saveAdminPackage(body: {
+  slug: string;
+  name: string;
+  service: string;
+  durationDays: number;
+  priceAmount: number;
+  status?: string;
+}) {
   return apiFetch("/admin/packages", {
     method: "POST",
-    headers: adminHeaders(adminKey),
     body: JSON.stringify(body),
   });
 }
 
-export function saveMasterEmail(
-  adminKey: string,
-  body: {
-    service: string;
-    email: string;
-    password: string;
-    masterExpiredAt: string;
-    note?: string;
-  },
-) {
+export function saveMasterEmail(body: {
+  service: string;
+  email: string;
+  password: string;
+  masterExpiredAt: string;
+  note?: string;
+}) {
   return apiFetch("/admin/master-emails", {
     method: "POST",
-    headers: adminHeaders(adminKey),
     body: JSON.stringify(body),
   });
 }
 
-export function saveProfile(
-  adminKey: string,
-  body: {
-    masterEmailId: string;
-    profileName: string;
-    pin?: string;
-    profileExpiresAt?: string;
-    note?: string;
-  },
-) {
+export function saveProfile(body: {
+  masterEmailId: string;
+  profileName: string;
+  pin?: string;
+  profileExpiresAt?: string;
+  note?: string;
+}) {
   return apiFetch("/admin/profiles", {
     method: "POST",
-    headers: adminHeaders(adminKey),
     body: JSON.stringify(body),
   });
 }
 
-export function updateProfileStatus(
-  adminKey: string,
-  profileId: string,
-  status: string,
-) {
+export function updateProfileStatus(profileId: string, status: string) {
   return apiFetch(`/admin/profiles/${profileId}`, {
     method: "PATCH",
-    headers: adminHeaders(adminKey),
     body: JSON.stringify({ status }),
   });
 }

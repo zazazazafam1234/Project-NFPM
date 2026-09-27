@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
 import { fetchPackages, type StreamingPackage } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -28,7 +29,7 @@ export default function ShopPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/">
-          <span>F</span> Fast Movie
+          <BrandLogo />
         </Link>
         <nav className={styles.navLinks}>
           <Link href="/">หน้าแรก</Link>

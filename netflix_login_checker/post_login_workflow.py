@@ -50,6 +50,7 @@ def run_post_login_workflow(
     headless: bool = True,
     timeout_ms: int = 30000,
     slow_mo_ms: int = 0,
+    proxy_server: str | None = None,
     debug: DebugCallback | None = None,
 ) -> WorkflowResult:
     """Create a Netflix profile and lock it after login has succeeded."""
@@ -90,6 +91,7 @@ def run_post_login_workflow(
             headless=headless,
             slow_mo_ms=slow_mo_ms,
             profile_dir=profile_dir,
+            proxy_server=proxy_server,
             debug=debug,
         )
         page = context.pages[0] if context.pages else context.new_page()
@@ -163,7 +165,8 @@ def run_post_login_workflow(
 
             step("open_new_profile_settings")
             profile_guid = _wait_for_profile_guid(page, generated_profile_name, timeout_ms=timeout_ms)
-            if profile_guid and _click_profile_tile_by_name(page, generated_profile_name):
+            _ensure_manage_profiles_mode(page, debug=debug)
+            if profile_guid and _click_profile_tile_for_settings(page, profile_guid, generated_profile_name):
                 wait_for_short_network_idle(page, debug=debug)
             if profile_guid and not _is_profile_settings_page(page):
                 page.goto(f"https://www.netflix.com/settings/{profile_guid}?referrer=ManageProfiles", wait_until="domcontentloaded")
@@ -464,11 +467,46 @@ def _profile_guid_for_name(page, profile_name: str) -> str | None:
         return None
 
 
-def _click_profile_tile_by_name(page, profile_name: str) -> bool:
+def _ensure_manage_profiles_mode(page, *, debug: DebugCallback | None) -> bool:
+    if _is_profile_settings_page(page):
+        return True
+    if first_visible(page, ('[data-uia="profile-gate-screen+done"]',), timeout_ms=750):
+        emit_debug(debug, "manage_profiles_mode_already_active")
+        return True
+
+    manage_selectors = (
+        '[data-uia="profile-gate-screen+manage-profiles"]',
+        '[data-uia*="manage-profile"]',
+        'button:has-text("จัดการโปรไฟล์")',
+        'button:has-text("Manage Profiles")',
+    )
+    if force_click_first(page, manage_selectors, timeout_ms=1500) or click_text_candidate(page, r"จัดการโปรไฟล์|manage profiles"):
+        emit_debug(debug, "manage_profiles_clicked")
+        wait_for_short_network_idle(page, debug=debug)
+        try:
+            page.wait_for_selector('[data-uia="profile-gate-screen+done"], [data-uia$="+edit"]', timeout=5000)
+        except PlaywrightTimeoutError:
+            pass
+        return True
+
+    emit_debug(debug, "manage_profiles_button_not_visible")
+    return False
+
+
+def _click_profile_tile_for_settings(page, profile_guid: str, profile_name: str) -> bool:
+    edit_selector = f'[data-uia="profile-selector+tile-{profile_guid}+edit"]'
+    if force_click_first(page, (edit_selector,), timeout_ms=1500):
+        return True
+
     try:
         return bool(
             page.evaluate(
-                """profileName => {
+                """({ profileGuid, profileName }) => {
+                    const edit = document.querySelector(`[data-uia="profile-selector+tile-${profileGuid}+edit"]`);
+                    if (edit) {
+                        edit.click();
+                        return true;
+                    }
                     const tiles = Array.from(document.querySelectorAll('[data-uia^="profile-selector+tile-"]'));
                     const tile = tiles.find((element) => {
                         const text = (element.innerText || element.textContent || '').trim();
@@ -478,7 +516,7 @@ def _click_profile_tile_by_name(page, profile_name: str) -> bool:
                     tile.click();
                     return true;
                 }""",
-                profile_name,
+                {"profileGuid": profile_guid, "profileName": profile_name},
             )
         )
     except PlaywrightError:

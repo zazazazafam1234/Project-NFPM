@@ -11,10 +11,12 @@ await sql`
     name        TEXT NOT NULL,
     image       TEXT,
     points      INTEGER NOT NULL DEFAULT 0,
+    role        TEXT NOT NULL DEFAULT 'user',
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
+await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS "Room" (

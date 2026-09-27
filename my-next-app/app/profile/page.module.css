@@ -109,6 +109,20 @@
   font-size: 12px;
   cursor: pointer;
 }
+.adminLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 7px 13px;
+  border-radius: 9px;
+  background: #7953ed22;
+  border: 1px solid #9877fb55;
+  color: #c4a8ff;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 700;
+}
 .wallet {
   position: relative;
   overflow: hidden;

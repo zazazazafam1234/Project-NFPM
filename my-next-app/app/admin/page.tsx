@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
 import {
   fetchAdminInventory,
   saveAdminPackage,
@@ -10,6 +12,7 @@ import {
   updateProfileStatus,
   type AdminInventory,
 } from "../lib/api";
+import { useSession } from "../providers";
 import styles from "./page.module.css";
 
 const menu = [
@@ -27,22 +30,20 @@ const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
   .slice(0, 10);
 
 export default function AdminPage() {
+  const { user, isLoading: sessionLoading } = useSession();
   const [section, setSection] = useState<Section>("overview");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [adminKey, setAdminKey] = useState("");
   const [inventory, setInventory] = useState<AdminInventory | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const currentTitle = menu.find(([key]) => key === section)?.[1] ?? "ภาพรวม";
 
-  async function loadInventory(key = adminKey) {
-    if (!key) return;
+  async function loadInventory() {
     setIsLoading(true);
     setError("");
     try {
-      const data = await fetchAdminInventory(key);
+      const data = await fetchAdminInventory();
       setInventory(data);
-      window.localStorage.setItem("fastmovie_admin_key", key);
     } catch (err) {
       setError(err instanceof Error ? err.message : "โหลดข้อมูล Admin ไม่สำเร็จ");
     } finally {
@@ -51,24 +52,49 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("fastmovie_admin_key") ?? "";
-    setAdminKey(saved);
-    if (saved) void loadInventory(saved);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (user?.role === "admin") void loadInventory();
+  }, [user]);
 
   function handleDone(message: string) {
     setNotice(message);
     void loadInventory();
   }
 
+  if (sessionLoading) {
+    return <main className={styles.guard}><p>กำลังตรวจสอบสิทธิ์…</p></main>;
+  }
+
+  if (!user) {
+    return (
+      <main className={styles.guard}>
+        <div className={styles.guardCard}>
+          <span>🔒</span>
+          <h2>กรุณาเข้าสู่ระบบ</h2>
+          <p>ต้องเข้าสู่ระบบด้วยบัญชี Admin ก่อน</p>
+          <Link href="/register" className={styles.guardBtn}>เข้าสู่ระบบ →</Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (user.role !== "admin") {
+    return (
+      <main className={styles.guard}>
+        <div className={styles.guardCard}>
+          <span>⛔</span>
+          <h2>ไม่มีสิทธิ์เข้าถึง</h2>
+          <p>บัญชีนี้ไม่ได้รับสิทธิ์ Admin</p>
+          <Link href="/" className={styles.guardBtn}>← กลับหน้าแรก</Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={styles.page}>
       <aside className={styles.sidebar}>
         <Link className={styles.brand} href="/">
-          <span>F</span>
-          <b>Fast Movie</b>
-          <small>ADMIN</small>
+          <BrandLogo admin />
         </Link>
         <nav>
           {menu.map(([key, label, icon]) => (
@@ -87,14 +113,17 @@ export default function AdminPage() {
           ))}
         </nav>
         <div className={styles.sidebarBottom}>
-          <Link href="/" className={styles.viewSite}>
-            ↗ ดูหน้าเว็บไซต์
-          </Link>
-          <p>
-            Fast Movie Admin
-            <br />
-            Inventory v0.2.0
-          </p>
+          <Link href="/" className={styles.viewSite}>↗ ดูหน้าเว็บไซต์</Link>
+          <div className={styles.sidebarUser}>
+            {user.image
+              ? <Image src={user.image} alt="" width={28} height={28} className={styles.sidebarAvatar} />
+              : <span className={styles.sidebarAvatarFallback}>{user.name.slice(0, 1)}</span>
+            }
+            <div>
+              <b>{user.name}</b>
+              <small>Administrator</small>
+            </div>
+          </div>
         </div>
       </aside>
       <section className={styles.workspace}>
@@ -104,65 +133,29 @@ export default function AdminPage() {
             <h1>{currentTitle}</h1>
           </div>
           <div className={styles.adminIdentity}>
-            <span>AM</span>
+            {user.image
+              ? <Image src={user.image} alt="" width={34} height={34} className={styles.identityAvatar} />
+              : <span>{user.name.slice(0, 2).toUpperCase()}</span>
+            }
             <div>
-              <b>Admin</b>
-              <small>{inventory ? "เชื่อมต่อแล้ว" : "ต้องใส่ Admin Key"}</small>
+              <b>{user.name}</b>
+              <small>{inventory ? "เชื่อมต่อแล้ว ✓" : isLoading ? "กำลังโหลด…" : "Admin"}</small>
             </div>
           </div>
         </header>
 
-        <section className={styles.keyBar}>
-          <input
-            placeholder="x-admin-key"
-            type="password"
-            value={adminKey}
-            onChange={(event) => setAdminKey(event.target.value)}
-          />
-          <button
-            className={styles.primary}
-            disabled={isLoading || !adminKey}
-            onClick={() => void loadInventory()}
-            type="button"
-          >
-            {isLoading ? "กำลังโหลด…" : "เชื่อมต่อ"}
-          </button>
-        </section>
-
-        {notice && (
-          <div className={styles.notice}>
-            <span>✓</span>
-            {notice}
-          </div>
-        )}
-        {error && (
-          <div className={styles.notice}>
-            <span>!</span>
-            {error}
-          </div>
-        )}
+        {notice && <div className={styles.notice}><span>✓</span>{notice}</div>}
+        {error && <div className={styles.notice}><span>!</span>{error}</div>}
 
         {section === "overview" && <Overview inventory={inventory} />}
         {section === "packages" && (
-          <PackagesPanel
-            adminKey={adminKey}
-            inventory={inventory}
-            onDone={handleDone}
-          />
+          <PackagesPanel inventory={inventory} onDone={handleDone} />
         )}
         {section === "accounts" && (
-          <AccountsPanel
-            adminKey={adminKey}
-            inventory={inventory}
-            onDone={handleDone}
-          />
+          <AccountsPanel inventory={inventory} onDone={handleDone} />
         )}
         {section === "profiles" && (
-          <ProfilesPanel
-            adminKey={adminKey}
-            inventory={inventory}
-            onDone={handleDone}
-          />
+          <ProfilesPanel inventory={inventory} onDone={handleDone} />
         )}
         {section === "settings" && <Settings />}
       </section>
@@ -287,11 +280,9 @@ function Activity({
 }
 
 function PackagesPanel({
-  adminKey,
   inventory,
   onDone,
 }: {
-  adminKey: string;
   inventory: AdminInventory | null;
   onDone: (message: string) => void;
 }) {
@@ -302,10 +293,10 @@ function PackagesPanel({
     durationDays: 7,
     priceAmount: 49,
   });
-  const canSave = adminKey && form.slug && form.name && form.durationDays > 0;
+  const canSave = form.slug && form.name && form.durationDays > 0;
 
   async function submit() {
-    await saveAdminPackage(adminKey, form);
+    await saveAdminPackage(form);
     onDone(`บันทึกแพ็กเกจ ${form.name} แล้ว`);
   }
 
@@ -386,11 +377,9 @@ function PackagesPanel({
 }
 
 function AccountsPanel({
-  adminKey,
   inventory,
   onDone,
 }: {
-  adminKey: string;
   inventory: AdminInventory | null;
   onDone: (message: string) => void;
 }) {
@@ -403,7 +392,7 @@ function AccountsPanel({
   });
 
   async function submit() {
-    await saveMasterEmail(adminKey, {
+    await saveMasterEmail({
       ...form,
       masterExpiredAt: new Date(form.masterExpiredAt).toISOString(),
     });
@@ -473,7 +462,7 @@ function AccountsPanel({
           </label>
           <button
             className={styles.primary}
-            disabled={!adminKey || !form.email || !form.password}
+            disabled={!form.email || !form.password}
             onClick={() => void submit()}
             type="button"
           >
@@ -486,11 +475,9 @@ function AccountsPanel({
 }
 
 function ProfilesPanel({
-  adminKey,
   inventory,
   onDone,
 }: {
-  adminKey: string;
   inventory: AdminInventory | null;
   onDone: (message: string) => void;
 }) {
@@ -510,7 +497,7 @@ function ProfilesPanel({
   }, [firstAccount, form.masterEmailId]);
 
   async function submit() {
-    await saveProfile(adminKey, {
+    await saveProfile({
       ...form,
       profileExpiresAt: form.profileExpiresAt
         ? new Date(form.profileExpiresAt).toISOString()
@@ -521,7 +508,7 @@ function ProfilesPanel({
   }
 
   async function changeStatus(profileId: string, status: string) {
-    await updateProfileStatus(adminKey, profileId, status);
+    await updateProfileStatus(profileId, status);
     onDone(`เปลี่ยนสถานะ profile เป็น ${status} แล้ว`);
   }
 
@@ -609,7 +596,7 @@ function ProfilesPanel({
           </label>
           <button
             className={styles.primary}
-            disabled={!adminKey || !form.masterEmailId || !form.profileName}
+            disabled={!form.masterEmailId || !form.profileName}
             onClick={() => void submit()}
             type="button"
           >

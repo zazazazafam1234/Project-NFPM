@@ -1,0 +1,28 @@
+.mark {
+  width: 42px;
+  height: 32px;
+  flex: 0 0 auto;
+  margin-right: 8px;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 8px 18px #794dff78);
+}
+
+.markOnly {
+  margin-right: 0;
+}
+
+.name {
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+}
+
+.admin {
+  grid-column: 2;
+  color: #9175db;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}

@@ -38,6 +38,7 @@ def create_app() -> Flask:
         mode = str(data.get("mode") or "login").strip().lower()
         profile_name = _clean_credential(data.get("profile_name")) or None
         profiles_dir = data.get("profiles_dir") or DEFAULT_PROFILES_DIR
+        proxy_server = _clean_credential(data.get("proxy_server") or data.get("proxy")) or None
         headless = _parse_bool(data.get("headless"), default=False)
         debug_enabled = _parse_bool(data.get("debug"), default=True)
         use_profile = _parse_bool(data.get("use_profile"), default=True)
@@ -69,6 +70,7 @@ def create_app() -> Flask:
                 headless=headless,
                 timeout_ms=int(data.get("timeout_ms", 30000)),
                 slow_mo_ms=int(data.get("slow_mo_ms", 0)),
+                proxy_server=proxy_server,
                 debug=(lambda message: _server_debug(request_id, message)) if debug_enabled else None,
             )
             http_status = 200 if result.success else _status_for_failure(result.reason)
@@ -105,6 +107,7 @@ def create_app() -> Flask:
             headless=headless,
             timeout_ms=int(data.get("timeout_ms", 30000)),
             slow_mo_ms=int(data.get("slow_mo_ms", 0)),
+            proxy_server=proxy_server,
             clear_cache=clear_cache,
             persistent_profile=use_profile,
             profile_name=profile_name,
@@ -137,6 +140,7 @@ def create_app() -> Flask:
         password = _clean_credential(data.get("password"))
         browser_profile_name = _clean_credential(data.get("profile_name")) or None
         profiles_dir = data.get("profiles_dir") or DEFAULT_PROFILES_DIR
+        proxy_server = _clean_credential(data.get("proxy_server") or data.get("proxy")) or None
         headless = _parse_bool(data.get("headless"), default=False)
         debug_enabled = _parse_bool(data.get("debug"), default=True)
         clear_cache = _parse_bool(data.get("clear_cache"), default=False)
@@ -169,6 +173,7 @@ def create_app() -> Flask:
             headless=headless,
             timeout_ms=timeout_ms,
             slow_mo_ms=slow_mo_ms,
+            proxy_server=proxy_server,
             clear_cache=clear_cache,
             persistent_profile=True,
             profile_name=browser_profile_name,
@@ -201,6 +206,7 @@ def create_app() -> Flask:
             headless=headless,
             timeout_ms=timeout_ms,
             slow_mo_ms=slow_mo_ms,
+            proxy_server=proxy_server,
             debug=debug,
         )
         http_status = 200 if workflow_result.success else _status_for_failure(workflow_result.reason)

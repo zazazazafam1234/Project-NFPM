@@ -53,11 +53,15 @@ auth.get("/callback/google", async (c) => {
 
   const g = await userRes.json() as { sub: string; email: string; name: string; picture?: string };
 
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const role = adminEmails.includes(g.email.toLowerCase()) ? "admin" : "user";
+
   const [user] = await sql`
-    INSERT INTO "User" (id, "googleId", email, name, image, points, "createdAt", "updatedAt")
-    VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, NOW(), NOW())
+    INSERT INTO "User" (id, "googleId", email, name, image, points, role, "createdAt", "updatedAt")
+    VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, ${role}, NOW(), NOW())
     ON CONFLICT ("googleId") DO UPDATE
-      SET name = EXCLUDED.name, image = EXCLUDED.image, "updatedAt" = NOW()
+      SET name = EXCLUDED.name, image = EXCLUDED.image, role = ${role}, "updatedAt" = NOW()
     RETURNING *
   `;
 
@@ -79,8 +83,16 @@ auth.get("/session", async (c) => {
       email: user.email,
       image: user.image,
       points: user.points,
+      role: user.role,
     },
   });
+});
+
+auth.get("/me", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ user: null });
+  const [user] = await sql`SELECT id, name, email, image, points, role FROM "User" WHERE id = ${userId}`;
+  return c.json({ user: user ?? null });
 });
 
 auth.post("/logout", (c) => {

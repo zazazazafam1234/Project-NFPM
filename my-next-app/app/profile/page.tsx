@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
 import {
   fetchOrders,
   fetchSubscriptions,
@@ -63,7 +64,7 @@ export default function ProfilePage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/">
-          <span>F</span> Fast Movie
+          <BrandLogo />
         </Link>
         <Link href="/" className={styles.back}>
           ← เลือกห้อง
@@ -81,6 +82,11 @@ export default function ProfilePage() {
           <p className={styles.eyebrow}>YOUR PROFILE</p>
           <h1>{user.name}</h1>
           <p>{user.email}</p>
+          {user.role === "admin" && (
+            <Link href="/admin" className={styles.adminLink}>
+              ⚙ หลังบ้าน Admin
+            </Link>
+          )}
           <button onClick={() => void signOut().then(() => router.push("/"))}>
             ออกจากระบบ
           </button>

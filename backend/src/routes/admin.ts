@@ -1,17 +1,11 @@
 import { Hono } from "hono";
 import sql from "../db";
+import { requireAdmin } from "../adminAuth";
 import { encryptSecret } from "../crypto";
 
 const admin = new Hono();
 
-const ADMIN_KEY = process.env.ADMIN_KEY;
-const isAdmin = (c: { req: { header: (h: string) => string | undefined } }) =>
-  Boolean(ADMIN_KEY) && c.req.header("x-admin-key") === ADMIN_KEY;
-
-admin.use("*", async (c, next) => {
-  if (!isAdmin(c)) return c.json({ message: "Unauthorized" }, 401);
-  await next();
-});
+admin.use("*", requireAdmin);
 
 admin.get("/inventory", async (c) => {
   const [packages, masterEmails, profiles, metrics] = await Promise.all([

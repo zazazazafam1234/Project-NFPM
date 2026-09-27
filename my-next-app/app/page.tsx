@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BrandLogo } from "./components/BrandLogo";
 import { fetchPackages, type StreamingPackage } from "./lib/api";
 import styles from "./page.module.css";
 
@@ -91,7 +92,7 @@ export default function Home() {
         <div className={styles.heroParallax} aria-hidden="true" />
         <nav className={styles.nav} aria-label="เมนูหลัก">
           <a className={styles.brand} href="#home">
-            <span>F</span> Fast Movie
+            <BrandLogo />
           </a>
           <div className={styles.navLinks}>
             <a href="#packages">แพ็กเกจ</a>
@@ -245,7 +246,7 @@ export default function Home() {
       </RevealSection>
       <footer className={styles.footer}>
         <a className={styles.brand} href="#home">
-          <span>F</span> Fast Movie
+          <BrandLogo />
         </a>
         <p>บริการช่วยจัดการการเข้าถึงความบันเทิงออนไลน์</p>
         <p>© 2026 Fast Movie</p>

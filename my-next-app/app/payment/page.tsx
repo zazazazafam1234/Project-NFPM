@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
 import { apiFetch } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -53,7 +54,7 @@ export default function TopUpPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/">
-          <span>F</span> Fast Movie
+          <BrandLogo />
         </Link>
         <Link className={styles.back} href="/profile">
           ← Point Wallet

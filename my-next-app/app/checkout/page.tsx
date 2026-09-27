@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
 import {
   fetchPackages,
   purchaseSubscription,
@@ -63,7 +64,7 @@ export default function CheckoutPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/">
-          <span>F</span> Fast Movie
+          <BrandLogo />
         </Link>
         <Link className={styles.back} href="/">
           ← เลือกแพ็กเกจ

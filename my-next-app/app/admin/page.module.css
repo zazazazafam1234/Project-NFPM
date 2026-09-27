@@ -1,3 +1,45 @@
+.guard {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  background: #09080f;
+  color: #f7f5ff;
+}
+.guardCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 40px;
+  border: 1px solid #ffffff14;
+  border-radius: 24px;
+  background: #16131e;
+  text-align: center;
+}
+.guardCard span {
+  font-size: 40px;
+}
+.guardCard h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+.guardCard p {
+  margin: 0;
+  color: #8a8396;
+  font-size: 13px;
+}
+.guardBtn {
+  margin-top: 8px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b62ff, #6841ed);
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .page {
   display: grid;
   grid-template-columns: 238px 1fr;
@@ -17,7 +59,7 @@
 }
 .brand {
   display: grid;
-  grid-template-columns: 31px auto;
+  grid-template-columns: 46px auto;
   align-items: center;
   gap: 8px;
   padding: 7px 11px 33px;
@@ -92,6 +134,51 @@
   font-size: 10px;
   line-height: 1.6;
 }
+.sidebarUser {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 10px;
+  border-radius: 11px;
+  background: #ffffff08;
+}
+.sidebarUser b {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.sidebarUser small {
+  color: #7a72a0;
+  font-size: 10px;
+}
+.sidebarAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.sidebarAvatarFallback {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #a980ff, #7145ff);
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.identityAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: cover;
+}
 .workspace {
   min-width: 0;
   padding: 34px clamp(25px, 5vw, 76px);
@@ -158,27 +245,6 @@
 .notice span {
   margin-right: 8px;
   color: #b99fff;
-}
-.keyBar {
-  display: flex;
-  gap: 10px;
-  max-width: 1200px;
-  margin: 24px auto 0;
-}
-.keyBar input {
-  flex: 1;
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid #ffffff1a;
-  border-radius: 9px;
-  outline: 0;
-  color: #eee9f5;
-  background: #0f0e15;
-  font: inherit;
-  font-size: 11px;
-}
-.keyBar input:focus {
-  border-color: #a582fb;
 }
 .metrics {
   display: grid;

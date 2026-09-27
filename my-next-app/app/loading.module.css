@@ -32,16 +32,12 @@
 }
 
 .logo {
-  display: grid;
-  width: 39px;
-  height: 39px;
+  display: flex;
+  width: 54px;
+  height: 42px;
   margin-bottom: 25px;
-  place-items: center;
-  border-radius: 13px;
-  background: linear-gradient(135deg, #a980ff, #7145ff);
-  box-shadow: 0 8px 22px #754aff7d;
-  font-size: 22px;
-  font-weight: 900;
+  align-items: center;
+  justify-content: center;
 }
 
 .spinner {

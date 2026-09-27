@@ -487,27 +487,43 @@ def _launch_context(
     headless: bool,
     slow_mo_ms: int,
     profile_dir: Path | None,
+    proxy_server: str | None,
     debug: DebugCallback | None,
 ) -> tuple[Browser | None, BrowserContext]:
+    proxy = _proxy_options(proxy_server)
     if profile_dir:
         profile_dir.mkdir(parents=True, exist_ok=True)
-        emit_debug(debug, f"launch_persistent_browser profile={profile_dir}")
+        emit_debug(debug, f"launch_persistent_browser profile={profile_dir} proxy={_proxy_label(proxy_server)}")
         context = playwright.chromium.launch_persistent_context(
             str(profile_dir),
             headless=headless,
             slow_mo=slow_mo_ms,
             locale="en-US",
             viewport={"width": 1366, "height": 900},
+            proxy=proxy,
         )
         return None, context
 
-    emit_debug(debug, "launch_browser")
-    browser: Browser = playwright.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
+    emit_debug(debug, f"launch_browser proxy={_proxy_label(proxy_server)}")
+    browser: Browser = playwright.chromium.launch(headless=headless, slow_mo=slow_mo_ms, proxy=proxy)
     context = browser.new_context(
         locale="en-US",
         viewport={"width": 1366, "height": 900},
     )
     return browser, context
+
+
+def _proxy_options(proxy_server: str | None) -> dict | None:
+    if not proxy_server:
+        return None
+    server = str(proxy_server).strip()
+    if not server:
+        return None
+    return {"server": server}
+
+
+def _proxy_label(proxy_server: str | None) -> str:
+    return "enabled" if proxy_server and str(proxy_server).strip() else "disabled"
 
 
 def _with_profile(result: LoginResult, profile: str | None) -> LoginResult:
@@ -524,6 +540,7 @@ def check_netflix_session(
     headless: bool = True,
     timeout_ms: int = 30000,
     slow_mo_ms: int = 0,
+    proxy_server: str | None = None,
     debug: DebugCallback | None = None,
 ) -> LoginResult:
     identifier = profile_name or email
@@ -552,6 +569,7 @@ def check_netflix_session(
             headless=headless,
             slow_mo_ms=slow_mo_ms,
             profile_dir=profile_dir,
+            proxy_server=proxy_server,
             debug=debug,
         )
         page = context.pages[0] if context.pages else context.new_page()
@@ -586,6 +604,7 @@ def login_netflix(
     persistent_profile: bool = False,
     profile_name: str | None = None,
     profiles_dir: str | Path = DEFAULT_PROFILES_DIR,
+    proxy_server: str | None = None,
     debug: DebugCallback | None = None,
 ) -> LoginResult:
     profile_dir = None
@@ -601,7 +620,8 @@ def login_netflix(
     emit_debug(
         debug,
         f"login_start url={login_url} headless={headless} timeout_ms={timeout_ms} "
-        f"clear_cache={clear_cache} persistent_profile={persistent_profile} profile={profile_dir}",
+        f"clear_cache={clear_cache} persistent_profile={persistent_profile} profile={profile_dir} "
+        f"proxy={_proxy_label(proxy_server)}",
     )
     if PLAYWRIGHT_IMPORT_ERROR:
         emit_debug(debug, "playwright_import_error")
@@ -618,6 +638,7 @@ def login_netflix(
             headless=headless,
             slow_mo_ms=slow_mo_ms,
             profile_dir=profile_dir,
+            proxy_server=proxy_server,
             debug=debug,
         )
         page = context.pages[0] if context.pages else context.new_page()

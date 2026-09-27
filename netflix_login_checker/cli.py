@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headful", action="store_true", help="Show the browser window.")
     parser.add_argument("--timeout-ms", type=int, default=30000)
     parser.add_argument("--slow-mo-ms", type=int, default=0)
+    parser.add_argument("--proxy-server", default=os.environ.get("NETFLIX_PROXY_SERVER"))
     return parser.parse_args()
 
 
@@ -44,6 +45,7 @@ def main() -> int:
         headless=not args.headful,
         timeout_ms=args.timeout_ms,
         slow_mo_ms=args.slow_mo_ms,
+        proxy_server=args.proxy_server,
     )
     print(json.dumps(asdict(result), ensure_ascii=True))
     return 0 if result.success else 1
