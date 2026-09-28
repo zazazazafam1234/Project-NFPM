@@ -43,6 +43,13 @@ function startClient(account: ActivePaymentAccount) {
     storageFile: revisionFileFor(account.id),
   });
 
+  console.log("[line-worker] starting account", {
+    accountId: account.id,
+    accountName: account.name,
+    cookieLength: account.lineCookie.length,
+    cookieHasLct: account.lineCookie.includes("lct="),
+  });
+
   client.on("connected", (data) => {
     console.log("[line-worker] connected", {
       accountId: account.id,

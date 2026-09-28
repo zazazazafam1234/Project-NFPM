@@ -20,6 +20,16 @@ function centsToAmount(cents: number) {
   return cents / 100;
 }
 
+function normalizeLineCookie(value: string) {
+  const cookie = value.trim();
+  if (!cookie) return cookie;
+  if (cookie.toLowerCase().startsWith("cookie:")) {
+    return cookie.slice("cookie:".length).trim();
+  }
+  if (cookie.includes("=")) return cookie;
+  return `lct=${cookie}`;
+}
+
 function parseLineTransferDate(value?: string | null) {
   if (!value) return null;
   const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})$/);
@@ -96,7 +106,7 @@ export async function getActivePaymentAccounts() {
         id: row.id as string,
         name: row.name as string,
         promptPayId: decryptSecret(row.promptpay_id_ciphertext),
-        lineCookie: decryptSecret(row.line_cookie_ciphertext),
+        lineCookie: normalizeLineCookie(decryptSecret(row.line_cookie_ciphertext)),
         topupExpiresMinutes: Number(row.topup_expires_minutes),
         updatedAt: new Date(row.updated_at).toISOString(),
       }];

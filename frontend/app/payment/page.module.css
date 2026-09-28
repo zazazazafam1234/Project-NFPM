@@ -136,6 +136,52 @@
   font-size: 12px;
   font-weight: 800;
 }
+.customAmount {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid #ffffff16;
+  border-radius: 14px;
+  background: #100e16;
+}
+.customAmount span {
+  color: #cfc7da;
+  font-size: 11px;
+  font-weight: 800;
+}
+.customAmount div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.customAmount input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #ffffff1d;
+  border-radius: 10px;
+  outline: 0;
+  color: #f7f4ff;
+  background: #191622;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.customAmount input:focus {
+  border-color: #a783ff;
+  box-shadow: 0 0 0 3px #7d58ec18;
+}
+.customAmount b {
+  color: #c7b7ff;
+  font-size: 13px;
+}
+.customAmount small {
+  color: #948c9e;
+  font-size: 10px;
+}
 .topUpGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
