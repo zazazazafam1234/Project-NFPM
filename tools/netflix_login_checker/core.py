@@ -284,6 +284,120 @@ def click_text_candidate(page: Page, pattern: str) -> bool:
         return False
 
 
+def click_text_candidate_in_container(page: Page, container_selector: str, pattern: str) -> bool:
+    try:
+        return bool(
+            page.evaluate(
+                """([containerSelector, pattern]) => {
+                    const regex = new RegExp(pattern, 'i');
+                    const roots = Array.from(document.querySelectorAll(containerSelector));
+                    if (!roots.length) roots.push(document);
+
+                    for (const root of roots) {
+                        const candidates = Array.from(root.querySelectorAll('button,a,[role="button"],[data-uia]'));
+                        const match = candidates.find((element) => {
+                            const text = (element.innerText || element.textContent || '').trim();
+                            if (!regex.test(text)) return false;
+                            const rect = element.getBoundingClientRect();
+                            const style = window.getComputedStyle(element);
+                            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                        });
+                        if (match) {
+                            match.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""",
+                [container_selector, pattern],
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
+def click_text_candidate_by_mouse(page: Page, container_selector: str, pattern: str) -> bool:
+    try:
+        point = page.evaluate(
+            """([containerSelector, pattern]) => {
+                const regex = new RegExp(pattern, 'i');
+                const roots = Array.from(document.querySelectorAll(containerSelector));
+                if (!roots.length) roots.push(document);
+
+                for (const root of roots) {
+                    const candidates = Array.from(root.querySelectorAll('button,a,[role="button"],[data-uia]'));
+                    const match = candidates.find((element) => {
+                        const text = (element.innerText || element.textContent || '').trim();
+                        if (!regex.test(text)) return false;
+                        const rect = element.getBoundingClientRect();
+                        const style = window.getComputedStyle(element);
+                        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                    });
+                    if (!match) continue;
+                    const rect = match.getBoundingClientRect();
+                    match.scrollIntoView({ block: 'center', inline: 'center' });
+                    const after = match.getBoundingClientRect();
+                    return { x: after.left + after.width / 2, y: after.top + after.height / 2 };
+                }
+                return null;
+            }""",
+            [container_selector, pattern],
+        )
+        if not point:
+            return False
+        page.mouse.click(float(point["x"]), float(point["y"]))
+        return True
+    except (PlaywrightError, KeyError, TypeError, ValueError):
+        return False
+
+
+def dispatch_click_text_candidate(page: Page, container_selector: str, pattern: str) -> bool:
+    try:
+        return bool(
+            page.evaluate(
+                """([containerSelector, pattern]) => {
+                    const regex = new RegExp(pattern, 'i');
+                    const roots = Array.from(document.querySelectorAll(containerSelector));
+                    if (!roots.length) roots.push(document);
+
+                    for (const root of roots) {
+                        const candidates = Array.from(root.querySelectorAll('button,a,[role="button"],[data-uia]'));
+                        const match = candidates.find((element) => {
+                            const text = (element.innerText || element.textContent || '').trim();
+                            if (!regex.test(text)) return false;
+                            const rect = element.getBoundingClientRect();
+                            const style = window.getComputedStyle(element);
+                            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                        });
+                        if (!match) continue;
+
+                        match.scrollIntoView({ block: 'center', inline: 'center' });
+                        const rect = match.getBoundingClientRect();
+                        const eventInit = {
+                            bubbles: true,
+                            cancelable: true,
+                            composed: true,
+                            view: window,
+                            clientX: rect.left + rect.width / 2,
+                            clientY: rect.top + rect.height / 2,
+                            button: 0,
+                            buttons: 1,
+                        };
+                        for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+                            const EventClass = type.startsWith('pointer') && window.PointerEvent ? PointerEvent : MouseEvent;
+                            match.dispatchEvent(new EventClass(type, eventInit));
+                        }
+                        return true;
+                    }
+                    return false;
+                }""",
+                [container_selector, pattern],
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
 def fill_input_and_verify(
     page: Page,
     selectors: Iterable[str],
@@ -428,39 +542,162 @@ def wait_for_next_login_step(page: Page, timeout_ms: int) -> str:
     return "timeout"
 
 
-def maybe_click_use_password(page: Page) -> bool:
+def is_otp_login_page(page: Page) -> bool:
+    return has_visible(
+        page,
+        (
+            '[data-uia="collect-otp"]',
+            '[data-uia="pin-entry"]',
+            'input[name="challengeOtp"]',
+            'input[autocomplete="one-time-code"]',
+        ),
+        timeout_ms=250,
+    ) or body_has(page, r"enter the code|enter a pin code|didn.t get a code", timeout_ms=250)
+
+
+def is_password_login_page(page: Page) -> bool:
+    return first_visible(
+        page,
+        (
+            'input[name="password"]',
+            'input[type="password"]',
+            '[data-uia="password-input"]',
+            '[data-uia="field-password"]',
+        ),
+        timeout_ms=250,
+    ) is not None
+
+
+def maybe_click_use_password(page: Page, *, debug: DebugCallback | None = None) -> bool:
     use_password_selectors = (
         '[data-uia="usePasswordInsteadHelpMenuItem"]',
+        '[data-uia*="usePassword"]',
+        '[data-uia*="use-password"]',
+        '[data-uia*="password"]:has-text("Use")',
         '[data-uia="help-menu-item-0"]:has-text("Use password")',
+        '[data-uia="help-menu-item-1"]:has-text("Use password")',
+        '[data-uia="help-menu-item-2"]:has-text("Use password")',
         'button:has-text("Use password instead")',
+        'button:has-text("Use password")',
         'a:has-text("Use password instead")',
+        'a:has-text("Use password")',
         'text=/Use password instead/i',
+        'text=/Use password/i',
     )
     if force_click_first(page, use_password_selectors, timeout_ms=500):
+        emit_debug(debug, "use_password_clicked_direct_selector")
         return True
     if click_text_candidate(page, r"use password"):
+        emit_debug(debug, "use_password_clicked_direct_text")
         return True
 
     # Only open Netflix's specific login help menu. Do not click broad "help"
     # buttons, because those can navigate away before credentials are entered.
-    force_click_first(
-        page,
-        (
-            '[data-uia="help-menu-toggle-collapsed"]',
-            '[data-uia="help-menu-toggle-expanded"]',
-        ),
-        timeout_ms=750,
-    )
+    opened = False
+    for attempt in range(1, 5):
+        if not opened:
+            opened = click_text_candidate_by_mouse(page, '[data-uia="collect-otp"]', r"^\s*get\s+help\s*$")
+            if opened:
+                emit_debug(debug, f"get_help_clicked_by_mouse attempt={attempt}")
+        if not opened:
+            opened = click_text_candidate_by_mouse(page, 'form', r"^\s*get\s+help\s*$")
+            if opened:
+                emit_debug(debug, f"get_help_clicked_by_mouse_form attempt={attempt}")
+        if not opened:
+            opened = force_click_first(
+                page,
+                (
+                    '[data-uia="help-menu-toggle-collapsed"]',
+                    '[data-uia="help-menu-toggle-expanded"]',
+                    '[data-uia*="help-menu-toggle"]',
+                ),
+                timeout_ms=750,
+            )
+            if opened:
+                emit_debug(debug, f"get_help_clicked_by_selector attempt={attempt}")
+        if not opened:
+            opened = dispatch_click_text_candidate(page, '[data-uia="collect-otp"]', r"^\s*get\s+help\s*$")
+            if opened:
+                emit_debug(debug, f"get_help_clicked_by_dispatch attempt={attempt}")
+        if not opened:
+            opened = click_text_candidate_in_container(page, '[data-uia="collect-otp"]', r"^\s*get\s+help\s*$")
+            if opened:
+                emit_debug(debug, f"get_help_clicked_by_js attempt={attempt}")
 
-    deadline = time.monotonic() + 4
-    while time.monotonic() < deadline:
+        page.wait_for_timeout(350)
         if force_click_first(page, use_password_selectors, timeout_ms=350):
+            emit_debug(debug, "use_password_clicked_after_help_selector")
+            return True
+        if click_text_candidate_by_mouse(page, '[data-uia="collect-otp"]', r"use\s+password"):
+            emit_debug(debug, "use_password_clicked_after_help_mouse")
             return True
         if click_text_candidate(page, r"use password"):
+            emit_debug(debug, "use_password_clicked_after_help_text")
+            return True
+        opened = False
+
+    emit_debug(debug, "get_help_menu_opened=False")
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if force_click_first(page, use_password_selectors, timeout_ms=350):
+            emit_debug(debug, "use_password_clicked_after_help_selector")
+            return True
+        if click_text_candidate_by_mouse(page, '[data-uia="collect-otp"]', r"use\s+password"):
+            emit_debug(debug, "use_password_clicked_after_help_mouse")
+            return True
+        if click_text_candidate(page, r"use password"):
+            emit_debug(debug, "use_password_clicked_after_help_text")
             return True
         page.wait_for_timeout(150)
 
     return False
+
+
+def ensure_password_login_mode(page: Page, *, debug: DebugCallback | None = None, timeout_ms: int = 15000) -> bool:
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    attempt = 0
+    while time.monotonic() < deadline:
+        if is_password_login_page(page):
+            emit_debug(debug, "password_mode_ready")
+            return True
+
+        if not is_otp_login_page(page):
+            page.wait_for_timeout(250)
+            continue
+
+        attempt += 1
+        emit_debug(debug, f"otp_state_attempt_use_password attempt={attempt}")
+        maybe_click_use_password(page, debug=debug)
+
+        inner_deadline = min(time.monotonic() + 2.5, deadline)
+        while time.monotonic() < inner_deadline:
+            if is_password_login_page(page):
+                emit_debug(debug, "password_mode_ready_after_otp_help")
+                return True
+            if force_click_first(
+                page,
+                (
+                    '[data-uia="usePasswordInsteadHelpMenuItem"]',
+                    '[data-uia*="usePassword"]',
+                    '[data-uia*="use-password"]',
+                    '[data-uia*="password"]:has-text("Use")',
+                    '[data-uia="help-menu-item-0"]:has-text("Use password")',
+                    '[data-uia="help-menu-item-1"]:has-text("Use password")',
+                    '[data-uia="help-menu-item-2"]:has-text("Use password")',
+                    'button:has-text("Use password")',
+                    'a:has-text("Use password")',
+                    'text=/Use password/i',
+                ),
+                timeout_ms=250,
+            ):
+                emit_debug(debug, "use_password_clicked_from_state_loop")
+            elif click_text_candidate_by_mouse(page, '[data-uia="collect-otp"]', r"use\s+password"):
+                emit_debug(debug, "use_password_mouse_from_state_loop")
+            page.wait_for_timeout(200)
+
+    emit_debug(debug, "password_mode_not_ready_after_otp")
+    return is_password_login_page(page)
 
 
 def wait_for_password_ready(page: Page, timeout_ms: int) -> bool:
@@ -481,9 +718,14 @@ def wait_for_password_ready(page: Page, timeout_ms: int) -> bool:
 def submit_password_form(page: Page, timeout_ms: int = 2500) -> bool:
     submit_selectors = (
         '[data-uia="sign-in-button"]',
+        '[data-uia*="sign-in"]',
+        '[data-uia*="signin"]',
         'button:has-text("Sign In")',
         'button:has-text("Sign in")',
+        'button:has-text("Log In")',
+        'button:has-text("Log in")',
         '[data-uia="continue-button"]',
+        '[data-uia*="continue"]',
         'button[type="submit"]',
     )
     if force_click_first(page, submit_selectors, timeout_ms=timeout_ms):
@@ -492,6 +734,47 @@ def submit_password_form(page: Page, timeout_ms: int = 2500) -> bool:
     password_input = first_visible(page, ('input[name="password"]', 'input[type="password"]'), timeout_ms=750)
     if not password_input:
         return False
+    try:
+        clicked = password_input.evaluate(
+            """element => {
+                const form = element.closest('form') || document;
+                const candidates = Array.from(form.querySelectorAll('button,a,[role="button"],[data-uia]'));
+                const match = candidates.find((candidate) => {
+                    const text = (candidate.innerText || candidate.textContent || '').trim();
+                    const dataUia = candidate.getAttribute('data-uia') || '';
+                    const type = (candidate.getAttribute('type') || '').toLowerCase();
+                    if (!/sign\\s*in|log\\s*in|continue|submit/i.test(`${text} ${dataUia} ${type}`)) return false;
+                    if (/show|hide|forgot|help/i.test(text)) return false;
+                    const rect = candidate.getBoundingClientRect();
+                    const style = window.getComputedStyle(candidate);
+                    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !candidate.disabled;
+                });
+                if (!match) return false;
+                match.click();
+                return true;
+            }"""
+        )
+        if clicked:
+            return True
+    except PlaywrightError:
+        pass
+    try:
+        submitted = password_input.evaluate(
+            """element => {
+                const form = element.closest('form');
+                if (!form) return false;
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }
+                return true;
+            }"""
+        )
+        if submitted:
+            return True
+    except PlaywrightError:
+        pass
     try:
         password_input.press("Enter", timeout=timeout_ms)
         return True
@@ -921,14 +1204,17 @@ def _login_netflix_impl(
                 return LoginResult(False, f"login_failed: {error}", page.url, str(profile_dir) if profile_dir else None)
             if next_step == "otp":
                 emit_debug(debug, "otp_page_open_use_password_menu")
-                if not maybe_click_use_password(page):
-                    emit_debug(debug, "use_password_instead_not_found")
+                if not ensure_password_login_mode(page, debug=debug, timeout_ms=18000):
+                    emit_debug(debug, "password_mode_not_ready_from_otp")
                     return LoginResult(False, "use_password_instead_not_found", page.url, str(profile_dir) if profile_dir else None)
             elif next_step == "use_password":
                 emit_debug(debug, "click_use_password_instead")
-                if not maybe_click_use_password(page):
+                if not maybe_click_use_password(page, debug=debug):
                     emit_debug(debug, "use_password_instead_not_clicked")
                     return LoginResult(False, "use_password_instead_not_clicked", page.url, str(profile_dir) if profile_dir else None)
+                if is_otp_login_page(page) and not ensure_password_login_mode(page, debug=debug, timeout_ms=10000):
+                    emit_debug(debug, "password_mode_not_ready_after_use_password_click")
+                    return LoginResult(False, "password_page_not_ready", page.url, str(profile_dir) if profile_dir else None)
             elif next_step == "timeout":
                 emit_debug(debug, "next_login_step_timeout")
                 if allow_manual_login and not headless:
@@ -943,6 +1229,12 @@ def _login_netflix_impl(
                         str(profile_dir) if profile_dir else None,
                     )
                 return LoginResult(False, "next_login_step_timeout", page.url, str(profile_dir) if profile_dir else None)
+
+            if is_otp_login_page(page) and not is_password_login_page(page):
+                emit_debug(debug, "otp_still_visible_before_password_ready")
+                if not ensure_password_login_mode(page, debug=debug, timeout_ms=12000):
+                    emit_debug(debug, "otp_still_visible_password_mode_failed")
+                    return LoginResult(False, "use_password_instead_not_found", page.url, str(profile_dir) if profile_dir else None)
 
             emit_debug(debug, "wait_for_password_ready")
             if not wait_for_password_ready(page, timeout_ms=7000):

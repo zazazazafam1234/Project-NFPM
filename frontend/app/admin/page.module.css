@@ -611,6 +611,7 @@
 }
 .formRows input,
 .formRows select,
+.formRows textarea,
 .search {
   padding: 10px;
   border: 1px solid #ffffff1a;
@@ -621,8 +622,19 @@
   font: inherit;
   font-size: 11px;
 }
+.formRows textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+.formRows input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  justify-self: start;
+  accent-color: #7a52ee;
+}
 .formRows input:focus,
 .formRows select:focus,
+.formRows textarea:focus,
 .search:focus {
   border-color: #a582fb;
 }

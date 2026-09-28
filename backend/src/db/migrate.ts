@@ -270,9 +270,28 @@ await sql`
 `;
 
 await sql`
+  CREATE TABLE IF NOT EXISTS payment_accounts (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                      TEXT NOT NULL,
+    promptpay_id_ciphertext   TEXT NOT NULL,
+    line_cookie_ciphertext    TEXT,
+    status                    TEXT NOT NULL DEFAULT 'active'
+                              CHECK (status IN ('active', 'inactive')),
+    is_default                BOOLEAN NOT NULL DEFAULT FALSE,
+    topup_expires_minutes     INTEGER NOT NULL DEFAULT 15
+                              CHECK (topup_expires_minutes BETWEEN 1 AND 1440),
+    note                      TEXT,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at                TIMESTAMPTZ
+  )
+`;
+
+await sql`
   CREATE TABLE IF NOT EXISTS point_topups (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id               TEXT NOT NULL REFERENCES "User"(id) ON DELETE RESTRICT,
+    payment_account_id    UUID REFERENCES payment_accounts(id) ON DELETE SET NULL,
     points                INTEGER NOT NULL CHECK (points > 0),
     payment_method        TEXT NOT NULL DEFAULT 'promptpay',
     status                TEXT NOT NULL DEFAULT 'pending'
@@ -292,6 +311,31 @@ await sql`
   )
 `;
 
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS payment_account_id UUID REFERENCES payment_accounts(id) ON DELETE SET NULL`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS line_transfer_events (
+    id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_account_id         UUID REFERENCES payment_accounts(id) ON DELETE SET NULL,
+    line_revision              BIGINT,
+    incoming_amount_cents      INTEGER NOT NULL CHECK (incoming_amount_cents > 0),
+    balance_cents              INTEGER,
+    destination_account        TEXT,
+    sender_name                TEXT,
+    from_account               TEXT,
+    transfer_type              TEXT,
+    occurred_at                TIMESTAMPTZ,
+    occurred_raw               TEXT,
+    raw_message                JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status                     TEXT NOT NULL DEFAULT 'received'
+                               CHECK (status IN ('received', 'matched', 'unmatched', 'ignored', 'failed')),
+    matched_topup_id           UUID REFERENCES point_topups(id) ON DELETE SET NULL,
+    match_reason               TEXT,
+    created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+
 await sql`CREATE INDEX IF NOT EXISTS packages_active_idx ON packages (service, sort_order, price_amount) WHERE status = 'active' AND deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS master_emails_package_idx ON master_emails (package_id, status, master_expired_at) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_active_unique ON master_emails (LOWER(email), service) WHERE deleted_at IS NULL`;
@@ -303,11 +347,27 @@ await sql`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (us
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_profile_idx ON subscriptions (profile_id, expires_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_status_role_idx ON "User" (status, role, "createdAt" DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_email_search_idx ON "User" (LOWER(email))`;
+await sql`CREATE INDEX IF NOT EXISTS payment_accounts_status_idx ON payment_accounts (status, is_default) WHERE deleted_at IS NULL`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS payment_accounts_default_unique
+  ON payment_accounts (is_default)
+  WHERE is_default = TRUE
+    AND deleted_at IS NULL
+`;
 await sql`CREATE INDEX IF NOT EXISTS point_topups_user_idx ON point_topups (user_id, created_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS point_topups_status_expires_idx ON point_topups (status, expires_at)`;
+await sql`CREATE INDEX IF NOT EXISTS line_transfer_events_created_idx ON line_transfer_events (created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS line_transfer_events_account_created_idx ON line_transfer_events (payment_account_id, created_at DESC)`;
 await sql`
-  CREATE UNIQUE INDEX IF NOT EXISTS point_topups_pending_amount_unique
-  ON point_topups (payable_amount_cents)
+  CREATE UNIQUE INDEX IF NOT EXISTS line_transfer_events_revision_unique
+  ON line_transfer_events (payment_account_id, line_revision)
+  WHERE line_revision IS NOT NULL
+`;
+await sql`DROP INDEX IF EXISTS point_topups_pending_amount_unique`;
+await sql`DROP INDEX IF EXISTS point_topups_pending_account_amount_unique`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS point_topups_pending_account_amount_unique
+  ON point_topups (COALESCE(payment_account_id, '00000000-0000-0000-0000-000000000000'::uuid), payable_amount_cents)
   WHERE status = 'pending'
 `;
 await sql`CREATE INDEX IF NOT EXISTS transaction_topup_idx ON "Transaction" ("topUpId") WHERE "topUpId" IS NOT NULL`;
