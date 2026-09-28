@@ -197,6 +197,11 @@ await sql`
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES packages(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS max_profiles INTEGER NOT NULL DEFAULT 5 CHECK (max_profiles > 0)`;
 await sql`UPDATE master_emails SET package_id = NULL WHERE package_id IS NOT NULL`;
+await sql`
+  UPDATE master_emails
+  SET master_expired_at = master_expired_at + INTERVAL '1 day' - INTERVAL '1 millisecond'
+  WHERE master_expired_at::time = TIME '00:00:00'
+`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS profiles (
@@ -212,6 +217,12 @@ await sql`
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at               TIMESTAMPTZ
   )
+`;
+await sql`
+  UPDATE profiles
+  SET profile_expires_at = profile_expires_at + INTERVAL '1 day' - INTERVAL '1 millisecond'
+  WHERE profile_expires_at IS NOT NULL
+    AND profile_expires_at::time = TIME '00:00:00'
 `;
 
 await sql`

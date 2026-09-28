@@ -43,8 +43,24 @@ const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
   .toISOString()
   .slice(0, 10);
 
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
 function dateInputValue(value: string | null | undefined) {
-  return value ? new Date(value).toISOString().slice(0, 10) : "";
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function dateOnlyToIso(value: string, mode: "start" | "end") {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return new Date(value).toISOString();
+  const date = mode === "end"
+    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+    : new Date(year, month - 1, day, 0, 0, 0, 0);
+  return date.toISOString();
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -805,8 +821,8 @@ function AccountsPanel({
     const payload = {
       ...form,
       service: form.service.trim().toLowerCase(),
-      purchasedAt: new Date(form.purchasedAt).toISOString(),
-      masterExpiredAt: new Date(form.masterExpiredAt).toISOString(),
+      purchasedAt: dateOnlyToIso(form.purchasedAt, "start"),
+      masterExpiredAt: dateOnlyToIso(form.masterExpiredAt, "end"),
     };
     await saveMasterEmail(payload);
     onDone("เพิ่มห้องบัญชีแม่และเข้ารหัส password แล้ว");
@@ -820,8 +836,8 @@ function AccountsPanel({
       ...editForm,
       service: editForm.service.trim().toLowerCase(),
       password: editForm.password || undefined,
-      purchasedAt: new Date(editForm.purchasedAt).toISOString(),
-      masterExpiredAt: new Date(editForm.masterExpiredAt).toISOString(),
+      purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
+      masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
     });
     onDone(`แก้ไขห้อง ${editForm.email} แล้ว`);
     setEditingId(null);
@@ -1177,7 +1193,7 @@ function ProfilesPanel({
       ...form,
       masterEmailId: selectedMasterEmailId,
       profileExpiresAt: form.profileExpiresAt
-        ? new Date(form.profileExpiresAt).toISOString()
+        ? dateOnlyToIso(form.profileExpiresAt, "end")
         : undefined,
     };
     await saveProfile(payload);
@@ -1193,7 +1209,7 @@ function ProfilesPanel({
       masterEmailId: selectedEditMasterEmailId,
       pin: editForm.pin || undefined,
       profileExpiresAt: editForm.profileExpiresAt
-        ? new Date(editForm.profileExpiresAt).toISOString()
+        ? dateOnlyToIso(editForm.profileExpiresAt, "end")
         : null,
     });
     onDone(`แก้ไข Slot ${editForm.profileName} แล้ว`);
