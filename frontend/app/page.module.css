@@ -532,6 +532,8 @@
 
 .roomCard {
   position: relative;
+  display: block;
+  width: 100%;
   min-height: 245px;
   overflow: hidden;
   padding: 18px;
@@ -541,6 +543,7 @@
   background: linear-gradient(145deg, #26203a, #17131f 59%, #110f17);
   text-decoration: none;
   text-align: left;
+  font: inherit;
   cursor: pointer;
   transition:
     transform 0.25s ease,
@@ -597,6 +600,11 @@
     0 22px 45px #0006,
     0 0 0 4px #9572ff1e;
   transform: translateY(-8px) rotate(-1deg);
+}
+
+.roomCard:focus-visible {
+  outline: 2px solid #b79bff;
+  outline-offset: 4px;
 }
 
 .roomUnavailable {
@@ -792,6 +800,366 @@
   font-size: 10px;
   font-weight: 900;
   animation: badge-pop 0.3s ease-out both;
+}
+
+.slotDialog {
+  position: relative;
+  width: min(560px, calc(100% - 28px));
+  max-width: none;
+  max-height: min(88dvh, 760px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid #ffffff24;
+  border-radius: 24px;
+  color: #f7f5ff;
+  background:
+    radial-gradient(circle at 88% -5%, #8c61ff45, transparent 34%),
+    radial-gradient(circle at -8% 52%, #e5091426, transparent 37%),
+    #12101a;
+  box-shadow: 0 30px 100px #000c, 0 0 0 1px #9d7bff12 inset;
+  animation: slot-dialog-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.slotDialog::backdrop {
+  background: #07060cbd;
+  backdrop-filter: blur(8px);
+  animation: slot-backdrop-in 0.24s ease-out both;
+}
+
+.slotDialogHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 27px 20px;
+  border-bottom: 1px solid #ffffff12;
+  background: #15121ce8;
+  backdrop-filter: blur(16px);
+}
+
+.slotDialogHeader .eyebrow {
+  margin-bottom: 8px;
+}
+
+.slotDialogTitle {
+  min-width: 0;
+}
+
+.slotDialogHeader h2 {
+  margin: 0;
+  font-family: var(--font-noto-thai), "Noto Sans Thai", Tahoma, sans-serif;
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.slotDialogSubtitle {
+  margin: 6px 0 0;
+  color: #a7a0b5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.slotDialogClose {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #ffffff18;
+  border-radius: 12px;
+  color: #ddd6e9;
+  background: #ffffff09;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.slotDialogClose:hover {
+  color: #fff;
+  background: #ffffff18;
+}
+
+.slotDialogClose:focus-visible,
+.slotChoice:focus-visible {
+  outline: 2px solid #b79bff;
+  outline-offset: 3px;
+}
+
+.slotDialogClose span {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.slotDialogBody {
+  padding: 20px 27px 25px;
+}
+
+.slotRoomPanel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+  min-height: 96px;
+  padding: 15px;
+  border: 1px solid #ffffff1c;
+  border-radius: 18px;
+  background: linear-gradient(115deg, #ffffff10, #7a50ec24 58%, #ffffff08);
+  box-shadow: inset 0 1px #ffffff0b;
+}
+
+.slotRoomPanel::after {
+  content: "FAST MOVIE";
+  position: absolute;
+  right: -5px;
+  bottom: -15px;
+  color: #ffffff09;
+  font-size: 35px;
+  font-weight: 900;
+  letter-spacing: -3px;
+  pointer-events: none;
+}
+
+.slotServiceMark {
+  display: grid;
+  flex: 0 0 49px;
+  width: 49px;
+  height: 49px;
+  place-items: center;
+  border: 1px solid #ffffff22;
+  border-radius: 15px;
+  color: #f41527;
+  background: #08070c;
+  box-shadow: 0 9px 21px #0006;
+  font-size: 27px;
+  font-weight: 900;
+}
+
+.slotRoomStatus {
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.slotRoomStatus strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.slotRoomStatus small,
+.slotUsage small {
+  color: #aaa2b8;
+  font-size: 10px;
+}
+
+.slotUsage {
+  z-index: 1;
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  color: #f6f2fc;
+}
+
+.slotUsage b {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.slotChoiceHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 23px 0 12px;
+}
+
+.slotChoiceHeading p {
+  margin: 0 0 4px;
+  color: #aa8eff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.35px;
+}
+
+.slotChoiceHeading h3 {
+  margin: 0;
+  font-family: var(--font-noto-thai), "Noto Sans Thai", Tahoma, sans-serif;
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.slotChoiceHeading > span {
+  padding: 5px 8px;
+  border: 1px solid #55d98a35;
+  border-radius: 8px;
+  color: #99efb8;
+  background: #55d98a12;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.slotDialogSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 13px;
+  color: #918a9e;
+  font-size: 10px;
+}
+
+.slotSummaryOpen,
+.slotSummaryFull {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9df2b9;
+  font-weight: 800;
+}
+
+.slotSummaryFull {
+  color: #ff999f;
+}
+
+.slotSummaryOpen i,
+.slotSummaryFull i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #55d98a;
+  box-shadow: 0 0 9px #55d98a;
+}
+
+.slotSummaryFull i {
+  background: #ef6872;
+  box-shadow: 0 0 8px #ef6872;
+}
+
+.slotChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.slotChoice {
+  display: flex;
+  min-width: 0;
+  min-height: 83px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ffffff17;
+  border-radius: 15px;
+  color: #f6f3fc;
+  background: linear-gradient(135deg, #ffffff0d, #ffffff06);
+  text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+a.slotChoice:hover {
+  transform: translateY(-2px);
+  border-color: #aa8eff88;
+  background: linear-gradient(135deg, #8b62ff38, #ffffff0c);
+  box-shadow: 0 10px 24px #0004;
+}
+
+.slotChoiceIcon {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #55d98a2b;
+  border-radius: 10px;
+  color: #9df2b9;
+  background: #55d98a18;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.slotChoiceInfo {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.slotChoiceInfo strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.slotChoiceInfo small {
+  color: #a7a0b5;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.slotChoiceArrow {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 8px;
+  color: #c2aaff;
+  background: #ffffff0a;
+  font-size: 16px;
+}
+
+.slotChoiceUnavailable {
+  color: #b5afbf;
+  background: #ffffff04;
+  opacity: 0.62;
+}
+
+.slotChoiceUnavailable .slotChoiceIcon {
+  color: #aaa3b5;
+  background: #ffffff0b;
+}
+
+.slotUnavailableLabel {
+  color: #817a8c;
+  font-size: 9px;
+  text-align: right;
+}
+
+.slotDialogNote {
+  margin: 17px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid #ffffff10;
+  color: #8e879b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@keyframes slot-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slot-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .planSection {

@@ -49,7 +49,9 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
 
 export default function Home() {
   const stageRef = useRef<HTMLElement>(null);
+  const slotDialogRef = useRef<HTMLDialogElement>(null);
   const [rooms, setRooms] = useState<StreamingRoom[]>([]);
+  const [activeRoom, setActiveRoom] = useState<StreamingRoom | null>(null);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const availableCount = rooms.reduce(
     (total, room) => total + room.availableSlots,
@@ -62,6 +64,11 @@ export default function Home() {
       .catch(() => undefined)
       .finally(() => setRoomsLoading(false));
   }, []);
+
+  useEffect(() => {
+    const dialog = slotDialogRef.current;
+    if (activeRoom && dialog && !dialog.open) dialog.showModal();
+  }, [activeRoom]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -91,7 +98,8 @@ export default function Home() {
   }, []);
 
   return (
-    <main ref={stageRef} className={styles.scrollStage} data-scroll-stage>
+    <>
+      <main ref={stageRef} className={styles.scrollStage} data-scroll-stage>
       <section className={styles.hero} id="home">
         <div className={styles.heroParallax} aria-hidden="true" />
         <nav className={styles.nav} aria-label="เมนูหลัก">
@@ -175,7 +183,14 @@ export default function Home() {
               );
 
               return (
-                <Link className={styles.roomCard} key={room.id} href="/shop">
+                <button
+                  aria-haspopup="dialog"
+                  aria-label={`เลือก Slot ใน ${room.name}`}
+                  className={styles.roomCard}
+                  key={room.id}
+                  onClick={() => setActiveRoom(room)}
+                  type="button"
+                >
                   <span className={styles.roomIndex}>
                     {String(index + 1).padStart(2, "0")}
                   </span>
@@ -212,9 +227,9 @@ export default function Home() {
                     <em>{room.label}</em>
                   </span>
                   <span className={styles.selectedBadge}>
-                    ดู Slot ในห้อง →
+                    เลือก Slot ในห้อง →
                   </span>
-                </Link>
+                </button>
               );
             })
           )}
@@ -265,6 +280,108 @@ export default function Home() {
         <p>บริการช่วยจัดการการเข้าถึงความบันเทิงออนไลน์</p>
         <p>© 2026 Fast Movie</p>
       </footer>
-    </main>
+      </main>
+      {activeRoom && (
+        <dialog
+          aria-labelledby="slot-dialog-title"
+          className={styles.slotDialog}
+          onCancel={(event) => {
+            event.preventDefault();
+            setActiveRoom(null);
+          }}
+          onClose={() => setActiveRoom(null)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setActiveRoom(null);
+          }}
+          ref={slotDialogRef}
+        >
+          <div className={styles.slotDialogHeader}>
+            <div className={styles.slotDialogTitle}>
+              <p className={styles.eyebrow}>01 — SELECT A SLOT</p>
+              <h2 id="slot-dialog-title">{activeRoom.name}</h2>
+              <p className={styles.slotDialogSubtitle}>{activeRoom.label}</p>
+            </div>
+            <button
+              aria-label="ปิดหน้าต่าง"
+              autoFocus
+              className={styles.slotDialogClose}
+              onClick={() => setActiveRoom(null)}
+              type="button"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <div className={styles.slotDialogBody}>
+            <div className={styles.slotRoomPanel}>
+              <div className={styles.slotServiceMark} aria-hidden="true">
+                {activeRoom.service.slice(0, 1).toUpperCase()}
+              </div>
+              <div className={styles.slotRoomStatus}>
+                <span className={activeRoom.availableSlots > 0 ? styles.slotSummaryOpen : styles.slotSummaryFull}>
+                  <i aria-hidden="true" />
+                  {activeRoom.availableSlots > 0 ? "พร้อมเลือก Slot" : "ห้องเต็มแล้ว"}
+                </span>
+                <strong>{activeRoom.service}</strong>
+                <small>{activeRoom.label}</small>
+              </div>
+              <div className={styles.slotUsage}>
+                <span className={styles.capacityDots} aria-hidden="true">
+                  {activeRoom.slots.slice(0, activeRoom.capacity).map((slot) => (
+                    <i className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed} key={slot.id} />
+                  ))}
+                </span>
+                <b>{activeRoom.capacity - activeRoom.availableSlots}/{activeRoom.capacity}</b>
+                <small>ผู้ใช้งาน</small>
+              </div>
+            </div>
+            <div className={styles.slotChoiceHeading}>
+              <div>
+                <p>AVAILABLE PROFILES</p>
+                <h3>เลือก Slot ที่ว่าง</h3>
+              </div>
+              <span>{activeRoom.availableSlots} ว่าง</span>
+            </div>
+            <div className={styles.slotChoices}>
+              {activeRoom.slots.map((slot, index) => {
+                const lowestPackage = slot.availablePackages[0];
+                const canChoose = slot.isAvailable && Boolean(lowestPackage);
+                const slotStatus = slot.isAvailable
+                  ? "ไม่มีโปรโมชัน"
+                  : slot.status === "available"
+                    ? "ติดจองอยู่"
+                    : slot.status;
+
+                return canChoose ? (
+                  <Link
+                    className={styles.slotChoice}
+                    href={`/checkout?room=${encodeURIComponent(activeRoom.id)}&profile=${encodeURIComponent(slot.id)}`}
+                    key={slot.id}
+                  >
+                    <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    <span className={styles.slotChoiceInfo}>
+                      <strong>{slot.name}</strong>
+                      <small>ว่าง · เริ่ม {lowestPackage.priceAmount.toLocaleString()} PT</small>
+                    </span>
+                    <span className={styles.slotChoiceArrow} aria-hidden="true">→</span>
+                  </Link>
+                ) : (
+                  <div className={`${styles.slotChoice} ${styles.slotChoiceUnavailable}`} key={slot.id}>
+                    <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    <span className={styles.slotChoiceInfo}>
+                      <strong>{slot.name}</strong>
+                      <small>{slotStatus}</small>
+                    </span>
+                    <span className={styles.slotUnavailableLabel}>ไม่พร้อมใช้งาน</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className={styles.slotDialogNote}>
+              เลือก Slot เพื่อไปยังหน้าตรวจสอบโปรและชำระด้วย Point
+            </p>
+          </div>
+        </dialog>
+      )}
+    </>
   );
 }

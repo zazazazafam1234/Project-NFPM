@@ -56,9 +56,14 @@ export default function ShopPage() {
       </header>
 
       <div className={styles.hero}>
-        <p className={styles.eyebrow}>FAST MOVIE ROOMS</p>
-        <h1>เลือกห้องและ Slot ที่พร้อมใช้งาน</h1>
-        <p>กด slot ว่างในห้องที่ต้องการ แล้วเลือกโปรรายวัน/รายสัปดาห์/รายเดือนในขั้นตอนถัดไป</p>
+        <div className={styles.heroAura} aria-hidden="true" />
+        <p className={styles.eyebrow}>02 — BROWSE ROOMS</p>
+        <h1>เลือกห้องที่ใช่<br /><em>แล้วเข้าไปเลือก Slot</em></h1>
+        <p>เลือก Slot ที่มีสัญญาณสีเขียว จากนั้นค่อยเลือกโปรที่เหมาะกับคุณในขั้นตอนถัดไป</p>
+        <div className={styles.heroStats}>
+          <span><i aria-hidden="true" />{totalSlots} Slot พร้อมเช่า</span>
+          <span>{visibleRooms.length} ห้องที่เลือกดู</span>
+        </div>
       </div>
 
       <div className={styles.layout}>
@@ -111,18 +116,40 @@ export default function ShopPage() {
               {visibleRooms.map((room) => (
                 <article key={room.id} className={styles.roomCardLarge}>
                   <div className={styles.roomHead}>
-                    <div>
-                      <p className={styles.cardCat}>{room.service.toUpperCase()}</p>
-                      <h3>{room.name}</h3>
-                      <span>{room.label}</span>
+                    <div className={styles.roomIdentity}>
+                      <span className={styles.serviceMark} aria-hidden="true">
+                        {room.service.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <p className={styles.cardCat}>{room.service.toUpperCase()} ROOM</p>
+                        <h3>{room.name}</h3>
+                        <span>{room.label}</span>
+                      </div>
                     </div>
                     <b className={room.availableSlots > 0 ? styles.stockOk : styles.stockOut}>
-                      {room.availableSlots}/{room.capacity} slot
+                      <i aria-hidden="true" />
+                      {room.availableSlots > 0 ? "พร้อมเลือก" : "เต็มแล้ว"}
                     </b>
                   </div>
 
+                  <div className={styles.roomOccupancy}>
+                    <div className={styles.capacityDots} aria-label={`มีผู้ใช้งาน ${room.capacity - room.availableSlots} จาก ${room.capacity} Slot`}>
+                      {room.slots.slice(0, room.capacity).map((slot) => (
+                        <i className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed} key={slot.id} />
+                      ))}
+                    </div>
+                    <span><b>{room.capacity - room.availableSlots}/{room.capacity}</b> ผู้ใช้งาน</span>
+                  </div>
+
+                  <div className={styles.slotSectionHeader}>
+                    <div>
+                      <p>AVAILABLE PROFILES</p>
+                      <h4>เลือก Slot ที่ว่าง</h4>
+                    </div>
+                    <span>{room.availableSlots} ว่าง</span>
+                  </div>
                   <div className={styles.slotGrid}>
-                    {room.slots.map((slot) => {
+                    {room.slots.map((slot, slotIndex) => {
                       const href = `/checkout?room=${room.id}&profile=${slot.id}`;
                       const lowestPackage = slot.availablePackages[0];
                       return slot.isAvailable ? (
@@ -131,6 +158,7 @@ export default function ShopPage() {
                           href={href}
                           key={slot.id}
                         >
+                          <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
                           <strong>{slot.name}</strong>
                           <span>
                             ว่าง · เริ่ม {lowestPackage?.priceAmount.toLocaleString() ?? "—"} PT
@@ -138,6 +166,7 @@ export default function ShopPage() {
                         </Link>
                       ) : (
                         <button className={styles.slotUnavailable} disabled key={slot.id}>
+                          <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
                           <strong>{slot.name}</strong>
                           <span>{slot.status === "available" ? "ติดจองอยู่" : slot.status}</span>
                         </button>
