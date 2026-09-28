@@ -475,6 +475,10 @@
   border: 1px solid #ffffff3b;
   background: #ffffff10;
 }
+.capacityEmpty {
+  border: 1px dashed #ffffff2b;
+  background: transparent;
+}
 .slotGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

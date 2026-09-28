@@ -65,12 +65,14 @@ admin.get("/inventory", async (c) => {
       SELECT
         pkg.*,
         COUNT(p.id) FILTER (
-          WHERE p.status = 'available'
+          WHERE (
+              p.status = 'available'
+              OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+            )
             AND p.deleted_at IS NULL
-            AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
             AND me.status = 'active'
             AND me.deleted_at IS NULL
-            AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval
+            AND me.master_expired_at > NOW()
             AND NOT EXISTS (
               SELECT 1
               FROM subscriptions s
@@ -100,7 +102,19 @@ admin.get("/inventory", async (c) => {
         me.master_expired_at,
         me.note,
         COUNT(p.id)::int AS "profileCount",
-        COUNT(p.id) FILTER (WHERE p.status = 'available')::int AS "availableProfiles"
+        COUNT(p.id) FILTER (
+          WHERE (
+              p.status = 'available'
+              OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM subscriptions s
+              WHERE s.profile_id = p.id
+                AND s.status IN ('pending', 'active')
+                AND s.expires_at > NOW()
+            )
+        )::int AS "availableProfiles"
       FROM master_emails me
       LEFT JOIN packages pkg ON pkg.id = me.package_id
       LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL
@@ -188,7 +202,22 @@ admin.get("/inventory", async (c) => {
       SELECT
         (SELECT COUNT(*)::int FROM packages WHERE status = 'active' AND deleted_at IS NULL) AS "activePackages",
         (SELECT COUNT(*)::int FROM master_emails WHERE status = 'active' AND deleted_at IS NULL) AS "activeMasterEmails",
-        (SELECT COUNT(*)::int FROM profiles WHERE status = 'available' AND deleted_at IS NULL) AS "availableProfiles",
+        (
+          SELECT COUNT(*)::int
+          FROM profiles p
+          WHERE p.deleted_at IS NULL
+            AND (
+              p.status = 'available'
+              OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM subscriptions s
+              WHERE s.profile_id = p.id
+                AND s.status IN ('pending', 'active')
+                AND s.expires_at > NOW()
+            )
+        ) AS "availableProfiles",
         (SELECT COUNT(*)::int FROM subscriptions WHERE status = 'active' AND expires_at > NOW()) AS "activeSubscriptions",
         (SELECT COUNT(*)::int FROM "User" WHERE status = 'active') AS "activeUsers",
         (SELECT COUNT(*)::int FROM "User") AS "totalUsers"
@@ -581,7 +610,20 @@ admin.get("/automation/master-emails", async (c) => {
       me.master_expired_at,
       me.note,
       COUNT(p.id)::int AS "profileCount",
-      COUNT(p.id) FILTER (WHERE p.status = 'available' AND p.deleted_at IS NULL)::int AS "availableProfiles"
+      COUNT(p.id) FILTER (
+        WHERE p.deleted_at IS NULL
+          AND (
+            p.status = 'available'
+            OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM subscriptions s
+            WHERE s.profile_id = p.id
+              AND s.status IN ('pending', 'active')
+              AND s.expires_at > NOW()
+          )
+      )::int AS "availableProfiles"
     FROM master_emails me
     LEFT JOIN packages pkg ON pkg.id = me.package_id
     LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL

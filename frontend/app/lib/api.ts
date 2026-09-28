@@ -95,7 +95,9 @@ export type StreamingRoom = {
   status: string;
   masterExpiredAt: string;
   capacity: number;
+  profileCount: number;
   availableSlots: number;
+  occupiedSlots: number;
   slots: StreamingRoomSlot[];
 };
 

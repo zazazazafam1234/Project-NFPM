@@ -757,6 +757,11 @@
   box-shadow: 0 0 7px #e5091499;
 }
 
+.capacityDots i.capacityEmpty {
+  border-color: #ffffff2e;
+  background: #ffffff0a;
+}
+
 .roomFooter em {
   overflow: hidden;
   text-overflow: ellipsis;
