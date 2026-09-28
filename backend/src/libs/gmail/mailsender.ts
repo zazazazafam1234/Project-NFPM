@@ -183,20 +183,24 @@ async function sendRawEmail({
 /**
  * ส่ง email แจ้งข้อมูลการเข้าใช้งานหลังซื้อสำเร็จ
  * Fire-and-forget: ควร call โดยไม่ await และ .catch(console.error)
+ *
+ * @param htmlOverride  ถ้าส่งมาจะใช้แทน template ค่าเริ่มต้น (ใช้สำหรับ reminder)
+ * @param subject       ถ้าส่งมาจะ override subject ค่าเริ่มต้น
  */
 export async function sendSubscriptionEmail({
   to,
   credentials,
+  subject,
+  htmlOverride,
 }: {
   to: string;
   credentials: SubscriptionCredentials;
+  subject?: string;
+  htmlOverride?: string;
 }) {
-  const html = buildSubscriptionEmailHtml(credentials);
-  const result = await sendRawEmail({
-    to,
-    subject: `ข้อมูลการเข้าใช้งาน — จอ ${credentials.profileName}`,
-    htmlBody: html,
-  });
-  console.log(`[gmail] sent subscription email to=${to} messageId=${result.messageId}`);
+  const html = htmlOverride ?? buildSubscriptionEmailHtml(credentials);
+  const resolvedSubject = subject ?? `ข้อมูลการเข้าใช้งาน — จอ ${credentials.profileName}`;
+  const result = await sendRawEmail({ to, subject: resolvedSubject, htmlBody: html });
+  console.log(`[gmail] sent email to=${to} subject="${resolvedSubject}" messageId=${result.messageId}`);
   return result;
 }

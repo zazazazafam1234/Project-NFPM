@@ -95,7 +95,9 @@ export type StreamingRoom = {
   status: string;
   masterExpiredAt: string;
   capacity: number;
+  profileCount: number;
   availableSlots: number;
+  occupiedSlots: number;
   slots: StreamingRoomSlot[];
 };
 
@@ -317,7 +319,7 @@ export function deleteAdminPackage(packageId: string) {
 }
 
 export function saveMasterEmail(body: {
-  packageId: string;
+  service: string;
   email: string;
   password: string;
   purchasedAt?: string;
@@ -333,7 +335,7 @@ export function saveMasterEmail(body: {
 }
 
 export function updateMasterEmail(masterEmailId: string, body: {
-  packageId?: string;
+  service?: string;
   email?: string;
   password?: string;
   purchasedAt?: string;

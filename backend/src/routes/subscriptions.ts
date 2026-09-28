@@ -120,15 +120,17 @@ subscriptions.post("/", async (c) => {
               me.master_expired_at
             FROM profiles p
             JOIN master_emails me ON me.id = p.master_email_id
-            WHERE p.id = ${profileId}::uuid
-              AND p.status = 'available'
-              AND p.deleted_at IS NULL
-              AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
-              AND me.service = ${pkg.service}
-              AND me.status = 'active'
-              AND me.deleted_at IS NULL
-              AND me.master_expired_at >= ${expiresAt.toISOString()}
-              AND NOT EXISTS (
+              WHERE p.id = ${profileId}::uuid
+                AND (
+                  p.status = 'available'
+                  OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+                )
+                AND p.deleted_at IS NULL
+                AND me.service = ${pkg.service}
+                AND me.status = 'active'
+                AND me.deleted_at IS NULL
+                AND me.master_expired_at > NOW()
+                AND NOT EXISTS (
                 SELECT 1
                 FROM subscriptions s
                 WHERE s.profile_id = p.id
@@ -146,13 +148,15 @@ subscriptions.post("/", async (c) => {
               me.master_expired_at
             FROM profiles p
             JOIN master_emails me ON me.id = p.master_email_id
-            WHERE p.status = 'available'
+            WHERE (
+                p.status = 'available'
+                OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+              )
               AND p.deleted_at IS NULL
-              AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
               AND me.service = ${pkg.service}
               AND me.status = 'active'
               AND me.deleted_at IS NULL
-              AND me.master_expired_at >= ${expiresAt.toISOString()}
+              AND me.master_expired_at > NOW()
               AND NOT EXISTS (
                 SELECT 1
                 FROM subscriptions s
@@ -169,7 +173,7 @@ subscriptions.post("/", async (c) => {
         throw new Error(
           profileId
             ? "Slot นี้ไม่ว่างแล้ว หรือใช้กับโปรโมชันที่เลือกไม่ได้"
-            : "สต็อกหมด หรือไม่มีโปรไฟล์ที่ใช้งานได้ถึงวันหมดอายุแพ็กเกจ",
+            : "สต็อกหมด หรือไม่มีโปรไฟล์ที่พร้อมใช้งาน",
         );
       }
 

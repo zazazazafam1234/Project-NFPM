@@ -47,6 +47,23 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
   );
 }
 
+function CapacityDots({ room }: { room: StreamingRoom }) {
+  return (
+    <>
+      {Array.from({ length: room.capacity }, (_, index) => {
+        const slot = room.slots[index];
+        const className = slot
+          ? slot.isAvailable
+            ? styles.capacityOpen
+            : styles.capacityUsed
+          : styles.capacityEmpty;
+
+        return <i className={className} key={slot?.id ?? `empty-${index}`} />;
+      })}
+    </>
+  );
+}
+
 export default function Home() {
   const stageRef = useRef<HTMLElement>(null);
   const slotDialogRef = useRef<HTMLDialogElement>(null);
@@ -177,10 +194,7 @@ export default function Home() {
             <p className={styles.roomsEmpty}>ยังไม่มีห้องที่พร้อมใช้งาน</p>
           ) : (
             rooms.map((room, index) => {
-              const occupiedCount = Math.max(
-                room.capacity - room.availableSlots,
-                0,
-              );
+              const occupiedCount = room.occupiedSlots;
 
               return (
                 <button
@@ -214,12 +228,7 @@ export default function Home() {
                     </small>
                     <span className={styles.roomCapacity}>
                       <span className={styles.capacityDots} aria-hidden="true">
-                        {room.slots.slice(0, room.capacity).map((slot) => (
-                          <i
-                            className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed}
-                            key={slot.id}
-                          />
-                        ))}
+                        <CapacityDots room={room} />
                       </span>
                       ผู้ใช้งาน {occupiedCount}/{room.capacity}
                     </span>
@@ -326,11 +335,9 @@ export default function Home() {
               </div>
               <div className={styles.slotUsage}>
                 <span className={styles.capacityDots} aria-hidden="true">
-                  {activeRoom.slots.slice(0, activeRoom.capacity).map((slot) => (
-                    <i className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed} key={slot.id} />
-                  ))}
+                  <CapacityDots room={activeRoom} />
                 </span>
-                <b>{activeRoom.capacity - activeRoom.availableSlots}/{activeRoom.capacity}</b>
+                <b>{activeRoom.occupiedSlots}/{activeRoom.capacity}</b>
                 <small>ผู้ใช้งาน</small>
               </div>
             </div>

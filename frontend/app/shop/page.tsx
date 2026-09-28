@@ -7,6 +7,23 @@ import { fetchStreamingRooms, type StreamingRoom } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
 
+function CapacityDots({ room }: { room: StreamingRoom }) {
+  return (
+    <>
+      {Array.from({ length: room.capacity }, (_, index) => {
+        const slot = room.slots[index];
+        const className = slot
+          ? slot.isAvailable
+            ? styles.capacityOpen
+            : styles.capacityUsed
+          : styles.capacityEmpty;
+
+        return <i className={className} key={slot?.id ?? `empty-${index}`} />;
+      })}
+    </>
+  );
+}
+
 export default function ShopPage() {
   const { user } = useSession();
   const [rooms, setRooms] = useState<StreamingRoom[]>([]);
@@ -133,12 +150,10 @@ export default function ShopPage() {
                   </div>
 
                   <div className={styles.roomOccupancy}>
-                    <div className={styles.capacityDots} aria-label={`มีผู้ใช้งาน ${room.capacity - room.availableSlots} จาก ${room.capacity} Slot`}>
-                      {room.slots.slice(0, room.capacity).map((slot) => (
-                        <i className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed} key={slot.id} />
-                      ))}
+                    <div className={styles.capacityDots} aria-label={`มีผู้ใช้งาน ${room.occupiedSlots} จาก ${room.capacity} Slot`}>
+                      <CapacityDots room={room} />
                     </div>
-                    <span><b>{room.capacity - room.availableSlots}/{room.capacity}</b> ผู้ใช้งาน</span>
+                    <span><b>{room.occupiedSlots}/{room.capacity}</b> ผู้ใช้งาน</span>
                   </div>
 
                   <div className={styles.slotSectionHeader}>

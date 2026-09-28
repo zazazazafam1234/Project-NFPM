@@ -33,12 +33,14 @@ catalog.get("/packages", async (c) => {
       ON me.service = pkg.service
       AND me.status = 'active'
       AND me.deleted_at IS NULL
-      AND me.master_expired_at >= NOW() + (pkg.duration_days || ' days')::interval
+      AND me.master_expired_at > NOW()
     LEFT JOIN profiles p
       ON p.master_email_id = me.id
-      AND p.status = 'available'
+      AND (
+        p.status = 'available'
+        OR (p.status = 'rented' AND p.profile_expires_at <= NOW())
+      )
       AND p.deleted_at IS NULL
-      AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= NOW() + (pkg.duration_days || ' days')::interval)
       AND NOT EXISTS (
         SELECT 1
         FROM subscriptions s
@@ -78,6 +80,7 @@ catalog.get("/streaming-rooms", async (c) => {
         me.status,
         me.master_expired_at,
         me.note,
+        me.max_profiles,
         COUNT(p.id)::int AS "profileCount"
       FROM master_emails me
       LEFT JOIN profiles p
@@ -132,7 +135,6 @@ catalog.get("/streaming-rooms", async (c) => {
     `,
   ]);
 
-  const now = Date.now();
   const activeProfileIds = new Set(activeSubscriptions.map((row) => row.profile_id));
   const packagesByService = new Map<string, typeof packages>();
   for (const pkg of packages) {
@@ -148,27 +150,19 @@ catalog.get("/streaming-rooms", async (c) => {
     profilesByRoom.set(profile.master_email_id, list);
   }
 
-  const dateAfterDays = (days: number) => now + days * 24 * 60 * 60 * 1000;
-  const isAfter = (value: string | Date | null, targetMs: number) =>
-    value === null || new Date(value).getTime() >= targetMs;
-
   return c.json(
     rooms.map((room, index) => {
       const roomPackages = packagesByService.get(room.service) ?? [];
-      const roomExpiresAt = new Date(room.master_expired_at).getTime();
       const slots = (profilesByRoom.get(room.id) ?? []).map((profile) => {
+        const isExpiredRental =
+          profile.status === "rented" &&
+          profile.profile_expires_at &&
+          new Date(profile.profile_expires_at) <= new Date();
         const isFree =
-          profile.status === "available" &&
+          (profile.status === "available" || Boolean(isExpiredRental)) &&
           !activeProfileIds.has(profile.id);
         const availablePackages = roomPackages
-          .filter((pkg) => {
-            const requiredUntil = dateAfterDays(Number(pkg.duration_days));
-            return (
-              isFree &&
-              roomExpiresAt >= requiredUntil &&
-              isAfter(profile.profile_expires_at, requiredUntil)
-            );
-          })
+          .filter(() => isFree)
           .map((pkg) => ({
             id: pkg.id,
             slug: pkg.slug,
@@ -184,12 +178,14 @@ catalog.get("/streaming-rooms", async (c) => {
         return {
           id: profile.id,
           name: profile.profile_name,
-          status: profile.status,
+          status: isFree ? "available" : profile.status,
           profileExpiresAt: profile.profile_expires_at,
           isAvailable: availablePackages.length > 0,
           availablePackages,
         };
       });
+      const availableSlots = slots.filter((slot) => slot.isAvailable).length;
+      const occupiedSlots = slots.filter((slot) => !slot.isAvailable).length;
 
       return {
         id: room.id,
@@ -198,8 +194,10 @@ catalog.get("/streaming-rooms", async (c) => {
         service: room.service,
         status: room.status,
         masterExpiredAt: room.master_expired_at,
-        capacity: room.profileCount,
-        availableSlots: slots.filter((slot) => slot.isAvailable).length,
+        capacity: Number(room.max_profiles),
+        profileCount: Number(room.profileCount),
+        availableSlots,
+        occupiedSlots,
         slots,
       };
     }),
