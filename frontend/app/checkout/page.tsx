@@ -1,56 +1,87 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import {
-  fetchPackages,
-  purchaseSubscription,
+  fetchStreamingRooms,
+  purchaseProfileSubscription,
   type PurchaseSubscriptionResponse,
   type StreamingPackage,
+  type StreamingRoom,
+  type StreamingRoomSlot,
 } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "../payment/page.module.css";
 
 export default function CheckoutPage() {
+  const router = useRouter();
   const { user, refreshSession } = useSession();
-  const [packages, setPackages] = useState<StreamingPackage[]>([]);
-  const [packageSlug, setPackageSlug] = useState("netflix-week");
+  const [rooms, setRooms] = useState<StreamingRoom[]>([]);
+  const [roomId, setRoomId] = useState("");
+  const [profileId, setProfileId] = useState("");
+  const [packageId, setPackageId] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [purchaseResult, setPurchaseResult] =
     useState<PurchaseSubscriptionResponse | null>(null);
-  const selectedPackage =
-    packages.find((pkg) => pkg.slug === packageSlug) ?? packages[0];
-  const enoughPoints = Boolean(
-    user && selectedPackage && user.points >= selectedPackage.priceAmount,
-  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedPackage = params.get("package");
-    if (requestedPackage) setPackageSlug(requestedPackage);
-    fetchPackages()
+    const requestedRoom = params.get("room") ?? "";
+    const requestedProfile = params.get("profile") ?? "";
+    fetchStreamingRooms()
       .then((items) => {
-        setPackages(items);
-        if (!requestedPackage && items[0]) setPackageSlug(items[0].slug);
+        setRooms(items);
+        const room = items.find((item) => item.id === requestedRoom) ?? items[0];
+        const slot =
+          room?.slots.find((item) => item.id === requestedProfile) ??
+          room?.slots.find((item) => item.isAvailable);
+        if (room) setRoomId(requestedRoom || room.id);
+        if (slot) setProfileId(requestedProfile || slot.id);
+        if (slot?.availablePackages[0]) setPackageId(slot.availablePackages[0].id);
       })
       .catch(() => undefined);
   }, []);
 
+  const selectedRoom = useMemo(
+    () => rooms.find((room) => room.id === roomId) ?? null,
+    [rooms, roomId],
+  );
+  const selectedSlot = useMemo<StreamingRoomSlot | null>(
+    () => selectedRoom?.slots.find((slot) => slot.id === profileId) ?? null,
+    [selectedRoom, profileId],
+  );
+  const availablePackages = useMemo(
+    () => selectedSlot?.availablePackages ?? [],
+    [selectedSlot],
+  );
+  const selectedPackage = useMemo<StreamingPackage | null>(
+    () => availablePackages.find((pkg) => pkg.id === packageId) ?? availablePackages[0] ?? null,
+    [availablePackages, packageId],
+  );
+  const enoughPoints = Boolean(
+    user && selectedPackage && user.points >= selectedPackage.priceAmount,
+  );
+
   async function purchase() {
-    if (!user || !selectedPackage) {
-      window.location.assign("/register");
+    if (!user) {
+      router.push("/register");
+      return;
+    }
+    if (!selectedSlot || !selectedPackage) {
+      setMessage("กรุณาเลือก slot และโปรโมชันก่อน");
       return;
     }
     setIsSubmitting(true);
     setMessage("");
     setPurchaseResult(null);
     try {
-      const result = await purchaseSubscription(selectedPackage.slug);
+      const result = await purchaseProfileSubscription(selectedSlot.id, selectedPackage.id);
       await refreshSession();
       setPurchaseResult(result);
-      setMessage("เช่าสำเร็จ ระบบล็อกโปรไฟล์และถอดรหัสข้อมูลเข้าชมให้แล้ว");
+      setMessage("เช่าสำเร็จ ระบบล็อก slot นี้และถอดรหัสข้อมูลเข้าชมให้แล้ว");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "ไม่สามารถใช้ Point ได้",
@@ -66,30 +97,28 @@ export default function CheckoutPage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
-        <Link className={styles.back} href="/">
-          ← เลือกแพ็กเกจ
+        <Link className={styles.back} href="/shop">
+          ← เลือกห้อง
         </Link>
       </header>
       <section className={styles.content}>
         <div className={styles.intro}>
-          <p className={styles.eyebrow}>USE FAST POINTS</p>
+          <p className={styles.eyebrow}>ROOM SLOT CHECKOUT</p>
           <h1>
-            ยืนยัน
+            เลือกโปร
             <br />
-            <em>การเลือกโปร</em>
+            <em>ให้ Slot นี้</em>
           </h1>
           <p>
-            {selectedPackage
-              ? `${selectedPackage.service.toUpperCase()} · ${selectedPackage.durationDays} วัน`
-              : "กำลังโหลดแพ็กเกจ"}
+            {selectedRoom && selectedSlot
+              ? `${selectedRoom.name} · ${selectedSlot.name}`
+              : "กรุณาเลือก slot จากหน้าร้านก่อน"}
           </p>
           <div className={styles.summary}>
             <div>
-              <span>{selectedPackage?.name ?? "เลือกแพ็กเกจ"}</span>
-              <strong>
-                ใช้ {selectedPackage?.priceAmount.toLocaleString() ?? "—"} Point
-              </strong>
-              <small>FAST POINTS PAYMENT</small>
+              <span>{selectedRoom?.service.toUpperCase() ?? "FAST MOVIE"}</span>
+              <strong>{selectedSlot?.name ?? "ยังไม่ได้เลือก slot"}</strong>
+              <small>{selectedRoom?.label ?? "เลือกห้องจากหน้าร้าน"}</small>
             </div>
             <b>✦</b>
           </div>
@@ -101,16 +130,17 @@ export default function CheckoutPage() {
             <b>{user?.points.toLocaleString() ?? "—"}</b>
             <small>POINTS AVAILABLE</small>
           </div>
-          {packages.length > 1 && (
+
+          {availablePackages.length > 0 ? (
             <div className={styles.topUpGrid}>
-              {packages.map((pkg) => (
+              {availablePackages.map((pkg) => (
                 <button
-                  className={packageSlug === pkg.slug ? styles.activePackage : ""}
+                  className={packageId === pkg.id ? styles.activePackage : ""}
                   key={pkg.id}
-                  onClick={() => setPackageSlug(pkg.slug)}
+                  onClick={() => setPackageId(pkg.id)}
                   type="button"
                 >
-                  <small>{pkg.availableStock > 0 ? "พร้อมเช่า" : "หมดสต็อก"}</small>
+                  <small>{pkg.service.toUpperCase()}</small>
                   <strong>{pkg.name}</strong>
                   <span>
                     {pkg.priceAmount} Point · {pkg.durationDays} วัน
@@ -118,18 +148,21 @@ export default function CheckoutPage() {
                 </button>
               ))}
             </div>
+          ) : (
+            <p className={styles.message}>
+              Slot นี้ยังไม่มีโปรโมชันที่ใช้ได้ หรือถูกจองไปแล้ว กรุณากลับไปเลือก slot ใหม่
+            </p>
           )}
+
           <div className={styles.divider} />
           <p className={styles.afterPay}>
             {!selectedPackage
-              ? "กำลังโหลดแพ็กเกจ"
-              : selectedPackage.availableStock <= 0
-                ? "แพ็กเกจนี้ยังไม่มีโปรไฟล์ว่าง กรุณาเลือกแพ็กเกจอื่นหรือแจ้งแอดมิน"
-                : user
-              ? enoughPoints
-                ? `คุณจะเหลือ ${(user.points - selectedPackage.priceAmount).toLocaleString()} Point หลังเลือกโปรนี้`
-                : "Point ไม่เพียงพอ กรุณาเติม Point ก่อน"
-              : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point"}
+              ? "เลือก slot ที่พร้อมใช้งานก่อน"
+              : user
+                ? enoughPoints
+                  ? `คุณจะเหลือ ${(user.points - selectedPackage.priceAmount).toLocaleString()} Point หลังเลือกโปรนี้`
+                  : "Point ไม่เพียงพอ กรุณาเติม Point ก่อน"
+                : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point"}
           </p>
           {message && <p className={styles.message}>{message}</p>}
           {purchaseResult && (
@@ -159,8 +192,8 @@ export default function CheckoutPage() {
             type="button"
             disabled={
               isSubmitting ||
+              !selectedSlot ||
               !selectedPackage ||
-              selectedPackage.availableStock <= 0 ||
               Boolean(user && !enoughPoints)
             }
             onClick={() => void purchase()}

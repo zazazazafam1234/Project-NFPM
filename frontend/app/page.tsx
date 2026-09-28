@@ -152,20 +152,16 @@ export default function Home() {
         id="packages"
       >
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>01 — PICK A PACKAGE</p>
-          <h2>เลือกแพ็กเกจที่พร้อมใช้งาน</h2>
-          <p>Stock มาจาก Profile ที่ว่างภายใต้ Email แม่ที่ยัง Active</p>
+          <p className={styles.eyebrow}>01 — PICK A ROOM</p>
+          <h2>เลือกห้อง แล้วเลือก Slot ที่ว่าง</h2>
+          <p>หลังเลือก Slot แล้วค่อยเลือกโปรรายวัน รายสัปดาห์ หรือรายเดือนในขั้นตอนถัดไป</p>
         </div>
         <div className={styles.roomGrid}>
           {packages.map((pkg, index) => (
             <Link
               className={`${styles.roomCard} ${pkg.availableStock <= 0 ? styles.roomUnavailable : ""}`}
               key={pkg.id}
-              href={
-                pkg.availableStock > 0
-                  ? `/checkout?package=${pkg.slug}`
-                  : "/payment"
-              }
+              href={pkg.availableStock > 0 ? "/shop" : "/payment"}
             >
               <span className={styles.roomIndex}>0{index + 1}</span>
               <span className={styles.netflixMark}>N</span>
@@ -200,7 +196,7 @@ export default function Home() {
                 </em>
               </span>
               <span className={styles.selectedBadge}>
-                {pkg.availableStock > 0 ? "เลือกโปรนี้ →" : "เติม Point / แจ้งแอดมิน"}
+                {pkg.availableStock > 0 ? "เลือกห้อง →" : "เติม Point / แจ้งแอดมิน"}
               </span>
             </Link>
           ))}
@@ -215,8 +211,8 @@ export default function Home() {
         <div className={styles.steps}>
           {[
             ["01", "เติม Point", "เลือก PromptPay หรือ Wallet"],
-            ["02", "เลือกแพ็กเกจ", "ระบบนับ stock จาก Profile ที่ว่าง"],
-            ["03", "รับข้อมูล", "ระบบล็อกโปรไฟล์และแสดงข้อมูลเข้าชม"],
+            ["02", "เลือกห้องและ Slot", "เห็นชัดว่า Profile ไหนยังว่าง"],
+            ["03", "เลือกโปรและรับข้อมูล", "ระบบล็อกโปรไฟล์และแสดงข้อมูลเข้าชม"],
           ].map(([number, title, copy]) => (
             <article key={number}>
               <span>{number}</span>
@@ -234,12 +230,12 @@ export default function Home() {
         <div className={styles.faqList}>
           <details>
             <summary>ทำไมต้องเลือกห้องก่อน?</summary>
-            <p>ระบบใหม่ไม่ต้องเลือกห้องเองแล้ว ระบบจะเลือก Profile ที่ว่างและล็อกให้ใน Transaction เดียว</p>
+            <p>เพื่อให้เห็น slot ที่ว่างจริงในแต่ละบัญชี แล้วเลือกโปรที่เหมาะกับ slot นั้นได้เอง</p>
           </details>
           <details>
             <summary>หลังเติม Pointต้องทำอะไรต่อ?</summary>
             <p>
-              เลือกโปรที่ต้องการ แล้วระบบจะหัก Point อัตโนมัติ และล็อก Room ให้คุณทันที
+              เลือกห้อง เลือก slot แล้วเลือกโปรที่ต้องการ ระบบจะหัก Point และล็อก profile ให้ทันที
             </p>
           </details>
         </div>

@@ -77,6 +77,32 @@ export function fetchPackages() {
   return apiFetch<StreamingPackage[]>("/catalog/packages");
 }
 
+export type StreamingRoomSlot = {
+  id: string;
+  name: string;
+  status: string;
+  profileExpiresAt: string | null;
+  isAvailable: boolean;
+  availablePackages: StreamingPackage[];
+};
+
+export type StreamingRoom = {
+  id: string;
+  name: string;
+  label: string;
+  service: string;
+  status: string;
+  masterExpiredAt: string;
+  capacity: number;
+  availableSlots: number;
+  slots: StreamingRoomSlot[];
+};
+
+export function fetchStreamingRooms(service?: string) {
+  const query = service ? `?service=${encodeURIComponent(service)}` : "";
+  return apiFetch<StreamingRoom[]>(`/catalog/streaming-rooms${query}`);
+}
+
 export type PurchaseSubscriptionResponse = {
   subscriptionId: string;
   status: string;
@@ -95,6 +121,13 @@ export function purchaseSubscription(packageSlug: string) {
   return apiFetch<PurchaseSubscriptionResponse>("/subscriptions", {
     method: "POST",
     body: JSON.stringify({ packageSlug, paymentMethod: "points" }),
+  });
+}
+
+export function purchaseProfileSubscription(profileId: string, packageId: string) {
+  return apiFetch<PurchaseSubscriptionResponse>("/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ profileId, packageId, paymentMethod: "points" }),
   });
 }
 

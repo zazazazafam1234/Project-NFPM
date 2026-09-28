@@ -17,9 +17,9 @@ import styles from "./page.module.css";
 
 const menu = [
   ["overview", "ภาพรวม", "◫"],
-  ["packages", "แพ็กเกจ", "▦"],
-  ["accounts", "Email แม่", "◎"],
-  ["profiles", "โปรไฟล์", "◉"],
+  ["packages", "โปรโมชัน", "▦"],
+  ["accounts", "ห้อง / Email แม่", "◎"],
+  ["profiles", "Slot / โปรไฟล์", "◉"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
 ] as const;
 
@@ -52,7 +52,10 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    if (user?.role === "admin") void loadInventory();
+    if (user?.role !== "admin") return;
+    queueMicrotask(() => {
+      void loadInventory();
+    });
   }, [user]);
 
   function handleDone(message: string) {
@@ -169,19 +172,19 @@ function Overview({ inventory }: { inventory: AdminInventory | null }) {
     <>
       <div className={styles.metrics}>
         <Metric
-          label="แพ็กเกจเปิดขาย"
+          label="โปรโมชันเปิดขาย"
           value={String(metrics?.activePackages ?? "—")}
           detail="packages.status = active"
           icon="▦"
         />
         <Metric
-          label="Email แม่ Active"
+          label="ห้อง Active"
           value={String(metrics?.activeMasterEmails ?? "—")}
           detail="พร้อมนับ stock"
           icon="◎"
         />
         <Metric
-          label="Profile ว่าง"
+          label="Slot ว่าง"
           value={String(metrics?.availableProfiles ?? "—")}
           detail="available profiles"
           icon="◉"
@@ -198,7 +201,7 @@ function Overview({ inventory }: { inventory: AdminInventory | null }) {
           <div className={styles.panelHead}>
             <div>
               <p className={styles.eyebrow}>LIVE STOCK</p>
-              <h2>Stock หน้าร้าน</h2>
+              <h2>ห้องและ Slot หน้าร้าน</h2>
             </div>
           </div>
           <div className={styles.roomList}>
@@ -298,14 +301,14 @@ function PackagesPanel({
 
   async function submit() {
     await saveAdminPackage(form);
-    onDone(`บันทึกแพ็กเกจ ${form.name} แล้ว`);
+    onDone(`บันทึกโปรโมชัน ${form.name} แล้ว`);
   }
 
   return (
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>STOREFRONT PACKAGES</p>
-        <h2>แพ็กเกจหน้าร้าน</h2>
+        <p className={styles.eyebrow}>CUSTOMER PROMOTIONS</p>
+        <h2>โปรโมชันให้ลูกค้าเลือก</h2>
         <div className={styles.packageAdmin}>
           {(inventory?.packages ?? []).map((pkg) => (
             <div key={pkg.id}>
@@ -333,10 +336,10 @@ function PackagesPanel({
         </div>
       </section>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>UPSERT PACKAGE</p>
-        <h2>เพิ่ม/แก้แพ็กเกจ</h2>
+        <p className={styles.eyebrow}>UPSERT PROMOTION</p>
+        <h2>เพิ่ม/แก้โปรโมชัน</h2>
         <p className={styles.muted}>
-          {isEditing ? `กำลังแก้ ${form.slug} — แก้ slug จะกลายเป็นแพ็กเกจใหม่` : "slug ใหม่ = เพิ่มแพ็กเกจใหม่"}
+          {isEditing ? `กำลังแก้ ${form.slug} — แก้ slug จะกลายเป็นโปรโมชันใหม่` : "slug ใหม่ = เพิ่มโปรโมชันใหม่"}
         </p>
         <div className={styles.formRows}>
           <label>
@@ -386,7 +389,7 @@ function PackagesPanel({
             onClick={() => void submit()}
             type="button"
           >
-            บันทึกแพ็กเกจ
+            บันทึกโปรโมชัน
           </button>
         </div>
       </section>
@@ -409,33 +412,29 @@ function AccountsPanel({
     masterExpiredAt: tomorrow,
     note: "",
   });
-
-  useEffect(() => {
-    if (!form.packageId && firstPackageId) {
-      setForm((current) => ({ ...current, packageId: firstPackageId }));
-    }
-  }, [firstPackageId, form.packageId]);
+  const selectedPackageId = form.packageId || firstPackageId;
 
   async function submit() {
     await saveMasterEmail({
       ...form,
+      packageId: selectedPackageId,
       masterExpiredAt: new Date(form.masterExpiredAt).toISOString(),
     });
     setForm({ ...form, email: "", password: "", note: "" });
-    onDone("เพิ่ม Email แม่และเข้ารหัส password แล้ว");
+    onDone("เพิ่มห้องบัญชีแม่และเข้ารหัส password แล้ว");
   }
 
   return (
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>MASTER EMAILS</p>
-        <h2>Email แม่</h2>
+        <p className={styles.eyebrow}>ROOM ACCOUNTS</p>
+        <h2>ห้อง / Email แม่</h2>
         <div className={styles.table}>
           {(inventory?.masterEmails ?? []).map((account) => (
             <div key={account.id}>
               <b>{account.email}</b>
               <span>
-                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} profile
+                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} slot
               </span>
               <em className={account.status === "active" ? styles.green : styles.yellow}>
                 {account.status}
@@ -445,16 +444,16 @@ function AccountsPanel({
         </div>
       </section>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>ADD SECURE ACCOUNT</p>
-        <h2>เพิ่ม Email แม่</h2>
+        <p className={styles.eyebrow}>ADD ROOM ACCOUNT</p>
+        <h2>เพิ่มห้องบัญชีแม่</h2>
         <div className={styles.formRows}>
           <label>
-            แพ็กเกจที่ผูก
+            โปรโมชันตั้งต้น / Service
             <select
-              value={form.packageId}
+              value={selectedPackageId}
               onChange={(event) => setForm({ ...form, packageId: event.target.value })}
             >
-              <option value="">เลือกแพ็กเกจ</option>
+              <option value="">เลือกโปรโมชันตั้งต้น</option>
               {(inventory?.packages ?? []).map((pkg) => (
                 <option key={pkg.id} value={pkg.id}>
                   {pkg.name} · {pkg.price_amount} Point · {pkg.duration_days} วัน
@@ -496,11 +495,11 @@ function AccountsPanel({
           </label>
           <button
             className={styles.primary}
-            disabled={!form.packageId || !form.email || !form.password}
+            disabled={!selectedPackageId || !form.email || !form.password}
             onClick={() => void submit()}
             type="button"
           >
-            เพิ่มและ Encrypt
+            เพิ่มห้องและ Encrypt
           </button>
         </div>
       </section>
@@ -523,22 +522,18 @@ function ProfilesPanel({
     profileExpiresAt: "",
     note: "",
   });
-
-  useEffect(() => {
-    if (!form.masterEmailId && firstAccount) {
-      setForm((current) => ({ ...current, masterEmailId: firstAccount }));
-    }
-  }, [firstAccount, form.masterEmailId]);
+  const selectedMasterEmailId = form.masterEmailId || firstAccount;
 
   async function submit() {
     await saveProfile({
       ...form,
+      masterEmailId: selectedMasterEmailId,
       profileExpiresAt: form.profileExpiresAt
         ? new Date(form.profileExpiresAt).toISOString()
         : undefined,
     });
     setForm({ ...form, profileName: "", pin: "", note: "" });
-    onDone("เพิ่ม Profile และเข้ารหัส PIN แล้ว");
+    onDone("เพิ่ม Slot และเข้ารหัส PIN แล้ว");
   }
 
   async function changeStatus(profileId: string, status: string) {
@@ -549,8 +544,8 @@ function ProfilesPanel({
   return (
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>PROFILES</p>
-        <h2>โปรไฟล์ที่ดูได้</h2>
+        <p className={styles.eyebrow}>ROOM SLOTS</p>
+        <h2>Slot / โปรไฟล์ที่ดูได้</h2>
         <div className={styles.table}>
           {(inventory?.profiles ?? []).map((profile) => (
             <div key={profile.id}>
@@ -575,18 +570,18 @@ function ProfilesPanel({
         </div>
       </section>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>ADD PROFILE</p>
-        <h2>เพิ่ม Profile</h2>
+        <p className={styles.eyebrow}>ADD SLOT</p>
+        <h2>เพิ่ม Slot โปรไฟล์</h2>
         <div className={styles.formRows}>
           <label>
-            Email แม่
+            ห้อง / Email แม่
             <select
-              value={form.masterEmailId}
+              value={selectedMasterEmailId}
               onChange={(event) =>
                 setForm({ ...form, masterEmailId: event.target.value })
               }
             >
-              <option value="">เลือก Email แม่</option>
+              <option value="">เลือกห้องบัญชีแม่</option>
               {(inventory?.masterEmails ?? []).map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.email} · {account.packageName ?? account.service}
@@ -595,7 +590,7 @@ function ProfilesPanel({
             </select>
           </label>
           <label>
-            ชื่อ Profile
+            ชื่อ Slot / Profile
             <input
               value={form.profileName}
               onChange={(event) =>
@@ -612,7 +607,7 @@ function ProfilesPanel({
             />
           </label>
           <label>
-            Profile ใช้ได้ถึง
+            Slot ใช้ได้ถึง
             <input
               type="date"
               value={form.profileExpiresAt}
@@ -630,11 +625,11 @@ function ProfilesPanel({
           </label>
           <button
             className={styles.primary}
-            disabled={!form.masterEmailId || !form.profileName}
+            disabled={!selectedMasterEmailId || !form.profileName}
             onClick={() => void submit()}
             type="button"
           >
-            เพิ่ม Profile
+            เพิ่ม Slot
           </button>
         </div>
       </section>

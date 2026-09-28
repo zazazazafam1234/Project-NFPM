@@ -8,6 +8,7 @@ const subscriptions = new Hono();
 type PurchaseBody = {
   packageId?: string;
   packageSlug?: string;
+  profileId?: string;
   paymentMethod?: string;
 };
 
@@ -66,7 +67,7 @@ subscriptions.post("/", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อนใช้งาน" }, 401);
 
-  const { packageId, packageSlug, paymentMethod = "points" } = await c.req.json<PurchaseBody>();
+  const { packageId, packageSlug, profileId, paymentMethod = "points" } = await c.req.json<PurchaseBody>();
   if (!packageId && !packageSlug) {
     return c.json({ message: "กรุณาเลือกแพ็กเกจ" }, 400);
   }
@@ -103,34 +104,67 @@ subscriptions.post("/", async (c) => {
       if (!user) throw new Error("ไม่พบบัญชีผู้ใช้");
       if (user.points < pkg.price_amount) throw new Error("Point ไม่เพียงพอ");
 
-      const [profile] = await sql`
-        SELECT
-          p.*,
-          me.email AS master_email,
-          me.password_ciphertext AS master_password_ciphertext,
-          me.master_expired_at
-        FROM profiles p
-        JOIN master_emails me ON me.id = p.master_email_id
-        WHERE p.status = 'available'
-          AND p.deleted_at IS NULL
-          AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
-          AND me.service = ${pkg.service}
-          AND me.status = 'active'
-          AND me.deleted_at IS NULL
-          AND me.master_expired_at >= ${expiresAt.toISOString()}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM subscriptions s
-            WHERE s.profile_id = p.id
-              AND s.status IN ('pending', 'active')
-              AND s.expires_at > NOW()
-          )
-        ORDER BY me.master_expired_at ASC, p.created_at ASC
-        FOR UPDATE OF p SKIP LOCKED
-        LIMIT 1
-      `;
+      const [profile] = profileId
+        ? await sql`
+            SELECT
+              p.*,
+              me.email AS master_email,
+              me.password_ciphertext AS master_password_ciphertext,
+              me.master_expired_at
+            FROM profiles p
+            JOIN master_emails me ON me.id = p.master_email_id
+            WHERE p.id = ${profileId}::uuid
+              AND p.status = 'available'
+              AND p.deleted_at IS NULL
+              AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
+              AND me.service = ${pkg.service}
+              AND me.status = 'active'
+              AND me.deleted_at IS NULL
+              AND me.master_expired_at >= ${expiresAt.toISOString()}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM subscriptions s
+                WHERE s.profile_id = p.id
+                  AND s.status IN ('pending', 'active')
+                  AND s.expires_at > NOW()
+              )
+            FOR UPDATE OF p
+            LIMIT 1
+          `
+        : await sql`
+            SELECT
+              p.*,
+              me.email AS master_email,
+              me.password_ciphertext AS master_password_ciphertext,
+              me.master_expired_at
+            FROM profiles p
+            JOIN master_emails me ON me.id = p.master_email_id
+            WHERE p.status = 'available'
+              AND p.deleted_at IS NULL
+              AND (p.profile_expires_at IS NULL OR p.profile_expires_at >= ${expiresAt.toISOString()})
+              AND me.service = ${pkg.service}
+              AND me.status = 'active'
+              AND me.deleted_at IS NULL
+              AND me.master_expired_at >= ${expiresAt.toISOString()}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM subscriptions s
+                WHERE s.profile_id = p.id
+                  AND s.status IN ('pending', 'active')
+                  AND s.expires_at > NOW()
+              )
+            ORDER BY me.master_expired_at ASC, p.created_at ASC
+            FOR UPDATE OF p SKIP LOCKED
+            LIMIT 1
+          `;
 
-      if (!profile) throw new Error("สต็อกหมด หรือไม่มีโปรไฟล์ที่ใช้งานได้ถึงวันหมดอายุแพ็กเกจ");
+      if (!profile) {
+        throw new Error(
+          profileId
+            ? "Slot นี้ไม่ว่างแล้ว หรือใช้กับโปรโมชันที่เลือกไม่ได้"
+            : "สต็อกหมด หรือไม่มีโปรไฟล์ที่ใช้งานได้ถึงวันหมดอายุแพ็กเกจ",
+        );
+      }
 
       const [updatedUser] = await sql`
         UPDATE "User"

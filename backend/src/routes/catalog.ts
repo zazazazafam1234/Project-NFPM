@@ -68,6 +68,144 @@ catalog.get("/packages", async (c) => {
   );
 });
 
+catalog.get("/streaming-rooms", async (c) => {
+  const service = c.req.query("service");
+  const [rooms, profiles, packages, activeSubscriptions] = await Promise.all([
+    sql`
+      SELECT
+        me.id,
+        me.service,
+        me.status,
+        me.master_expired_at,
+        me.note,
+        COUNT(p.id)::int AS "profileCount"
+      FROM master_emails me
+      LEFT JOIN profiles p
+        ON p.master_email_id = me.id
+        AND p.deleted_at IS NULL
+      WHERE me.deleted_at IS NULL
+        AND me.status = 'active'
+        AND me.master_expired_at > NOW()
+        AND (${service ?? null}::text IS NULL OR me.service = ${service ?? null})
+      GROUP BY me.id
+      ORDER BY me.master_expired_at ASC, me.created_at ASC
+      LIMIT 80
+    `,
+    sql`
+      SELECT
+        p.id,
+        p.master_email_id,
+        p.profile_name,
+        p.status,
+        p.profile_expires_at
+      FROM profiles p
+      JOIN master_emails me ON me.id = p.master_email_id
+      WHERE p.deleted_at IS NULL
+        AND me.deleted_at IS NULL
+        AND me.status = 'active'
+        AND me.master_expired_at > NOW()
+        AND (${service ?? null}::text IS NULL OR me.service = ${service ?? null})
+      ORDER BY p.master_email_id, p.profile_name
+    `,
+    sql`
+      SELECT
+        id,
+        slug,
+        name,
+        service,
+        description,
+        duration_days,
+        price_amount,
+        currency,
+        status
+      FROM packages
+      WHERE status = 'active'
+        AND deleted_at IS NULL
+        AND (${service ?? null}::text IS NULL OR service = ${service ?? null})
+      ORDER BY sort_order, price_amount
+    `,
+    sql`
+      SELECT profile_id
+      FROM subscriptions
+      WHERE status IN ('pending', 'active')
+        AND expires_at > NOW()
+    `,
+  ]);
+
+  const now = Date.now();
+  const activeProfileIds = new Set(activeSubscriptions.map((row) => row.profile_id));
+  const packagesByService = new Map<string, typeof packages>();
+  for (const pkg of packages) {
+    const list = packagesByService.get(pkg.service) ?? [];
+    list.push(pkg);
+    packagesByService.set(pkg.service, list);
+  }
+
+  const profilesByRoom = new Map<string, typeof profiles>();
+  for (const profile of profiles) {
+    const list = profilesByRoom.get(profile.master_email_id) ?? [];
+    list.push(profile);
+    profilesByRoom.set(profile.master_email_id, list);
+  }
+
+  const dateAfterDays = (days: number) => now + days * 24 * 60 * 60 * 1000;
+  const isAfter = (value: string | Date | null, targetMs: number) =>
+    value === null || new Date(value).getTime() >= targetMs;
+
+  return c.json(
+    rooms.map((room, index) => {
+      const roomPackages = packagesByService.get(room.service) ?? [];
+      const roomExpiresAt = new Date(room.master_expired_at).getTime();
+      const slots = (profilesByRoom.get(room.id) ?? []).map((profile) => {
+        const isFree =
+          profile.status === "available" &&
+          !activeProfileIds.has(profile.id);
+        const availablePackages = roomPackages
+          .filter((pkg) => {
+            const requiredUntil = dateAfterDays(Number(pkg.duration_days));
+            return (
+              isFree &&
+              roomExpiresAt >= requiredUntil &&
+              isAfter(profile.profile_expires_at, requiredUntil)
+            );
+          })
+          .map((pkg) => ({
+            id: pkg.id,
+            slug: pkg.slug,
+            name: pkg.name,
+            service: pkg.service,
+            description: pkg.description,
+            durationDays: pkg.duration_days,
+            priceAmount: pkg.price_amount,
+            currency: pkg.currency,
+            status: pkg.status,
+          }));
+
+        return {
+          id: profile.id,
+          name: profile.profile_name,
+          status: profile.status,
+          profileExpiresAt: profile.profile_expires_at,
+          isAvailable: availablePackages.length > 0,
+          availablePackages,
+        };
+      });
+
+      return {
+        id: room.id,
+        name: `${room.service.toUpperCase()} ห้อง ${index + 1}`,
+        label: room.note || `หมดอายุ ${new Date(room.master_expired_at).toLocaleDateString("th-TH")}`,
+        service: room.service,
+        status: room.status,
+        masterExpiredAt: room.master_expired_at,
+        capacity: room.profileCount,
+        availableSlots: slots.filter((slot) => slot.isAvailable).length,
+        slots,
+      };
+    }),
+  );
+});
+
 // ─── Rooms ────────────────────────────────────────────────────────
 
 catalog.get("/rooms", async (c) => {
