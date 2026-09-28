@@ -5,14 +5,17 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
+    "line:worker": "bun run src/libs/line/worker.ts",
     "db:seed": "bun run src/seed.ts",
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
     "bun": "^1.4.2",
+    "eventsource-parser": "^4.1.1",
     "hono": "^4.6.0",
     "jose": "^5.9.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/npm": "latest"

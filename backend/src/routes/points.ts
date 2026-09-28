@@ -1,13 +1,11 @@
 import { Hono, type Context } from "hono";
-import sql from "../db";
 import { getSessionUserId } from "../session";
+import { createPromptPayTopUp, getTopUpForUser } from "../topups";
 
 const points = new Hono();
 
 const VALID_TOPUP_METHODS: Record<string, string> = {
   promptpay: "PromptPay",
-  wallet: "TrueMoney Wallet",
-  truemoney: "TrueMoney Wallet",
 };
 
 export async function createTopUp(c: Context) {
@@ -24,35 +22,29 @@ export async function createTopUp(c: Context) {
     return c.json({ message: "จำนวน Point ไม่ถูกต้อง" }, 400);
   }
   if (!VALID_TOPUP_METHODS[paymentMethod]) {
-    return c.json({ message: "ช่องทางการชำระเงินไม่ถูกต้อง" }, 400);
+    return c.json({ message: "ตอนนี้รองรับ PromptPay QR เท่านั้น" }, 400);
   }
 
   try {
-    const result = await sql.begin(async (sql) => {
-      const [user] = await sql`
-        UPDATE "User" SET points = points + ${points}, "updatedAt" = NOW()
-        WHERE id = ${userId}
-          AND status = 'active'
-        RETURNING points
-      `;
-      if (!user) throw new Error("บัญชีนี้ไม่พร้อมใช้งาน");
-      await sql`
-        INSERT INTO "Transaction" (id, "userId", type, amount, description, "createdAt")
-        VALUES (${crypto.randomUUID()}, ${userId}, 'topup', ${points},
-                ${`เติม ${points.toLocaleString()} Point — ${VALID_TOPUP_METHODS[paymentMethod]}`}, NOW())
-      `;
-      return { points: user.points };
-    });
-
-    return c.json({ points: result.points });
+    const topUp = await createPromptPayTopUp({ userId, points });
+    return c.json(topUp, 201);
   } catch (err) {
     return c.json(
-      { message: err instanceof Error ? err.message : "เติม Point ไม่สำเร็จ" },
+      { message: err instanceof Error ? err.message : "สร้างรายการเติม Point ไม่สำเร็จ" },
       400,
     );
   }
 }
 
 points.post("/top-ups", createTopUp);
+points.get("/top-ups/:id", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+
+  const topUp = await getTopUpForUser(c.req.param("id"), userId);
+  if (!topUp) return c.json({ message: "ไม่พบรายการเติมเงิน" }, 404);
+
+  return c.json(topUp);
+});
 
 export default points;

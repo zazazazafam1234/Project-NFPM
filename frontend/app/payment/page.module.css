@@ -219,6 +219,10 @@
   background: #7953ed1f;
   color: #fff;
 }
+.methods button.disabledMethod {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .methods button > span:nth-child(2) {
   display: grid;
   min-width: 0;
@@ -330,6 +334,18 @@
   text-align: center;
   background: #fff;
 }
+.qrImageBox {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid #ffffff35;
+  border-radius: 15px;
+  background: #fff;
+}
+.qrImageBox img {
+  width: min(150px, 86%);
+  height: auto;
+}
 .qrMark {
   display: grid;
   place-items: center;
@@ -358,6 +374,27 @@
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+.paymentRef {
+  display: grid;
+  gap: 5px;
+}
+.paymentRef span,
+.paymentRef small,
+.paymentRef em {
+  color: #aaa2b4;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.55;
+}
+.paymentRef strong {
+  color: #f7f4ff;
+  font-size: clamp(24px, 4vw, 34px);
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+.paymentRef small {
+  color: #c7b7ff;
 }
 .setupNote {
   margin-top: 10px !important;
