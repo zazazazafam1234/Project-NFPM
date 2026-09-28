@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type ReactNode } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import {
@@ -38,6 +39,12 @@ const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
 function dateInputValue(value: string | null | undefined) {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
 }
+
+const rowMotion = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const },
+};
 
 export default function AdminPage() {
   const { user, isLoading: sessionLoading } = useSession();
@@ -157,8 +164,30 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {notice && <div className={styles.notice}><span>✓</span>{notice}</div>}
-        {error && <div className={styles.notice}><span>!</span>{error}</div>}
+        <AnimatePresence>
+          {notice && (
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              className={styles.notice}
+              exit={{ opacity: 0, y: -8 }}
+              initial={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span>✓</span>{notice}
+            </motion.div>
+          )}
+          {error && (
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              className={styles.notice}
+              exit={{ opacity: 0, y: -8 }}
+              initial={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span>!</span>{error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {section === "overview" && <Overview inventory={inventory} />}
         {section === "packages" && (
@@ -231,14 +260,14 @@ function Overview({ inventory }: { inventory: AdminInventory | null }) {
           </div>
           <div className={styles.roomList}>
             {visiblePackages.map((pkg) => (
-              <div key={pkg.id}>
+              <motion.div key={pkg.id} {...rowMotion}>
                 <span className={`${styles.statusDot} ${styles.green}`} />
                 <b>{pkg.name}</b>
                 <span>{pkg.availableStock} profile</span>
                 <em className={pkg.availableStock > 0 ? styles.green : styles.red}>
                   {pkg.availableStock > 0 ? "พร้อมขาย" : "หมด"}
                 </em>
-              </div>
+              </motion.div>
             ))}
             {visiblePackages.length === 0 && (
               <p className={styles.emptyInline}>ไม่พบรายการที่ค้นหา</p>
@@ -320,12 +349,24 @@ function EditModal({
   onClose: () => void;
 }) {
   return (
-    <div className={styles.modalBackdrop} role="presentation" onMouseDown={onClose}>
-      <section
+    <motion.div
+      animate={{ opacity: 1 }}
+      className={styles.modalBackdrop}
+      exit={{ opacity: 0 }}
+      initial={{ opacity: 0 }}
+      role="presentation"
+      transition={{ duration: 0.18 }}
+      onMouseDown={onClose}
+    >
+      <motion.section
+        animate={{ opacity: 1, scale: 1, y: 0 }}
         className={styles.modalCard}
+        exit={{ opacity: 0, scale: 0.98, y: 10 }}
+        initial={{ opacity: 0, scale: 0.98, y: 10 }}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        transition={{ duration: 0.2, ease: "easeOut" }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className={styles.modalHead}>
@@ -338,8 +379,8 @@ function EditModal({
           </button>
         </div>
         {children}
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }
 
@@ -425,7 +466,7 @@ function PackagesPanel({
         </div>
         <div className={styles.packageAdmin}>
           {visiblePackages.map((pkg) => (
-            <div key={pkg.id}>
+            <motion.div key={pkg.id} {...rowMotion}>
               <span>{pkg.slug}</span>
               <b>{pkg.price_amount} Point</b>
               <em className={pkg.status === "active" ? styles.green : styles.yellow}>
@@ -458,7 +499,7 @@ function PackagesPanel({
               >
                 ลบ
               </button>
-            </div>
+            </motion.div>
           ))}
           {visiblePackages.length === 0 && (
             <p className={styles.emptyInline}>ไม่พบโปรโมชันที่ค้นหา</p>
@@ -544,8 +585,9 @@ function PackagesPanel({
         </div>
       </section>
     </div>
-    {editingId && (
-      <EditModal title="แก้ไขโปรโมชัน" onClose={() => setEditingId(null)}>
+    <AnimatePresence>
+      {editingId && (
+        <EditModal title="แก้ไขโปรโมชัน" onClose={() => setEditingId(null)}>
         <div className={styles.formRows}>
           <label>
             Slug
@@ -620,8 +662,9 @@ function PackagesPanel({
             </button>
           </div>
         </div>
-      </EditModal>
-    )}
+        </EditModal>
+      )}
+    </AnimatePresence>
     </>
   );
 }
@@ -726,7 +769,7 @@ function AccountsPanel({
         </div>
         <div className={styles.table}>
           {visibleAccounts.map((account) => (
-            <div key={account.id}>
+            <motion.div key={account.id} {...rowMotion}>
               <b>{account.email}</b>
               <span>
                 {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} slot
@@ -758,7 +801,7 @@ function AccountsPanel({
               >
                 ลบ
               </button>
-            </div>
+            </motion.div>
           ))}
           {visibleAccounts.length === 0 && (
             <p className={styles.emptyInline}>ไม่พบห้องที่ค้นหา</p>
@@ -850,8 +893,9 @@ function AccountsPanel({
         </div>
       </section>
     </div>
-    {editingId && (
-      <EditModal title="แก้ไขห้องบัญชีแม่" onClose={() => setEditingId(null)}>
+    <AnimatePresence>
+      {editingId && (
+        <EditModal title="แก้ไขห้องบัญชีแม่" onClose={() => setEditingId(null)}>
         <div className={styles.formRows}>
           <label>
             โปรโมชันตั้งต้น / Service
@@ -935,8 +979,9 @@ function AccountsPanel({
             </button>
           </div>
         </div>
-      </EditModal>
-    )}
+        </EditModal>
+      )}
+    </AnimatePresence>
     </>
   );
 }
@@ -1076,7 +1121,7 @@ function ProfilesPanel({
         </div>
         <div className={styles.table}>
           {visibleProfiles.map((profile) => (
-            <div key={profile.id}>
+            <motion.div key={profile.id} {...rowMotion}>
               <b>{profile.profile_name}</b>
               <span>{profile.masterEmail} · {profile.packageName ?? profile.service}</span>
               <em className={profile.status === "available" ? styles.green : styles.yellow}>
@@ -1116,7 +1161,7 @@ function ProfilesPanel({
               >
                 ลบ
               </button>
-            </div>
+            </motion.div>
           ))}
           {visibleProfiles.length === 0 && (
             <p className={styles.emptyInline}>ไม่พบ Slot ในหมวดหมู่/คำค้นนี้</p>
@@ -1203,8 +1248,9 @@ function ProfilesPanel({
         </div>
       </section>
     </div>
-    {editingId && (
-      <EditModal title="แก้ไข Slot โปรไฟล์" onClose={() => setEditingId(null)}>
+    <AnimatePresence>
+      {editingId && (
+        <EditModal title="แก้ไข Slot โปรไฟล์" onClose={() => setEditingId(null)}>
         <div className={styles.formRows}>
           <label>
             ห้อง / Email แม่
@@ -1283,8 +1329,9 @@ function ProfilesPanel({
             </button>
           </div>
         </div>
-      </EditModal>
-    )}
+        </EditModal>
+      )}
+    </AnimatePresence>
     </>
   );
 }
