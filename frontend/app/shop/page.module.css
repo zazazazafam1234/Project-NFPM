@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  min-width: 0;
   padding-bottom: 80px;
   color: #f7f5ff;
   background: #09080f;
@@ -14,6 +15,7 @@
   align-items: center;
   justify-content: space-between;
   height: 62px;
+  min-width: 0;
   padding: 0 clamp(20px, 5vw, 80px);
   border-bottom: 1px solid #ffffff10;
   background: #09080fcc;
@@ -103,6 +105,10 @@
   gap: 24px;
   padding: 0 clamp(20px, 5vw, 80px);
   align-items: start;
+}
+.layout > *,
+.main {
+  min-width: 0;
 }
 
 /* ─── Sidebar ─── */
@@ -209,6 +215,27 @@
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+@keyframes room-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roomCardLarge,
+  .catBtn,
+  .catActive,
+  .slotAvailable {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
 
 /* ─── Product grid ─── */
 .grid {
@@ -222,12 +249,39 @@
   gap: 14px;
 }
 .roomCardLarge {
+  position: relative;
+  overflow: hidden;
   display: grid;
   gap: 18px;
   padding: 20px;
-  border: 1px solid #ffffff12;
+  border: 1px solid #ffffff18;
   border-radius: 18px;
-  background: #16131e;
+  background: linear-gradient(145deg, #201b2d, #15121c 70%);
+  box-shadow: 0 14px 34px #0002;
+  animation: room-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+.roomCardLarge:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.roomCardLarge:nth-child(3) {
+  animation-delay: 0.14s;
+}
+.roomCardLarge:nth-child(4) {
+  animation-delay: 0.21s;
+}
+.roomCardLarge:hover {
+  z-index: 1;
+  border-color: #a783ff70;
+  box-shadow: 0 20px 42px #0005;
+  transform: translateY(-4px);
+}
+.roomCardLarge:focus-within {
+  border-color: #a783ff;
+  box-shadow: 0 0 0 3px #9572ff24;
 }
 .roomHead {
   display: flex;
@@ -235,18 +289,26 @@
   justify-content: space-between;
   gap: 18px;
 }
+.roomHead > div {
+  min-width: 0;
+}
 .roomHead h3 {
   margin: 0 0 6px;
   font-size: 18px;
   letter-spacing: -0.3px;
+  overflow-wrap: anywhere;
 }
 .roomHead span {
   color: #8a8396;
   font-size: 11px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .roomHead b {
-  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 100%;
+  white-space: normal;
+  text-align: right;
 }
 .slotGrid {
   display: grid;
@@ -258,6 +320,7 @@
   display: grid;
   gap: 5px;
   min-height: 76px;
+  min-width: 0;
   padding: 12px;
   border-radius: 12px;
   font: inherit;
@@ -268,10 +331,21 @@
   color: #fff;
   background: #7953ed20;
   text-decoration: none;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 .slotAvailable:hover {
   border-color: #a88cff;
   background: #7953ed33;
+  transform: translateY(-2px);
+}
+.slotAvailable:focus-visible,
+.catBtn:focus-visible,
+.catActive:focus-visible {
+  outline: 2px solid #b59cff;
+  outline-offset: 2px;
 }
 .slotUnavailable {
   border: 1px solid #ffffff10;
@@ -282,6 +356,7 @@
 .slotAvailable strong,
 .slotUnavailable strong {
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .slotAvailable span,
 .slotUnavailable span {
@@ -432,6 +507,7 @@
   .catList {
     flex-direction: row;
     flex-wrap: wrap;
+    min-width: 0;
   }
   .catBtn,
   .catActive {
@@ -441,6 +517,23 @@
   }
 }
 @media (max-width: 540px) {
+  .header {
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .pointsBadge {
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  .hero h1 {
+    font-size: clamp(29px, 8vw, 38px);
+    line-height: 1.2;
+  }
+  .gridHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
   .navLinks {
     display: none;
   }
@@ -461,5 +554,30 @@
   .roomGrid,
   .slotGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 360px) {
+  .page {
+    padding-bottom: 48px;
+  }
+  .header {
+    padding-inline: 9px;
+  }
+  .brand {
+    font-size: 13px;
+  }
+  .mobileLogin {
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+  .roomCardLarge {
+    padding: 15px;
+  }
+  .roomHead {
+    gap: 9px;
+  }
+  .roomHead b {
+    font-size: 10px;
   }
 }

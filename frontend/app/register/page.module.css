@@ -1,8 +1,10 @@
 .page {
   min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 24px;
   color: #f7f5ff;
   background: #09080f;
@@ -20,6 +22,7 @@
 .card {
   position: relative;
   width: min(100%, 510px);
+  min-width: 0;
   padding: 38px;
   border: 1px solid #ffffff1e;
   border-radius: 28px;
@@ -131,6 +134,9 @@
   }
 }
 @media (max-width: 540px) {
+  .page {
+    padding: 18px;
+  }
   .card {
     padding: 28px 23px;
   }

@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  min-width: 0;
   padding: 20px clamp(20px, 5vw, 80px) 70px;
   color: #f7f5ff;
   background: #09080f;
@@ -69,6 +70,10 @@
   align-items: center;
   min-height: calc(100vh - 152px);
 }
+.content > *,
+.paymentDetail > div {
+  min-width: 0;
+}
 .eyebrow {
   margin: 0 0 15px;
   color: #aa8eff;
@@ -91,6 +96,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-top: 31px;
   padding: 17px;
   border: 1px solid #ffffff16;
@@ -313,6 +319,7 @@
   color: #aaa2b4;
   font-size: 12px;
   line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .setupNote {
   margin-top: 10px !important;
@@ -365,6 +372,8 @@
   .header {
     height: 54px;
     border-radius: 15px;
+    gap: 10px;
+    padding-inline: 12px;
   }
   .back {
     font-size: 10px;
@@ -389,6 +398,26 @@
     grid-template-columns: 1fr;
   }
   .intro h1 {
-    font-size: 48px;
+    font-size: clamp(36px, 10vw, 48px);
+  }
+}
+
+@media (max-width: 380px) {
+  .page {
+    padding-inline: 14px;
+  }
+  .content {
+    padding-top: 48px;
+  }
+  .paymentCard {
+    padding: 16px;
+  }
+  .paymentDetail {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .summary {
+    align-items: flex-start;
+    padding: 13px;
   }
 }

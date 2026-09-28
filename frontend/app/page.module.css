@@ -688,6 +688,22 @@
   font-weight: 800;
   letter-spacing: 1px;
 }
+.roomFooter small i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #55d98a;
+  box-shadow: 0 0 9px #55d98a;
+}
+.roomFooter small.roomFull {
+  color: #ff9298;
+}
+.roomFooter small.roomFull i {
+  background: #ef6872;
+  box-shadow: 0 0 8px #ef6872;
+}
 .roomUnavailable .roomFooter small {
   color: #ff7e86;
 }
@@ -721,6 +737,11 @@
   border-radius: 50%;
   background: transparent;
 }
+.capacityDots i.capacityOpen {
+  border-color: #55d98a;
+  background: #55d98a;
+  box-shadow: 0 0 7px #55d98a99;
+}
 
 .capacityDots i.capacityUsed {
   border-color: #ef3f47;
@@ -729,9 +750,35 @@
 }
 
 .roomFooter em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #d2c7dd;
   font-size: 10px;
   font-style: normal;
+}
+
+.roomSkeleton {
+  min-height: 245px;
+  border: 1px solid #ffffff20;
+  border-radius: 20px;
+  background: linear-gradient(110deg, #191720 25%, #25212d 45%, #191720 65%);
+  background-size: 220% 100%;
+  animation: room-shimmer 1.5s linear infinite;
+}
+
+.roomsEmpty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 28px 0;
+  color: #aaa4b5;
+  font-size: 14px;
+}
+
+@keyframes room-shimmer {
+  to {
+    background-position: -220% 0;
+  }
 }
 
 .selectedBadge {

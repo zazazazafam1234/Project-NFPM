@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
-import { fetchPackages, type StreamingPackage } from "./lib/api";
+import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
 import styles from "./page.module.css";
 
 type RevealSectionProps = {
@@ -49,14 +49,18 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
 
 export default function Home() {
   const stageRef = useRef<HTMLElement>(null);
-  const [packages, setPackages] = useState<StreamingPackage[]>([]);
-  const availableCount = packages.reduce(
-    (total, item) => total + item.availableStock,
+  const [rooms, setRooms] = useState<StreamingRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const availableCount = rooms.reduce(
+    (total, room) => total + room.availableSlots,
     0,
   );
 
   useEffect(() => {
-    void fetchPackages().then(setPackages).catch(() => undefined);
+    fetchStreamingRooms()
+      .then(setRooms)
+      .catch(() => undefined)
+      .finally(() => setRoomsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -157,49 +161,63 @@ export default function Home() {
           <p>หลังเลือก Slot แล้วค่อยเลือกโปรรายวัน รายสัปดาห์ หรือรายเดือนในขั้นตอนถัดไป</p>
         </div>
         <div className={styles.roomGrid}>
-          {packages.map((pkg, index) => (
-            <Link
-              className={`${styles.roomCard} ${pkg.availableStock <= 0 ? styles.roomUnavailable : ""}`}
-              key={pkg.id}
-              href={pkg.availableStock > 0 ? "/shop" : "/payment"}
-            >
-              <span className={styles.roomIndex}>0{index + 1}</span>
-              <span className={styles.netflixMark}>N</span>
-              <span className={styles.nowPlaying}>
-                FAST
-                <br />
-                <b>Movie</b>
-              </span>
+          {roomsLoading ? (
+            Array.from({ length: 3 }, (_, index) => (
+              <div className={styles.roomSkeleton} key={index} />
+            ))
+          ) : rooms.length === 0 ? (
+            <p className={styles.roomsEmpty}>ยังไม่มีห้องที่พร้อมใช้งาน</p>
+          ) : (
+            rooms.map((room, index) => {
+              const occupiedCount = Math.max(
+                room.capacity - room.availableSlots,
+                0,
+              );
 
-              <span className={styles.roomFooter}>
-                <small>
-                  {pkg.availableStock > 0 ? "พร้อมเช่า" : "รอเติมสต็อก"}
-                </small>
-                <span className={styles.roomCapacity}>
-                  <span className={styles.capacityDots} aria-hidden="true">
-                    {Array.from({ length: 4 }, (_, member) => (
-                      <i
-                        className={
-                          member >= Math.min(pkg.availableStock, 4)
-                            ? styles.capacityUsed
-                            : ""
-                        }
-                        key={member}
-                      />
-                    ))}
+              return (
+                <Link className={styles.roomCard} key={room.id} href="/shop">
+                  <span className={styles.roomIndex}>
+                    {String(index + 1).padStart(2, "0")}
                   </span>
-                  เหลือ {pkg.availableStock} โปรไฟล์
-                </span>
-                <strong>{pkg.name}</strong>
-                <em>
-                  {pkg.priceAmount} Point · {pkg.durationDays} วัน
-                </em>
-              </span>
-              <span className={styles.selectedBadge}>
-                {pkg.availableStock > 0 ? "เลือกห้อง →" : "เติม Point / แจ้งแอดมิน"}
-              </span>
-            </Link>
-          ))}
+                  <span className={styles.netflixMark}>
+                    {room.service.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className={styles.nowPlaying}>
+                    ROOM
+                    <br />
+                    <b>{room.service}</b>
+                  </span>
+
+                  <span className={styles.roomFooter}>
+                    <small
+                      className={
+                        room.availableSlots > 0 ? styles.roomOpen : styles.roomFull
+                      }
+                    >
+                      <i aria-hidden="true" />
+                      {room.availableSlots > 0 ? "มี Slot ว่าง" : "เต็มแล้ว"}
+                    </small>
+                    <span className={styles.roomCapacity}>
+                      <span className={styles.capacityDots} aria-hidden="true">
+                        {room.slots.slice(0, room.capacity).map((slot) => (
+                          <i
+                            className={slot.isAvailable ? styles.capacityOpen : styles.capacityUsed}
+                            key={slot.id}
+                          />
+                        ))}
+                      </span>
+                      ผู้ใช้งาน {occupiedCount}/{room.capacity}
+                    </span>
+                    <strong>{room.name}</strong>
+                    <em>{room.label}</em>
+                  </span>
+                  <span className={styles.selectedBadge}>
+                    ดู Slot ในห้อง →
+                  </span>
+                </Link>
+              );
+            })
+          )}
         </div>
       </RevealSection>
 

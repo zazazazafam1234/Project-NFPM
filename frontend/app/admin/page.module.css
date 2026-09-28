@@ -43,6 +43,7 @@
 .page {
   display: grid;
   grid-template-columns: 238px 1fr;
+  min-width: 0;
   min-height: 100vh;
   color: #f5f2fc;
   background: #0b0910;
@@ -182,6 +183,12 @@
 .workspace {
   min-width: 0;
   padding: 34px clamp(25px, 5vw, 76px);
+}
+.workspace > *,
+.metrics > *,
+.dashboardGrid > *,
+.panel {
+  min-width: 0;
 }
 .header {
   display: flex;
@@ -353,6 +360,10 @@
   justify-content: space-between;
   gap: 15px;
 }
+.panelHead h2,
+.panel > h2 {
+  overflow-wrap: anywhere;
+}
 .panelTools {
   display: flex;
   align-items: center;
@@ -392,6 +403,8 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  min-width: 0;
+  flex-wrap: wrap;
   padding: 12px;
   border-radius: 10px;
   background: #0f0e15;
@@ -485,6 +498,7 @@
 .table > div span {
   margin-left: auto;
   color: #948c9d;
+  overflow-wrap: anywhere;
 }
 .table > div em {
   min-width: 70px;
@@ -714,6 +728,7 @@
     display: flex;
     overflow-x: auto;
     margin-top: 16px;
+    scrollbar-width: thin;
   }
   .sidebar nav button {
     white-space: nowrap;
@@ -766,6 +781,12 @@
   }
   .table > div span {
     display: none;
+  }
+  .table > div {
+    gap: 7px;
+  }
+  .table > div em {
+    overflow-wrap: anywhere;
   }
 }
 
