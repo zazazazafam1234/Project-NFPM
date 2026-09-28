@@ -7,6 +7,23 @@ const admin = new Hono();
 
 admin.use("*", requireAdmin);
 
+function nullableDate(value: string | null | undefined) {
+  if (value === undefined) return undefined;
+  if (!value) return null;
+  return value;
+}
+
+function addUpdate(
+  sets: string[],
+  values: unknown[],
+  column: string,
+  value: unknown,
+  cast = "",
+) {
+  values.push(value);
+  sets.push(`${column} = $${values.length}${cast}`);
+}
+
 admin.get("/inventory", async (c) => {
   const [packages, masterEmails, profiles, metrics] = await Promise.all([
     sql`
@@ -243,6 +260,62 @@ admin.post("/packages", async (c) => {
   return c.json(pkg, 201);
 });
 
+admin.patch("/packages/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    slug?: string;
+    name?: string;
+    service?: string;
+    description?: string | null;
+    durationDays?: number;
+    priceAmount?: number;
+    currency?: string;
+    status?: "active" | "inactive" | "archived";
+  }>();
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (body.slug !== undefined) addUpdate(sets, values, "slug", body.slug);
+  if (body.name !== undefined) addUpdate(sets, values, "name", body.name);
+  if (body.service !== undefined) addUpdate(sets, values, "service", body.service);
+  if (body.description !== undefined) addUpdate(sets, values, "description", body.description);
+  if (body.durationDays !== undefined) addUpdate(sets, values, "duration_days", body.durationDays);
+  if (body.priceAmount !== undefined) addUpdate(sets, values, "price_amount", body.priceAmount);
+  if (body.currency !== undefined) addUpdate(sets, values, "currency", body.currency);
+  if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::package_status");
+
+  if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
+  values.push(id);
+
+  const [pkg] = await sql.unsafe(
+    `
+    UPDATE packages
+    SET ${sets.join(", ")}, updated_at = NOW()
+    WHERE id = $${values.length}::uuid
+      AND deleted_at IS NULL
+    RETURNING *
+    `,
+    values,
+  );
+
+  if (!pkg) return c.json({ message: "ไม่พบโปรโมชัน" }, 404);
+  return c.json(pkg);
+});
+
+admin.delete("/packages/:id", async (c) => {
+  const id = c.req.param("id");
+  const [pkg] = await sql`
+    UPDATE packages
+    SET status = 'archived', deleted_at = NOW(), updated_at = NOW()
+    WHERE id = ${id}::uuid
+      AND deleted_at IS NULL
+    RETURNING id
+  `;
+
+  if (!pkg) return c.json({ message: "ไม่พบโปรโมชัน" }, 404);
+  return c.json({ ok: true });
+});
+
 admin.post("/master-emails", async (c) => {
   const body = await c.req.json<{
     packageId?: string;
@@ -293,6 +366,87 @@ admin.post("/master-emails", async (c) => {
   return c.json(account, 201);
 });
 
+admin.patch("/master-emails/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    packageId?: string;
+    email?: string;
+    password?: string;
+    purchasedAt?: string;
+    masterExpiredAt?: string;
+    status?: "active" | "inactive" | "expired" | "suspended";
+    note?: string | null;
+  }>();
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (body.packageId !== undefined) {
+    const [pkg] = await sql`
+      SELECT id, service
+      FROM packages
+      WHERE id = ${body.packageId}::uuid
+        AND deleted_at IS NULL
+      LIMIT 1
+    `;
+    if (!pkg) return c.json({ message: "ไม่พบโปรโมชันที่เลือก" }, 404);
+    addUpdate(sets, values, "package_id", pkg.id, "::uuid");
+    addUpdate(sets, values, "service", pkg.service);
+  }
+  if (body.email !== undefined) addUpdate(sets, values, "email", body.email);
+  if (body.password) addUpdate(sets, values, "password_ciphertext", encryptSecret(body.password));
+  if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", body.purchasedAt);
+  if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", body.masterExpiredAt);
+  if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::master_email_status");
+  if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
+
+  if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
+  values.push(id);
+
+  const [account] = await sql.unsafe(
+    `
+    UPDATE master_emails
+    SET ${sets.join(", ")}, updated_at = NOW()
+    WHERE id = $${values.length}::uuid
+      AND deleted_at IS NULL
+    RETURNING id, package_id AS "packageId", service, email, status, purchased_at, master_expired_at, note
+    `,
+    values,
+  );
+
+  if (!account) return c.json({ message: "ไม่พบห้องบัญชีแม่" }, 404);
+  return c.json(account);
+});
+
+admin.delete("/master-emails/:id", async (c) => {
+  const id = c.req.param("id");
+  const [account] = await sql`
+    UPDATE master_emails
+    SET status = 'inactive', deleted_at = NOW(), updated_at = NOW()
+    WHERE id = ${id}::uuid
+      AND deleted_at IS NULL
+    RETURNING id
+  `;
+
+  if (!account) return c.json({ message: "ไม่พบห้องบัญชีแม่" }, 404);
+
+  await sql`
+    UPDATE profiles
+    SET status = CASE
+      WHEN status IN ('rented', 'reserved') THEN status
+      ELSE 'inactive'::profile_status
+    END,
+    deleted_at = CASE
+      WHEN status IN ('rented', 'reserved') THEN deleted_at
+      ELSE NOW()
+    END,
+    updated_at = NOW()
+    WHERE master_email_id = ${id}::uuid
+      AND deleted_at IS NULL
+  `;
+
+  return c.json({ ok: true });
+});
+
 admin.post("/profiles", async (c) => {
   const body = await c.req.json<{
     masterEmailId: string;
@@ -334,23 +488,83 @@ admin.patch("/profiles/:id", async (c) => {
     pin?: string | null;
   }>();
 
-  const [profile] = await sql`
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
+  if (body.profileExpiresAt !== undefined) {
+    addUpdate(sets, values, "profile_expires_at", nullableDate(body.profileExpiresAt));
+  }
+  if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
+  if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));
+
+  if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
+  values.push(id);
+
+  const [profile] = await sql.unsafe(
+    `
     UPDATE profiles
-    SET
-      status = COALESCE(${body.status ?? null}, status),
-      profile_expires_at = COALESCE(${body.profileExpiresAt ?? null}, profile_expires_at),
-      note = COALESCE(${body.note ?? null}, note),
-      profile_pin_ciphertext = CASE
-        WHEN ${body.pin ?? null} IS NULL THEN profile_pin_ciphertext
-        ELSE ${body.pin ? encryptSecret(body.pin) : null}
-      END,
-      updated_at = NOW()
-    WHERE id = ${id}::uuid
+    SET ${sets.join(", ")}, updated_at = NOW()
+    WHERE id = $${values.length}::uuid
+      AND deleted_at IS NULL
     RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
-  `;
+    `,
+    values,
+  );
 
   if (!profile) return c.json({ message: "ไม่พบโปรไฟล์" }, 404);
   return c.json(profile);
+});
+
+admin.put("/profiles/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    masterEmailId?: string;
+    profileName?: string;
+    pin?: string;
+    status?: "available" | "rented" | "inactive" | "expired" | "reserved";
+    profileExpiresAt?: string | null;
+    note?: string | null;
+  }>();
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (body.masterEmailId !== undefined) addUpdate(sets, values, "master_email_id", body.masterEmailId, "::uuid");
+  if (body.profileName !== undefined) addUpdate(sets, values, "profile_name", body.profileName);
+  if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
+  if (body.profileExpiresAt !== undefined) addUpdate(sets, values, "profile_expires_at", nullableDate(body.profileExpiresAt));
+  if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
+  if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));
+
+  if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
+  values.push(id);
+
+  const [profile] = await sql.unsafe(
+    `
+    UPDATE profiles
+    SET ${sets.join(", ")}, updated_at = NOW()
+    WHERE id = $${values.length}::uuid
+      AND deleted_at IS NULL
+    RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
+    `,
+    values,
+  );
+
+  if (!profile) return c.json({ message: "ไม่พบโปรไฟล์" }, 404);
+  return c.json(profile);
+});
+
+admin.delete("/profiles/:id", async (c) => {
+  const id = c.req.param("id");
+  const [profile] = await sql`
+    UPDATE profiles
+    SET status = 'inactive', deleted_at = NOW(), updated_at = NOW()
+    WHERE id = ${id}::uuid
+      AND deleted_at IS NULL
+    RETURNING id
+  `;
+
+  if (!profile) return c.json({ message: "ไม่พบโปรไฟล์" }, 404);
+  return c.json({ ok: true });
 });
 
 export default admin;

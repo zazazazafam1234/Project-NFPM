@@ -191,8 +191,10 @@ export type AdminInventory = {
     slug: string;
     name: string;
     service: string;
+    description: string | null;
     duration_days: number;
     price_amount: number;
+    currency: string;
     status: string;
     availableStock: number;
   }>;
@@ -232,8 +234,10 @@ export function saveAdminPackage(body: {
   slug: string;
   name: string;
   service: string;
+  description?: string | null;
   durationDays: number;
   priceAmount: number;
+  currency?: string;
   status?: string;
 }) {
   return apiFetch("/admin/packages", {
@@ -242,17 +246,58 @@ export function saveAdminPackage(body: {
   });
 }
 
+export function updateAdminPackage(packageId: string, body: {
+  slug?: string;
+  name?: string;
+  service?: string;
+  description?: string | null;
+  durationDays?: number;
+  priceAmount?: number;
+  currency?: string;
+  status?: string;
+}) {
+  return apiFetch(`/admin/packages/${packageId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAdminPackage(packageId: string) {
+  return apiFetch(`/admin/packages/${packageId}`, { method: "DELETE" });
+}
+
 export function saveMasterEmail(body: {
   packageId: string;
   email: string;
   password: string;
+  purchasedAt?: string;
   masterExpiredAt: string;
+  status?: string;
   note?: string;
 }) {
   return apiFetch("/admin/master-emails", {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function updateMasterEmail(masterEmailId: string, body: {
+  packageId?: string;
+  email?: string;
+  password?: string;
+  purchasedAt?: string;
+  masterExpiredAt?: string;
+  status?: string;
+  note?: string | null;
+}) {
+  return apiFetch(`/admin/master-emails/${masterEmailId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteMasterEmail(masterEmailId: string) {
+  return apiFetch(`/admin/master-emails/${masterEmailId}`, { method: "DELETE" });
 }
 
 export function saveProfile(body: {
@@ -268,11 +313,29 @@ export function saveProfile(body: {
   });
 }
 
+export function updateProfile(profileId: string, body: {
+  masterEmailId?: string;
+  profileName?: string;
+  pin?: string;
+  status?: string;
+  profileExpiresAt?: string | null;
+  note?: string | null;
+}) {
+  return apiFetch(`/admin/profiles/${profileId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export function updateProfileStatus(profileId: string, status: string) {
   return apiFetch(`/admin/profiles/${profileId}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
+}
+
+export function deleteProfile(profileId: string) {
+  return apiFetch(`/admin/profiles/${profileId}`, { method: "DELETE" });
 }
 
 export type Category = {

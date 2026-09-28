@@ -425,7 +425,7 @@
   color: #948c9d;
 }
 .table > div em {
-  width: 70px;
+  min-width: 70px;
   font-style: normal;
 }
 .table > div button,
@@ -437,6 +437,23 @@
   background: transparent;
   font: inherit;
   font-size: 10px;
+  cursor: pointer;
+}
+.table > div button.danger,
+.packageAdmin button.danger,
+.danger {
+  border-color: #ef687244;
+  color: #ef8a92;
+}
+.secondary {
+  padding: 10px 13px;
+  border: 1px solid #ffffff1d;
+  border-radius: 9px;
+  color: #c8bed8;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
   cursor: pointer;
 }
 .packageAdmin {
@@ -500,6 +517,16 @@
 .formRows .primary {
   justify-self: start;
   margin-top: 6px;
+}
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.formActions .primary,
+.formActions .secondary {
+  margin-top: 0;
 }
 .search {
   width: 220px;
