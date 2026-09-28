@@ -241,6 +241,38 @@ export type AdminInventory = {
     activeSubscriptionCount: number;
     transactionCount: number;
   }>;
+  paymentAccounts: Array<{
+    id: string;
+    name: string;
+    promptPayIdMasked: string;
+    hasLineCookie: boolean;
+    status: "active" | "inactive";
+    isDefault: boolean;
+    topupExpiresMinutes: number;
+    note: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  lineTransferEvents: Array<{
+    id: string;
+    paymentAccountId: string | null;
+    paymentAccountName: string | null;
+    lineRevision: string | number | null;
+    incomingAmountCents: number;
+    balanceCents: number | null;
+    destinationAccount: string | null;
+    senderName: string | null;
+    fromAccount: string | null;
+    transferType: string | null;
+    occurredAt: string | null;
+    occurredRaw: string | null;
+    status: "received" | "matched" | "unmatched" | "ignored" | "failed";
+    matchedTopUpId: string | null;
+    matchReason: string | null;
+    userId: string | null;
+    userEmail: string | null;
+    createdAt: string;
+  }>;
 };
 
 export function fetchAdminInventory() {
@@ -369,6 +401,48 @@ export function updateAdminUser(userId: string, body: {
 
 export function suspendAdminUser(userId: string) {
   return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export function savePaymentAccount(body: {
+  name: string;
+  promptPayId: string;
+  lineCookie?: string | null;
+  status?: "active" | "inactive";
+  isDefault?: boolean;
+  topupExpiresMinutes?: number;
+  note?: string | null;
+}) {
+  return apiFetch("/admin/payment-accounts", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updatePaymentAccount(paymentAccountId: string, body: {
+  name?: string;
+  promptPayId?: string;
+  lineCookie?: string | null;
+  status?: "active" | "inactive";
+  isDefault?: boolean;
+  topupExpiresMinutes?: number;
+  note?: string | null;
+}) {
+  return apiFetch(`/admin/payment-accounts/${paymentAccountId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function setDefaultPaymentAccount(paymentAccountId: string) {
+  return apiFetch(`/admin/payment-accounts/${paymentAccountId}/default`, {
+    method: "POST",
+  });
+}
+
+export function deletePaymentAccount(paymentAccountId: string) {
+  return apiFetch(`/admin/payment-accounts/${paymentAccountId}`, {
+    method: "DELETE",
+  });
 }
 
 export type Category = {

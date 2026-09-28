@@ -8,15 +8,19 @@ import { BrandLogo } from "../components/BrandLogo";
 import {
   deleteAdminPackage,
   deleteMasterEmail,
+  deletePaymentAccount,
   deleteProfile,
   fetchAdminInventory,
   saveAdminPackage,
   saveMasterEmail,
+  savePaymentAccount,
   saveProfile,
+  setDefaultPaymentAccount,
   suspendAdminUser,
   updateAdminPackage,
   updateAdminUser,
   updateMasterEmail,
+  updatePaymentAccount,
   updateProfile,
   updateProfileStatus,
   type AdminInventory,
@@ -41,6 +45,22 @@ const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
 
 function dateInputValue(value: string | null | undefined) {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("th-TH", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function formatBahtFromCents(value: number | null | undefined) {
+  if (value === null || value === undefined) return "-";
+  return (Number(value) / 100).toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 const rowMotion = {
@@ -205,7 +225,9 @@ export default function AdminPage() {
         {section === "users" && (
           <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
         )}
-        {section === "settings" && <Settings />}
+        {section === "settings" && inventory && (
+          <Settings inventory={inventory} onDone={handleDone} />
+        )}
       </section>
     </main>
   );
@@ -1655,22 +1677,451 @@ function UsersPanel({
   );
 }
 
-function Settings() {
+type PaymentAccountForm = {
+  name: string;
+  promptPayId: string;
+  lineCookie: string;
+  status: "active" | "inactive";
+  isDefault: boolean;
+  topupExpiresMinutes: number;
+  note: string;
+};
+
+function blankPaymentAccountForm(): PaymentAccountForm {
+  return {
+    name: "",
+    promptPayId: "",
+    lineCookie: "",
+    status: "active",
+    isDefault: false,
+    topupExpiresMinutes: 15,
+    note: "",
+  };
+}
+
+function Settings({
+  inventory,
+  onDone,
+}: {
+  inventory: AdminInventory;
+  onDone: (message: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [transferSearch, setTransferSearch] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminInventory["paymentAccounts"][number] | null>(null);
+  const [form, setForm] = useState<PaymentAccountForm>(blankPaymentAccountForm);
+  const accounts = inventory.paymentAccounts ?? [];
+  const transferEvents = inventory.lineTransferEvents ?? [];
+  const visibleAccounts = accounts.filter((account) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      account.name,
+      account.promptPayIdMasked,
+      account.status,
+      account.note,
+      account.isDefault ? "default" : "",
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const visibleTransferEvents = transferEvents.filter((event) => {
+    const query = transferSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      event.paymentAccountName,
+      event.lineRevision,
+      event.senderName,
+      event.destinationAccount,
+      event.fromAccount,
+      event.status,
+      event.matchReason,
+      event.userEmail,
+      event.occurredRaw,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const editingAccount = accounts.find((account) => account.id === editingId);
+
+  function beginAdd() {
+    setForm(blankPaymentAccountForm());
+    setIsAdding(true);
+  }
+
+  function beginEdit(account: AdminInventory["paymentAccounts"][number]) {
+    setForm({
+      name: account.name,
+      promptPayId: "",
+      lineCookie: "",
+      status: account.status,
+      isDefault: account.isDefault,
+      topupExpiresMinutes: Number(account.topupExpiresMinutes),
+      note: account.note ?? "",
+    });
+    setEditingId(account.id);
+  }
+
+  async function submitCreate() {
+    await savePaymentAccount({
+      name: form.name,
+      promptPayId: form.promptPayId,
+      lineCookie: form.lineCookie || null,
+      status: form.status,
+      isDefault: form.isDefault,
+      topupExpiresMinutes: Number(form.topupExpiresMinutes),
+      note: form.note || null,
+    });
+    onDone(`เพิ่มบัญชีรับเงิน ${form.name} แล้ว`);
+    setIsAdding(false);
+  }
+
+  async function submitEdit() {
+    if (!editingId) return;
+    await updatePaymentAccount(editingId, {
+      name: form.name,
+      ...(form.promptPayId.trim() ? { promptPayId: form.promptPayId.trim() } : {}),
+      ...(form.lineCookie.trim() ? { lineCookie: form.lineCookie } : {}),
+      status: form.status,
+      isDefault: form.isDefault,
+      topupExpiresMinutes: Number(form.topupExpiresMinutes),
+      note: form.note || null,
+    });
+    onDone(`แก้ไขบัญชีรับเงิน ${form.name} แล้ว`);
+    setEditingId(null);
+  }
+
+  async function makeDefault(account: AdminInventory["paymentAccounts"][number]) {
+    await setDefaultPaymentAccount(account.id);
+    onDone(`เลือก ${account.name} เป็นบัญชีรับเงินหลักแล้ว`);
+  }
+
+  async function removeAccount() {
+    if (!deleteTarget) return;
+    await deletePaymentAccount(deleteTarget.id);
+    onDone(`ลบบัญชีรับเงิน ${deleteTarget.name} แล้ว`);
+    setDeleteTarget(null);
+  }
+
   return (
-    <section className={styles.panel}>
-      <p className={styles.eyebrow}>SYSTEM CONFIGURATION</p>
-      <h2>ตั้งค่าระบบ</h2>
-      <div className={styles.emptyState}>
-        <span>⚙</span>
-        <h3>ตั้งค่าผ่าน Environment</h3>
-        <p>
-          ตั้งค่า <code>ADMIN_KEY</code>, <code>CREDENTIAL_ENCRYPTION_KEY</code>,
-          OAuth และ payment provider ใน server environment เท่านั้น
+    <>
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>PAYMENT ACCOUNTS</p>
+            <h2>ตั้งค่าบัญชีรับเงิน</h2>
+          </div>
+          <div className={styles.panelTools}>
+            <input
+              className={styles.search}
+              placeholder="ค้นหาบัญชี"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button className={styles.primary} onClick={beginAdd} type="button">
+              เพิ่มบัญชี
+            </button>
+          </div>
+        </div>
+        <div className={styles.table}>
+          {visibleAccounts.map((account) => (
+            <motion.div key={account.id} {...rowMotion}>
+              <b>{account.name}</b>
+              <span>
+                PromptPay {account.promptPayIdMasked} · QR หมดอายุ {account.topupExpiresMinutes} นาที · LINE{" "}
+                {account.hasLineCookie ? "พร้อมใช้" : "ยังไม่ใส่ cookie"}
+              </span>
+              <em className={account.status === "active" ? styles.green : styles.yellow}>
+                {account.isDefault ? "default" : account.status}
+              </em>
+              <button
+                disabled={account.isDefault || account.status !== "active"}
+                onClick={() => void makeDefault(account)}
+                type="button"
+              >
+                ใช้บัญชีนี้
+              </button>
+              <button onClick={() => beginEdit(account)} type="button">
+                แก้ไข
+              </button>
+              <button
+                className={styles.danger}
+                onClick={() => setDeleteTarget(account)}
+                type="button"
+              >
+                ลบ
+              </button>
+            </motion.div>
+          ))}
+          {visibleAccounts.length === 0 && (
+            <p className={styles.emptyInline}>ยังไม่มีบัญชีรับเงิน หรือไม่พบรายการที่ค้นหา</p>
+          )}
+        </div>
+        <p className={styles.hint}>
+          PromptPay ID และ LINE cookie ถูก encrypt ที่ backend และหน้า Admin จะแสดงเฉพาะข้อมูลแบบ mask เท่านั้น
         </p>
-      </div>
-      <p className={styles.hint}>
-        ไม่ควรวางรหัสรับเงิน, encryption key หรือ credential จริงไว้ใน frontend
-      </p>
-    </section>
+      </section>
+
+      <AnimatePresence>
+        {isAdding && (
+          <EditModal title="เพิ่มบัญชีรับเงิน" eyebrow="ADD" onClose={() => setIsAdding(false)}>
+            <div className={styles.formRows}>
+              <label>
+                ชื่อบัญชี
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                />
+              </label>
+              <label>
+                PromptPay ID
+                <input
+                  value={form.promptPayId}
+                  onChange={(event) => setForm({ ...form, promptPayId: event.target.value })}
+                />
+              </label>
+              <label>
+                LINE cookie
+                <textarea
+                  rows={4}
+                  value={form.lineCookie}
+                  onChange={(event) => setForm({ ...form, lineCookie: event.target.value })}
+                />
+              </label>
+              <label>
+                QR หมดอายุ (นาที)
+                <input
+                  inputMode="numeric"
+                  min={1}
+                  max={1440}
+                  value={form.topupExpiresMinutes}
+                  onChange={(event) =>
+                    setForm({ ...form, topupExpiresMinutes: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                สถานะ
+                <select
+                  value={form.status}
+                  onChange={(event) => {
+                    const status = event.target.value as "active" | "inactive";
+                    setForm({ ...form, status, isDefault: status === "active" ? form.isDefault : false });
+                  }}
+                >
+                  <option value="active">active</option>
+                  <option value="inactive">inactive</option>
+                </select>
+              </label>
+              <label>
+                ใช้เป็น default
+                <input
+                  checked={form.isDefault}
+                  type="checkbox"
+                  onChange={(event) => setForm({ ...form, isDefault: event.target.checked })}
+                />
+              </label>
+              <label>
+                Note
+                <input
+                  value={form.note}
+                  onChange={(event) => setForm({ ...form, note: event.target.value })}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  className={styles.primary}
+                  disabled={
+                    !form.name.trim()
+                    || !form.promptPayId.trim()
+                    || form.topupExpiresMinutes < 1
+                    || form.topupExpiresMinutes > 1440
+                  }
+                  onClick={() => void submitCreate()}
+                  type="button"
+                >
+                  บันทึกบัญชี
+                </button>
+                <button className={styles.secondary} onClick={() => setIsAdding(false)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editingId && editingAccount && (
+          <EditModal title="แก้ไขบัญชีรับเงิน" onClose={() => setEditingId(null)}>
+            <div className={styles.formRows}>
+              <p className={styles.muted}>
+                บัญชีนี้ใช้ PromptPay {editingAccount.promptPayIdMasked} และ LINE{" "}
+                {editingAccount.hasLineCookie ? "มี cookie แล้ว" : "ยังไม่มี cookie"}
+              </p>
+              <label>
+                ชื่อบัญชี
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                />
+              </label>
+              <label>
+                PromptPay ID ใหม่
+                <input
+                  placeholder="เว้นว่างถ้าไม่เปลี่ยน"
+                  value={form.promptPayId}
+                  onChange={(event) => setForm({ ...form, promptPayId: event.target.value })}
+                />
+              </label>
+              <label>
+                LINE cookie ใหม่
+                <textarea
+                  placeholder="เว้นว่างถ้าไม่เปลี่ยน"
+                  rows={4}
+                  value={form.lineCookie}
+                  onChange={(event) => setForm({ ...form, lineCookie: event.target.value })}
+                />
+              </label>
+              <label>
+                QR หมดอายุ (นาที)
+                <input
+                  inputMode="numeric"
+                  min={1}
+                  max={1440}
+                  value={form.topupExpiresMinutes}
+                  onChange={(event) =>
+                    setForm({ ...form, topupExpiresMinutes: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                สถานะ
+                <select
+                  value={form.status}
+                  onChange={(event) => {
+                    const status = event.target.value as "active" | "inactive";
+                    setForm({ ...form, status, isDefault: status === "active" ? form.isDefault : false });
+                  }}
+                >
+                  <option value="active">active</option>
+                  <option value="inactive">inactive</option>
+                </select>
+              </label>
+              <label>
+                ใช้เป็น default
+                <input
+                  checked={form.isDefault}
+                  disabled={form.status !== "active"}
+                  type="checkbox"
+                  onChange={(event) => setForm({ ...form, isDefault: event.target.checked })}
+                />
+              </label>
+              <label>
+                Note
+                <input
+                  value={form.note}
+                  onChange={(event) => setForm({ ...form, note: event.target.value })}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  className={styles.primary}
+                  disabled={
+                    !form.name.trim()
+                    || form.topupExpiresMinutes < 1
+                    || form.topupExpiresMinutes > 1440
+                  }
+                  onClick={() => void submitEdit()}
+                  type="button"
+                >
+                  บันทึกบัญชี
+                </button>
+                <button className={styles.secondary} onClick={() => setEditingId(null)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deleteTarget && (
+          <ConfirmModal
+            title="ลบบัญชีรับเงิน"
+            message={`ต้องการลบ ${deleteTarget.name} ใช่ไหม? ถ้ายังมีรายการเติมเงิน pending ระบบจะไม่ให้ลบ`}
+            confirmLabel="ลบบัญชี"
+            onClose={() => setDeleteTarget(null)}
+            onConfirm={() => void removeAccount()}
+          />
+        )}
+      </AnimatePresence>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>LINE TRANSFER LOG</p>
+            <h2>ตรวจสอบรายการเงินเข้า</h2>
+          </div>
+          <input
+            className={styles.search}
+            placeholder="ค้นหารายการโอน"
+            value={transferSearch}
+            onChange={(event) => setTransferSearch(event.target.value)}
+          />
+        </div>
+        <div className={styles.table}>
+          {visibleTransferEvents.map((event) => (
+            <motion.div key={event.id} {...rowMotion}>
+              <b>{formatBahtFromCents(event.incomingAmountCents)} บาท</b>
+              <span>
+                {event.occurredRaw || formatDateTime(event.occurredAt)} · เข้าบัญชี{" "}
+                {event.destinationAccount ?? "-"} · ผู้โอน {event.senderName ?? "-"} · revision{" "}
+                {event.lineRevision ?? "-"}
+              </span>
+              <em
+                className={
+                  event.status === "matched"
+                    ? styles.green
+                    : event.status === "failed"
+                      ? styles.red
+                      : styles.yellow
+                }
+              >
+                {event.status}
+              </em>
+              <span>
+                {event.paymentAccountName ?? "ไม่ทราบบัญชี"} · คงเหลือ{" "}
+                {formatBahtFromCents(event.balanceCents)} บาท
+                {event.userEmail ? ` · match ${event.userEmail}` : ""}
+                {event.matchReason ? ` · ${event.matchReason}` : ""}
+              </span>
+            </motion.div>
+          ))}
+          {visibleTransferEvents.length === 0 && (
+            <p className={styles.emptyInline}>ยังไม่มีรายการเงินเข้า หรือไม่พบรายการที่ค้นหา</p>
+          )}
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <p className={styles.eyebrow}>SYSTEM SECRETS</p>
+        <h2>ตั้งค่าที่อยู่ใน Environment</h2>
+        <div className={styles.emptyState}>
+          <span>⚙</span>
+          <h3>เก็บเฉพาะ secret ระบบหลักใน server</h3>
+          <p>
+            ตั้งค่า <code>ADMIN_KEY</code>, <code>CREDENTIAL_ENCRYPTION_KEY</code>,
+            OAuth และ database URL ใน server environment เท่านั้น
+          </p>
+        </div>
+        <p className={styles.hint}>
+          ไม่ควรวาง encryption key หรือ credential จริงไว้ใน frontend
+        </p>
+      </section>
+    </>
   );
 }

@@ -40,17 +40,12 @@ services:
     build: ./backend
     container_name: fastmovie-line-worker
     restart: unless-stopped
-    command:
-      [
-        "sh",
-        "-c",
-        "if [ -z \"$$LINE_COOKIE\" ]; then echo 'LINE_COOKIE is empty; line-worker disabled'; sleep infinity; else bun run line:worker; fi",
-      ]
+    command: ["bun", "run", "line:worker"]
     env_file:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql://fastmovie:fastmovie_dev_2026@postgres:5432/fastmovie
-      LINE_REVISION_FILE: /app/data/line_revision.txt
+      LINE_REVISION_DIR: /app/data
     volumes:
       - ./backend/src:/app/src
       - line_data:/app/data
