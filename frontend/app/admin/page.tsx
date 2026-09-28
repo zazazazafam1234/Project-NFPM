@@ -13,7 +13,9 @@ import {
   saveAdminPackage,
   saveMasterEmail,
   saveProfile,
+  suspendAdminUser,
   updateAdminPackage,
+  updateAdminUser,
   updateMasterEmail,
   updateProfile,
   updateProfileStatus,
@@ -27,6 +29,7 @@ const menu = [
   ["packages", "โปรโมชัน", "▦"],
   ["accounts", "ห้อง / Email แม่", "◎"],
   ["profiles", "Slot / โปรไฟล์", "◉"],
+  ["users", "ผู้ใช้", "◍"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
 ] as const;
 
@@ -198,6 +201,9 @@ export default function AdminPage() {
         )}
         {section === "profiles" && (
           <ProfilesPanel inventory={inventory} onDone={handleDone} />
+        )}
+        {section === "users" && (
+          <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
         )}
         {section === "settings" && <Settings />}
       </section>
@@ -1332,6 +1338,209 @@ function ProfilesPanel({
         </EditModal>
       )}
     </AnimatePresence>
+    </>
+  );
+}
+
+function UsersPanel({
+  inventory,
+  currentUserId,
+  onDone,
+}: {
+  inventory: AdminInventory | null;
+  currentUserId: string;
+  onDone: (message: string) => void;
+}) {
+  const users = inventory?.users ?? [];
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    role: "user" as "user" | "admin",
+    status: "active" as "active" | "suspended",
+    points: 0,
+  });
+  const statusTabs = [
+    ["all", "ทั้งหมด"],
+    ["active", "ใช้งาน"],
+    ["suspended", "ปิดบัญชี"],
+    ["admin", "Admin"],
+  ] as const;
+  const countByStatus = users.reduce<Record<string, number>>((acc, item) => {
+    acc.all = (acc.all ?? 0) + 1;
+    acc[item.status] = (acc[item.status] ?? 0) + 1;
+    if (item.role === "admin") acc.admin = (acc.admin ?? 0) + 1;
+    return acc;
+  }, { all: 0, admin: 0 });
+  const visibleUsers = users.filter((item) => {
+    if (statusFilter === "admin" && item.role !== "admin") return false;
+    if (statusFilter !== "all" && statusFilter !== "admin" && item.status !== statusFilter) {
+      return false;
+    }
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [item.name, item.email, item.role, item.status]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+
+  async function submitEdit() {
+    if (!editingId) return;
+    await updateAdminUser(editingId, editForm);
+    onDone(`แก้ไขผู้ใช้ ${editForm.name} แล้ว`);
+    setEditingId(null);
+  }
+
+  async function toggleStatus(userId: string, name: string, status: string) {
+    if (userId === currentUserId && status === "active") {
+      window.alert("ไม่ควรปิดบัญชีที่กำลังใช้งานอยู่");
+      return;
+    }
+    if (status === "active") {
+      if (!window.confirm(`ปิดบัญชี ${name}? ผู้ใช้นี้จะ login และซื้อสินค้าไม่ได้`)) return;
+      await suspendAdminUser(userId);
+      onDone(`ปิดบัญชี ${name} แล้ว`);
+      return;
+    }
+    await updateAdminUser(userId, { status: "active" });
+    onDone(`เปิดบัญชี ${name} แล้ว`);
+  }
+
+  return (
+    <>
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>CUSTOMERS & ADMINS</p>
+            <h2>จัดการผู้ใช้ในระบบ</h2>
+          </div>
+          <input
+            className={styles.search}
+            placeholder="ค้นหาผู้ใช้"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <div className={styles.categoryTabs}>
+          {statusTabs.map(([key, label]) => (
+            <button
+              className={statusFilter === key ? styles.categoryActive : ""}
+              key={key}
+              onClick={() => setStatusFilter(key)}
+              type="button"
+            >
+              {label}
+              <span>{countByStatus[key] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+        <div className={styles.table}>
+          {visibleUsers.map((item) => (
+            <motion.div key={item.id} {...rowMotion}>
+              {item.image
+                ? <Image src={item.image} alt="" width={30} height={30} className={styles.userAvatar} />
+                : <span className={styles.userAvatarFallback}>{item.name.slice(0, 1).toUpperCase()}</span>
+              }
+              <b className={styles.userName}>{item.name}</b>
+              <span>
+                {item.email} · {Number(item.points).toLocaleString()} Point · ใช้งาน {item.activeSubscriptionCount}
+              </span>
+              <em className={item.status === "active" ? styles.green : styles.yellow}>
+                {item.role}/{item.status}
+              </em>
+              <button
+                onClick={() => {
+                  setEditingId(item.id);
+                  setEditForm({
+                    name: item.name,
+                    role: item.role,
+                    status: item.status,
+                    points: Number(item.points),
+                  });
+                }}
+                type="button"
+              >
+                แก้ไข
+              </button>
+              <button
+                className={item.status === "active" ? styles.danger : ""}
+                disabled={item.id === currentUserId && item.status === "active"}
+                onClick={() => void toggleStatus(item.id, item.name, item.status)}
+                type="button"
+              >
+                {item.status === "active" ? "ปิด" : "เปิด"}
+              </button>
+            </motion.div>
+          ))}
+          {visibleUsers.length === 0 && (
+            <p className={styles.emptyInline}>ไม่พบผู้ใช้ในหมวดหมู่/คำค้นนี้</p>
+          )}
+        </div>
+      </section>
+      <AnimatePresence>
+        {editingId && (
+          <EditModal title="แก้ไขผู้ใช้" onClose={() => setEditingId(null)}>
+            <div className={styles.formRows}>
+              <label>
+                ชื่อ
+                <input
+                  value={editForm.name}
+                  onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+                />
+              </label>
+              <label>
+                Role
+                <select
+                  value={editForm.role}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, role: event.target.value as "user" | "admin" })
+                  }
+                >
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+              <label>
+                สถานะ
+                <select
+                  value={editForm.status}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, status: event.target.value as "active" | "suspended" })
+                  }
+                >
+                  <option value="active">active</option>
+                  <option value="suspended">suspended</option>
+                </select>
+              </label>
+              <label>
+                Point คงเหลือ
+                <input
+                  inputMode="numeric"
+                  min={0}
+                  value={editForm.points}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, points: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  className={styles.primary}
+                  disabled={!editForm.name || editForm.points < 0}
+                  onClick={() => void submitEdit()}
+                  type="button"
+                >
+                  บันทึกผู้ใช้
+                </button>
+                <button className={styles.secondary} onClick={() => setEditingId(null)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
     </>
   );
 }

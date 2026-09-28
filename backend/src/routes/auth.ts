@@ -58,12 +58,16 @@ auth.get("/callback/google", async (c) => {
   const role = adminEmails.includes(g.email.toLowerCase()) ? "admin" : "user";
 
   const [user] = await sql`
-    INSERT INTO "User" (id, "googleId", email, name, image, points, role, "createdAt", "updatedAt")
-    VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, ${role}, NOW(), NOW())
+    INSERT INTO "User" (id, "googleId", email, name, image, points, role, status, "createdAt", "updatedAt")
+    VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, ${role}, 'active', NOW(), NOW())
     ON CONFLICT ("googleId") DO UPDATE
       SET name = EXCLUDED.name, image = EXCLUDED.image, role = ${role}, "updatedAt" = NOW()
     RETURNING *
   `;
+
+  if (user.status !== "active") {
+    return c.json({ message: "บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อแอดมิน" }, 403);
+  }
 
   await createSession(c, user.id);
   return c.redirect(redirectTo);
@@ -73,7 +77,7 @@ auth.get("/session", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ user: null });
 
-  const [user] = await sql`SELECT * FROM "User" WHERE id = ${userId}`;
+  const [user] = await sql`SELECT * FROM "User" WHERE id = ${userId} AND status = 'active'`;
   if (!user) return c.json({ user: null });
 
   return c.json({
@@ -84,6 +88,7 @@ auth.get("/session", async (c) => {
       image: user.image,
       points: user.points,
       role: user.role,
+      status: user.status,
     },
   });
 });
@@ -91,7 +96,12 @@ auth.get("/session", async (c) => {
 auth.get("/me", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ user: null });
-  const [user] = await sql`SELECT id, name, email, image, points, role FROM "User" WHERE id = ${userId}`;
+  const [user] = await sql`
+    SELECT id, name, email, image, points, role, status
+    FROM "User"
+    WHERE id = ${userId}
+      AND status = 'active'
+  `;
   return c.json({ user: user ?? null });
 });
 

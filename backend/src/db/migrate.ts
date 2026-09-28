@@ -12,11 +12,30 @@ await sql`
     image       TEXT,
     points      INTEGER NOT NULL DEFAULT 0,
     role        TEXT NOT NULL DEFAULT 'user',
+    status      TEXT NOT NULL DEFAULT 'active',
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
 await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'`;
+await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`;
+await sql`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'user_role_check'
+    ) THEN
+      ALTER TABLE "User"
+      ADD CONSTRAINT user_role_check CHECK (role IN ('user', 'admin'));
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'user_status_check'
+    ) THEN
+      ALTER TABLE "User"
+      ADD CONSTRAINT user_status_check CHECK (status IN ('active', 'suspended'));
+    END IF;
+  END $$;
+`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS "Room" (
@@ -244,6 +263,8 @@ await sql`CREATE UNIQUE INDEX IF NOT EXISTS profiles_master_name_unique ON profi
 await sql`CREATE INDEX IF NOT EXISTS profiles_available_idx ON profiles (master_email_id, status, profile_expires_at) WHERE deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (user_id, created_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_profile_idx ON subscriptions (profile_id, expires_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS users_status_role_idx ON "User" (status, role, "createdAt" DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS users_email_search_idx ON "User" (LOWER(email))`;
 await sql`
   DO $$
   BEGIN

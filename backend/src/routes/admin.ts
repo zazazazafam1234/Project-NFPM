@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import sql from "../db";
-import { requireAdmin } from "../adminAuth";
+import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 
 const admin = new Hono();
@@ -25,7 +25,7 @@ function addUpdate(
 }
 
 admin.get("/inventory", async (c) => {
-  const [packages, masterEmails, profiles, metrics] = await Promise.all([
+  const [packages, masterEmails, profiles, users, metrics] = await Promise.all([
     sql`
       SELECT
         pkg.*,
@@ -95,10 +95,33 @@ admin.get("/inventory", async (c) => {
     `,
     sql`
       SELECT
+        u.id,
+        u.email,
+        u.name,
+        u.image,
+        u.points,
+        u.role,
+        u.status,
+        u."createdAt" AS "createdAt",
+        u."updatedAt" AS "updatedAt",
+        COUNT(DISTINCT s.id)::int AS "subscriptionCount",
+        COUNT(DISTINCT s.id) FILTER (WHERE s.status = 'active' AND s.expires_at > NOW())::int AS "activeSubscriptionCount",
+        COUNT(DISTINCT t.id)::int AS "transactionCount"
+      FROM "User" u
+      LEFT JOIN subscriptions s ON s.user_id = u.id
+      LEFT JOIN "Transaction" t ON t."userId" = u.id
+      GROUP BY u.id
+      ORDER BY u."createdAt" DESC
+      LIMIT 200
+    `,
+    sql`
+      SELECT
         (SELECT COUNT(*)::int FROM packages WHERE status = 'active' AND deleted_at IS NULL) AS "activePackages",
         (SELECT COUNT(*)::int FROM master_emails WHERE status = 'active' AND deleted_at IS NULL) AS "activeMasterEmails",
         (SELECT COUNT(*)::int FROM profiles WHERE status = 'available' AND deleted_at IS NULL) AS "availableProfiles",
-        (SELECT COUNT(*)::int FROM subscriptions WHERE status = 'active' AND expires_at > NOW()) AS "activeSubscriptions"
+        (SELECT COUNT(*)::int FROM subscriptions WHERE status = 'active' AND expires_at > NOW()) AS "activeSubscriptions",
+        (SELECT COUNT(*)::int FROM "User" WHERE status = 'active') AS "activeUsers",
+        (SELECT COUNT(*)::int FROM "User") AS "totalUsers"
     `,
   ]);
 
@@ -106,6 +129,7 @@ admin.get("/inventory", async (c) => {
     packages,
     masterEmails,
     profiles,
+    users,
     metrics: metrics[0],
   });
 });
@@ -565,6 +589,177 @@ admin.delete("/profiles/:id", async (c) => {
 
   if (!profile) return c.json({ message: "ไม่พบโปรไฟล์" }, 404);
   return c.json({ ok: true });
+});
+
+admin.patch("/users/:id", async (c) => {
+  const id = c.req.param("id");
+  const actor = await getAdminSession(c);
+  const body = await c.req.json<{
+    name?: string;
+    role?: "user" | "admin";
+    status?: "active" | "suspended";
+    points?: number;
+  }>();
+
+  if (body.role !== undefined && !["user", "admin"].includes(body.role)) {
+    return c.json({ message: "role ไม่ถูกต้อง" }, 400);
+  }
+  if (body.status !== undefined && !["active", "suspended"].includes(body.status)) {
+    return c.json({ message: "status ไม่ถูกต้อง" }, 400);
+  }
+  if (
+    body.points !== undefined
+    && (!Number.isInteger(body.points) || body.points < 0)
+  ) {
+    return c.json({ message: "Point ต้องเป็นเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, 400);
+  }
+
+  try {
+    const updated = await sql.begin(async (sql) => {
+      const [current] = await sql`
+        SELECT id, name, email, points, role, status
+        FROM "User"
+        WHERE id = ${id}
+        FOR UPDATE
+      `;
+
+      if (!current) throw new Error("ไม่พบผู้ใช้");
+
+      const willRemoveActiveAdmin =
+        current.role === "admin"
+        && current.status === "active"
+        && (
+          (body.role !== undefined && body.role !== "admin")
+          || (body.status !== undefined && body.status !== "active")
+        );
+
+      if (willRemoveActiveAdmin) {
+        const [remaining] = await sql`
+          SELECT COUNT(*)::int AS count
+          FROM "User"
+          WHERE id <> ${id}
+            AND role = 'admin'
+            AND status = 'active'
+        `;
+        if (!remaining || remaining.count < 1) {
+          throw new Error("ต้องเหลือ Admin ที่ active อย่างน้อย 1 บัญชี");
+        }
+      }
+
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      if (body.name !== undefined) addUpdate(sets, values, "name", body.name);
+      if (body.role !== undefined) addUpdate(sets, values, "role", body.role);
+      if (body.status !== undefined) addUpdate(sets, values, "status", body.status);
+      if (body.points !== undefined) addUpdate(sets, values, "points", body.points);
+
+      if (!sets.length) throw new Error("Nothing to update");
+      values.push(id);
+
+      const [user] = await sql.unsafe(
+        `
+        UPDATE "User"
+        SET ${sets.join(", ")}, "updatedAt" = NOW()
+        WHERE id = $${values.length}
+        RETURNING id, email, name, image, points, role, status, "createdAt", "updatedAt"
+        `,
+        values,
+      );
+
+      if (body.points !== undefined && body.points !== current.points) {
+        const delta = body.points - Number(current.points);
+        await sql`
+          INSERT INTO "Transaction" (id, "userId", type, amount, description, "createdAt")
+          VALUES (
+            ${crypto.randomUUID()},
+            ${id},
+            'admin_adjustment',
+            ${delta},
+            ${`Admin ปรับ Point จาก ${Number(current.points).toLocaleString()} เป็น ${body.points.toLocaleString()}`},
+            NOW()
+          )
+        `;
+      }
+
+      await sql`
+        INSERT INTO admin_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+        VALUES (
+          ${actor?.id ?? null},
+          'user.updated',
+          'user',
+          ${id},
+          ${JSON.stringify({ before: current, after: user })}
+        )
+      `;
+
+      return user;
+    });
+
+    return c.json(updated);
+  } catch (err) {
+    return c.json(
+      { message: err instanceof Error ? err.message : "แก้ไขผู้ใช้ไม่สำเร็จ" },
+      400,
+    );
+  }
+});
+
+admin.delete("/users/:id", async (c) => {
+  const id = c.req.param("id");
+  const actor = await getAdminSession(c);
+
+  try {
+    const result = await sql.begin(async (sql) => {
+      const [current] = await sql`
+        SELECT id, role, status
+        FROM "User"
+        WHERE id = ${id}
+        FOR UPDATE
+      `;
+
+      if (!current) throw new Error("ไม่พบผู้ใช้");
+
+      if (current.role === "admin" && current.status === "active") {
+        const [remaining] = await sql`
+          SELECT COUNT(*)::int AS count
+          FROM "User"
+          WHERE id <> ${id}
+            AND role = 'admin'
+            AND status = 'active'
+        `;
+        if (!remaining || remaining.count < 1) {
+          throw new Error("ต้องเหลือ Admin ที่ active อย่างน้อย 1 บัญชี");
+        }
+      }
+
+      const [user] = await sql`
+        UPDATE "User"
+        SET status = 'suspended', "updatedAt" = NOW()
+        WHERE id = ${id}
+        RETURNING id
+      `;
+
+      await sql`
+        INSERT INTO admin_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+        VALUES (
+          ${actor?.id ?? null},
+          'user.suspended',
+          'user',
+          ${id},
+          ${JSON.stringify({ before: current })}
+        )
+      `;
+
+      return user;
+    });
+
+    return c.json({ ok: Boolean(result) });
+  } catch (err) {
+    return c.json(
+      { message: err instanceof Error ? err.message : "ปิดผู้ใช้ไม่สำเร็จ" },
+      400,
+    );
+  }
 });
 
 export default admin;

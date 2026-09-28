@@ -5,7 +5,12 @@ import { getSessionUserId } from "./session";
 export async function requireAdmin(c: Context, next: Next) {
   const userId = await getSessionUserId(c);
   if (userId) {
-    const [user] = await sql`SELECT role FROM "User" WHERE id = ${userId}`;
+    const [user] = await sql`
+      SELECT role
+      FROM "User"
+      WHERE id = ${userId}
+        AND status = 'active'
+    `;
     if (user?.role === "admin") return next();
   }
 
@@ -19,6 +24,11 @@ export async function requireAdmin(c: Context, next: Next) {
 export async function getAdminSession(c: Context) {
   const userId = await getSessionUserId(c);
   if (!userId) return null;
-  const [user] = await sql`SELECT id, name, email, image, role FROM "User" WHERE id = ${userId}`;
+  const [user] = await sql`
+    SELECT id, name, email, image, role
+    FROM "User"
+    WHERE id = ${userId}
+      AND status = 'active'
+  `;
   return user?.role === "admin" ? user : null;
 }

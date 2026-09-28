@@ -5,6 +5,7 @@ export type User = {
   image?: string;
   points: number;
   role: "user" | "admin";
+  status?: "active" | "suspended";
 };
 
 export type SessionResponse = { user: User | null };
@@ -185,6 +186,8 @@ export type AdminInventory = {
     activeMasterEmails: number;
     availableProfiles: number;
     activeSubscriptions: number;
+    activeUsers: number;
+    totalUsers: number;
   };
   packages: Array<{
     id: string;
@@ -223,6 +226,20 @@ export type AdminInventory = {
     service: string;
     packageName: string | null;
     packageSlug: string | null;
+  }>;
+  users: Array<{
+    id: string;
+    email: string;
+    name: string;
+    image: string | null;
+    points: number;
+    role: "user" | "admin";
+    status: "active" | "suspended";
+    createdAt: string;
+    updatedAt: string;
+    subscriptionCount: number;
+    activeSubscriptionCount: number;
+    transactionCount: number;
   }>;
 };
 
@@ -336,6 +353,22 @@ export function updateProfileStatus(profileId: string, status: string) {
 
 export function deleteProfile(profileId: string) {
   return apiFetch(`/admin/profiles/${profileId}`, { method: "DELETE" });
+}
+
+export function updateAdminUser(userId: string, body: {
+  name?: string;
+  role?: "user" | "admin";
+  status?: "active" | "suspended";
+  points?: number;
+}) {
+  return apiFetch(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function suspendAdminUser(userId: string) {
+  return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
 }
 
 export type Category = {

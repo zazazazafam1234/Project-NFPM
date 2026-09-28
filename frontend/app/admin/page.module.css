@@ -489,11 +489,36 @@
   font-size: 10px;
   cursor: pointer;
 }
+.table > div button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .table > div button.danger,
 .packageAdmin button.danger,
 .danger {
   border-color: #ef687244;
   color: #ef8a92;
+}
+.userAvatar,
+.userAvatarFallback {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+.userAvatar {
+  object-fit: cover;
+}
+.userAvatarFallback {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #7f62f0, #f14b78);
+  font-size: 12px;
+  font-weight: 900;
+}
+.userName {
+  min-width: 130px;
 }
 .secondary {
   padding: 10px 13px;

@@ -100,7 +100,13 @@ subscriptions.post("/", async (c) => {
       const now = new Date();
       const expiresAt = addDays(now, pkg.duration_days);
 
-      const [user] = await sql`SELECT * FROM "User" WHERE id = ${userId} FOR UPDATE`;
+      const [user] = await sql`
+        SELECT *
+        FROM "User"
+        WHERE id = ${userId}
+          AND status = 'active'
+        FOR UPDATE
+      `;
       if (!user) throw new Error("ไม่พบบัญชีผู้ใช้");
       if (user.points < pkg.price_amount) throw new Error("Point ไม่เพียงพอ");
 
@@ -273,7 +279,13 @@ subscriptions.post("/:id/renew", async (c) => {
         throw new Error("บัญชีแม่หมดอายุก่อนระยะเวลาต่ออายุ กรุณาติดต่อแอดมิน");
       }
 
-      const [user] = await sql`SELECT * FROM "User" WHERE id = ${userId} FOR UPDATE`;
+      const [user] = await sql`
+        SELECT *
+        FROM "User"
+        WHERE id = ${userId}
+          AND status = 'active'
+        FOR UPDATE
+      `;
       if (!user) throw new Error("ไม่พบบัญชีผู้ใช้");
       if (user.points < current.price_amount) throw new Error("Point ไม่เพียงพอ");
 
