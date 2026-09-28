@@ -347,10 +347,12 @@ function Activity({
 
 function EditModal({
   title,
+  eyebrow = "EDIT",
   children,
   onClose,
 }: {
   title: string;
+  eyebrow?: string;
   children: ReactNode;
   onClose: () => void;
 }) {
@@ -377,7 +379,7 @@ function EditModal({
       >
         <div className={styles.modalHead}>
           <div>
-            <p className={styles.eyebrow}>EDIT</p>
+            <p className={styles.eyebrow}>{eyebrow}</p>
             <h2>{title}</h2>
           </div>
           <button className={styles.modalClose} onClick={onClose} type="button">
@@ -387,6 +389,34 @@ function EditModal({
         {children}
       </motion.section>
     </motion.div>
+  );
+}
+
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <EditModal title={title} eyebrow="CONFIRM" onClose={onClose}>
+      <p className={styles.modalText}>{message}</p>
+      <div className={styles.formActions}>
+        <button className={styles.dangerButton} onClick={onConfirm} type="button">
+          {confirmLabel}
+        </button>
+        <button className={styles.secondary} onClick={onClose} type="button">
+          ยกเลิก
+        </button>
+      </div>
+    </EditModal>
   );
 }
 
@@ -409,6 +439,8 @@ function PackagesPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [deletingPackage, setDeletingPackage] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
   const canSave = form.slug && form.name && form.durationDays > 0;
   const canSaveEdit = editForm.slug && editForm.name && editForm.durationDays > 0;
@@ -438,6 +470,7 @@ function PackagesPanel({
     await saveAdminPackage(form);
     onDone(`เพิ่มโปรโมชัน ${form.name} แล้ว`);
     resetForm();
+    setIsAdding(false);
   }
 
   async function submitEdit() {
@@ -448,27 +481,31 @@ function PackagesPanel({
   }
 
   async function removePackage(packageId: string, name: string) {
-    if (!window.confirm(`ลบ/Archive โปรโมชัน ${name}?`)) return;
     await deleteAdminPackage(packageId);
     onDone(`Archive โปรโมชัน ${name} แล้ว`);
     if (editingId === packageId) setEditingId(null);
+    setDeletingPackage(null);
   }
 
   return (
     <>
-    <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>
             <p className={styles.eyebrow}>CUSTOMER PROMOTIONS</p>
             <h2>โปรโมชันให้ลูกค้าเลือก</h2>
           </div>
-          <input
-            className={styles.search}
-            placeholder="ค้นหาโปรโมชัน"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          <div className={styles.panelTools}>
+            <input
+              className={styles.search}
+              placeholder="ค้นหาโปรโมชัน"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button className={styles.primary} onClick={() => setIsAdding(true)} type="button">
+              เพิ่ม
+            </button>
+          </div>
         </div>
         <div className={styles.packageAdmin}>
           {visiblePackages.map((pkg) => (
@@ -501,7 +538,7 @@ function PackagesPanel({
               <button
                 className={styles.danger}
                 type="button"
-                onClick={() => void removePackage(pkg.id, pkg.name)}
+                onClick={() => setDeletingPackage({ id: pkg.id, name: pkg.name })}
               >
                 ลบ
               </button>
@@ -512,13 +549,13 @@ function PackagesPanel({
           )}
         </div>
       </section>
-      <section className={styles.panel}>
-        <p className={styles.eyebrow}>UPSERT PROMOTION</p>
-        <h2>เพิ่มโปรโมชัน</h2>
-        <p className={styles.muted}>
-          สร้างโปรโมชันใหม่ให้ลูกค้าเลือกหลังเลือก slot
-        </p>
+    <AnimatePresence>
+      {isAdding && (
+        <EditModal title="เพิ่มโปรโมชัน" eyebrow="ADD" onClose={() => setIsAdding(false)}>
         <div className={styles.formRows}>
+          <p className={styles.muted}>
+            สร้างโปรโมชันใหม่ให้ลูกค้าเลือกหลังเลือก slot
+          </p>
           <label>
             Slug
             <input
@@ -589,8 +626,9 @@ function PackagesPanel({
             </button>
           </div>
         </div>
-      </section>
-    </div>
+        </EditModal>
+      )}
+    </AnimatePresence>
     <AnimatePresence>
       {editingId && (
         <EditModal title="แก้ไขโปรโมชัน" onClose={() => setEditingId(null)}>
@@ -671,6 +709,17 @@ function PackagesPanel({
         </EditModal>
       )}
     </AnimatePresence>
+    <AnimatePresence>
+      {deletingPackage && (
+        <ConfirmModal
+          title="ลบโปรโมชัน"
+          message={`ต้องการลบ/Archive โปรโมชัน ${deletingPackage.name} ใช่ไหม?`}
+          confirmLabel="ลบโปรโมชัน"
+          onClose={() => setDeletingPackage(null)}
+          onConfirm={() => void removePackage(deletingPackage.id, deletingPackage.name)}
+        />
+      )}
+    </AnimatePresence>
     </>
   );
 }
@@ -694,6 +743,8 @@ function AccountsPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState<{ id: string; email: string } | null>(null);
   const [search, setSearch] = useState("");
   const selectedPackageId = form.packageId || firstPackageId;
   const selectedEditPackageId = editForm.packageId || firstPackageId;
@@ -735,6 +786,7 @@ function AccountsPanel({
     await saveMasterEmail(payload);
     onDone("เพิ่มห้องบัญชีแม่และเข้ารหัส password แล้ว");
     resetForm();
+    setIsAdding(false);
   }
 
   async function submitEdit() {
@@ -751,27 +803,31 @@ function AccountsPanel({
   }
 
   async function removeAccount(accountId: string, email: string) {
-    if (!window.confirm(`ลบ/ปิดห้อง ${email}? Slot ที่ไม่ได้เช่าอยู่จะถูกปิดด้วย`)) return;
     await deleteMasterEmail(accountId);
     onDone(`ปิดห้อง ${email} แล้ว`);
     if (editingId === accountId) setEditingId(null);
+    setDeletingAccount(null);
   }
 
   return (
     <>
-    <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>
             <p className={styles.eyebrow}>ROOM ACCOUNTS</p>
             <h2>ห้อง / Email แม่</h2>
           </div>
-          <input
-            className={styles.search}
-            placeholder="ค้นหาห้อง"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          <div className={styles.panelTools}>
+            <input
+              className={styles.search}
+              placeholder="ค้นหาห้อง"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button className={styles.primary} onClick={() => setIsAdding(true)} type="button">
+              เพิ่ม
+            </button>
+          </div>
         </div>
         <div className={styles.table}>
           {visibleAccounts.map((account) => (
@@ -803,7 +859,7 @@ function AccountsPanel({
               <button
                 className={styles.danger}
                 type="button"
-                onClick={() => void removeAccount(account.id, account.email)}
+                onClick={() => setDeletingAccount({ id: account.id, email: account.email })}
               >
                 ลบ
               </button>
@@ -814,9 +870,9 @@ function AccountsPanel({
           )}
         </div>
       </section>
-      <section className={styles.panel}>
-        <p className={styles.eyebrow}>ADD ROOM ACCOUNT</p>
-        <h2>เพิ่มห้องบัญชีแม่</h2>
+    <AnimatePresence>
+      {isAdding && (
+        <EditModal title="เพิ่มห้องบัญชีแม่" eyebrow="ADD" onClose={() => setIsAdding(false)}>
         <div className={styles.formRows}>
           <label>
             โปรโมชันตั้งต้น / Service
@@ -897,8 +953,9 @@ function AccountsPanel({
             </button>
           </div>
         </div>
-      </section>
-    </div>
+        </EditModal>
+      )}
+    </AnimatePresence>
     <AnimatePresence>
       {editingId && (
         <EditModal title="แก้ไขห้องบัญชีแม่" onClose={() => setEditingId(null)}>
@@ -988,6 +1045,17 @@ function AccountsPanel({
         </EditModal>
       )}
     </AnimatePresence>
+    <AnimatePresence>
+      {deletingAccount && (
+        <ConfirmModal
+          title="ลบห้องบัญชีแม่"
+          message={`ต้องการลบ/ปิดห้อง ${deletingAccount.email} ใช่ไหม? Slot ที่ไม่ได้เช่าอยู่จะถูกปิดด้วย`}
+          confirmLabel="ลบห้อง"
+          onClose={() => setDeletingAccount(null)}
+          onConfirm={() => void removeAccount(deletingAccount.id, deletingAccount.email)}
+        />
+      )}
+    </AnimatePresence>
     </>
   );
 }
@@ -1010,6 +1078,8 @@ function ProfilesPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
@@ -1068,6 +1138,7 @@ function ProfilesPanel({
     await saveProfile(payload);
     onDone("เพิ่ม Slot และเข้ารหัส PIN แล้ว");
     resetForm();
+    setIsAdding(false);
   }
 
   async function submitEdit() {
@@ -1090,27 +1161,31 @@ function ProfilesPanel({
   }
 
   async function removeProfile(profileId: string, profileName: string) {
-    if (!window.confirm(`ลบ/ปิด Slot ${profileName}?`)) return;
     await deleteProfile(profileId);
     onDone(`ลบ Slot ${profileName} แล้ว`);
     if (editingId === profileId) setEditingId(null);
+    setDeletingProfile(null);
   }
 
   return (
     <>
-    <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>
             <p className={styles.eyebrow}>ROOM SLOTS</p>
             <h2>Slot / โปรไฟล์ที่ดูได้</h2>
           </div>
-          <input
-            className={styles.search}
-            placeholder="ค้นหา slot"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          <div className={styles.panelTools}>
+            <input
+              className={styles.search}
+              placeholder="ค้นหา slot"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button className={styles.primary} onClick={() => setIsAdding(true)} type="button">
+              เพิ่ม
+            </button>
+          </div>
         </div>
         <div className={styles.categoryTabs}>
           {statusTabs.map(([key, label]) => (
@@ -1162,7 +1237,7 @@ function ProfilesPanel({
               </button>
               <button
                 className={styles.danger}
-                onClick={() => void removeProfile(profile.id, profile.profile_name)}
+                onClick={() => setDeletingProfile({ id: profile.id, name: profile.profile_name })}
                 type="button"
               >
                 ลบ
@@ -1174,9 +1249,9 @@ function ProfilesPanel({
           )}
         </div>
       </section>
-      <section className={styles.panel}>
-        <p className={styles.eyebrow}>ADD SLOT</p>
-        <h2>เพิ่ม Slot โปรไฟล์</h2>
+    <AnimatePresence>
+      {isAdding && (
+        <EditModal title="เพิ่ม Slot โปรไฟล์" eyebrow="ADD" onClose={() => setIsAdding(false)}>
         <div className={styles.formRows}>
           <label>
             ห้อง / Email แม่
@@ -1252,8 +1327,9 @@ function ProfilesPanel({
             </button>
           </div>
         </div>
-      </section>
-    </div>
+        </EditModal>
+      )}
+    </AnimatePresence>
     <AnimatePresence>
       {editingId && (
         <EditModal title="แก้ไข Slot โปรไฟล์" onClose={() => setEditingId(null)}>
@@ -1338,6 +1414,17 @@ function ProfilesPanel({
         </EditModal>
       )}
     </AnimatePresence>
+    <AnimatePresence>
+      {deletingProfile && (
+        <ConfirmModal
+          title="ลบ Slot โปรไฟล์"
+          message={`ต้องการลบ/ปิด Slot ${deletingProfile.name} ใช่ไหม?`}
+          confirmLabel="ลบ Slot"
+          onClose={() => setDeletingProfile(null)}
+          onConfirm={() => void removeProfile(deletingProfile.id, deletingProfile.name)}
+        />
+      )}
+    </AnimatePresence>
     </>
   );
 }
@@ -1355,6 +1442,11 @@ function UsersPanel({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [statusAction, setStatusAction] = useState<{
+    id: string;
+    name: string;
+    status: "active" | "suspended";
+  } | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     role: "user" as "user" | "admin",
@@ -1393,18 +1485,15 @@ function UsersPanel({
   }
 
   async function toggleStatus(userId: string, name: string, status: string) {
-    if (userId === currentUserId && status === "active") {
-      window.alert("ไม่ควรปิดบัญชีที่กำลังใช้งานอยู่");
-      return;
-    }
     if (status === "active") {
-      if (!window.confirm(`ปิดบัญชี ${name}? ผู้ใช้นี้จะ login และซื้อสินค้าไม่ได้`)) return;
       await suspendAdminUser(userId);
       onDone(`ปิดบัญชี ${name} แล้ว`);
+      setStatusAction(null);
       return;
     }
     await updateAdminUser(userId, { status: "active" });
     onDone(`เปิดบัญชี ${name} แล้ว`);
+    setStatusAction(null);
   }
 
   return (
@@ -1466,7 +1555,13 @@ function UsersPanel({
               <button
                 className={item.status === "active" ? styles.danger : ""}
                 disabled={item.id === currentUserId && item.status === "active"}
-                onClick={() => void toggleStatus(item.id, item.name, item.status)}
+                onClick={() =>
+                  setStatusAction({
+                    id: item.id,
+                    name: item.name,
+                    status: item.status,
+                  })
+                }
                 type="button"
               >
                 {item.status === "active" ? "ปิด" : "เปิด"}
@@ -1539,6 +1634,21 @@ function UsersPanel({
               </div>
             </div>
           </EditModal>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {statusAction && (
+          <ConfirmModal
+            title={statusAction.status === "active" ? "ปิดบัญชีผู้ใช้" : "เปิดบัญชีผู้ใช้"}
+            message={
+              statusAction.status === "active"
+                ? `ต้องการปิดบัญชี ${statusAction.name} ใช่ไหม? ผู้ใช้นี้จะ login และซื้อสินค้าไม่ได้`
+                : `ต้องการเปิดบัญชี ${statusAction.name} ให้กลับมาใช้งานได้ใช่ไหม?`
+            }
+            confirmLabel={statusAction.status === "active" ? "ปิดบัญชี" : "เปิดบัญชี"}
+            onClose={() => setStatusAction(null)}
+            onConfirm={() => void toggleStatus(statusAction.id, statusAction.name, statusAction.status)}
+          />
         )}
       </AnimatePresence>
     </>

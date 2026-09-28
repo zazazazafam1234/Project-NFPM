@@ -286,6 +286,12 @@
   line-height: 1;
   cursor: pointer;
 }
+.modalText {
+  margin: 20px 0 0;
+  color: #c9c2d2;
+  font-size: 12px;
+  line-height: 1.7;
+}
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -346,6 +352,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 15px;
+}
+.panelTools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .panel h2 {
   font-size: 20px;
@@ -526,6 +538,17 @@
   border-radius: 9px;
   color: #c8bed8;
   background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dangerButton {
+  padding: 10px 13px;
+  border: 1px solid #ef687244;
+  border-radius: 9px;
+  color: #fff;
+  background: #d8404b;
   font: inherit;
   font-size: 11px;
   font-weight: 800;
@@ -712,6 +735,10 @@
     grid-template-columns: 1fr;
   }
   .panelHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .panelTools {
     align-items: stretch;
     flex-direction: column;
   }
