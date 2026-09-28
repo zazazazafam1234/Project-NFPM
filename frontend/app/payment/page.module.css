@@ -18,6 +18,20 @@
   filter: blur(130px);
   opacity: 0.27;
 }
+.page::after {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  bottom: -260px;
+  left: -180px;
+  width: 540px;
+  height: 440px;
+  border-radius: 50%;
+  background: #e50914;
+  filter: blur(120px);
+  opacity: 0.12;
+  pointer-events: none;
+}
 .header,
 .content {
   position: relative;
@@ -87,6 +101,12 @@
   font-size: clamp(43px, 5vw, 61px);
   letter-spacing: -3px;
   line-height: 1;
+  font-family: var(--font-noto-thai), "Noto Sans Thai", Tahoma, sans-serif;
+  font-weight: 800;
+}
+.intro h1 em {
+  color: #b296ff;
+  font-style: normal;
 }
 .intro > p:not(.eyebrow) {
   color: #a6a0b1;
@@ -125,7 +145,7 @@
   padding: 25px;
   border: 1px solid #ffffff1c;
   border-radius: 23px;
-  background: #1a1724d9;
+  background: linear-gradient(145deg, #211c2dd9, #17131fd9 70%);
   box-shadow: 0 28px 70px #0006;
   backdrop-filter: blur(18px);
   animation: topup-reveal 0.65s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -369,6 +389,10 @@
   border: 1px solid #ffffff12;
   border-radius: 16px;
   background: #100e16aa;
+  box-shadow: inset 0 1px #ffffff0a;
+}
+.paymentResult {
+  animation: payment-result-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .qrPlaceholder {
   display: grid;
@@ -387,6 +411,7 @@
   border: 1px solid #ffffff35;
   border-radius: 15px;
   background: #fff;
+  box-shadow: 0 9px 24px #0005;
 }
 .qrImageBox img {
   width: min(150px, 86%);
@@ -545,6 +570,17 @@
   }
 }
 
+@keyframes payment-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .content,
   .paymentCard,
@@ -554,6 +590,9 @@
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
     transition-duration: 0.01ms;
+  }
+  .paymentResult {
+    animation-duration: 0.01ms;
   }
 }
 @media (max-width: 720px) {

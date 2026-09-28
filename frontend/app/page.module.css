@@ -813,11 +813,9 @@
   border: 1px solid #ffffff24;
   border-radius: 24px;
   color: #f7f5ff;
-  background:
-    radial-gradient(circle at 88% -5%, #8c61ff45, transparent 34%),
-    radial-gradient(circle at -8% 52%, #e5091426, transparent 37%),
-    #12101a;
-  box-shadow: 0 30px 100px #000c, 0 0 0 1px #9d7bff12 inset;
+  background: #17141fd9;
+  box-shadow: 0 30px 100px #000b, 0 0 0 1px #ffffff0d inset;
+  backdrop-filter: blur(24px) saturate(125%);
   animation: slot-dialog-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -837,7 +835,7 @@
   gap: 20px;
   padding: 26px 27px 20px;
   border-bottom: 1px solid #ffffff12;
-  background: #15121ce8;
+  background: #17141fc9;
   backdrop-filter: blur(16px);
 }
 
@@ -902,30 +900,38 @@
 .slotRoomPanel {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
   overflow: hidden;
-  min-height: 96px;
+  min-height: 218px;
   padding: 15px;
-  border: 1px solid #ffffff1c;
-  border-radius: 18px;
-  background: linear-gradient(115deg, #ffffff10, #7a50ec24 58%, #ffffff08);
-  box-shadow: inset 0 1px #ffffff0b;
+  border: 1px solid #ffffff26;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 78% 3%, #9a6affc9 0 13%, #6d45d642 30%, transparent 52%),
+    linear-gradient(145deg, #29213dce, #110f1ad9 66%);
+  box-shadow: inset 0 1px #ffffff16, 0 18px 36px #0005;
+  backdrop-filter: blur(20px) saturate(130%);
 }
 
-.slotRoomPanel::after {
-  content: "FAST MOVIE";
+.slotRoomPanel::before {
+  content: "NOW\A PLAYING";
   position: absolute;
-  right: -5px;
-  bottom: -15px;
-  color: #ffffff09;
-  font-size: 35px;
+  top: 21px;
+  left: 21px;
+  color: #f7f5ff;
+  font-size: 26px;
   font-weight: 900;
-  letter-spacing: -3px;
-  pointer-events: none;
+  letter-spacing: -1.8px;
+  line-height: 0.88;
+  white-space: pre;
 }
 
 .slotServiceMark {
+  position: absolute;
+  z-index: 1;
+  top: 87px;
+  left: 21px;
   display: grid;
   flex: 0 0 49px;
   width: 49px;
@@ -946,6 +952,11 @@
   min-width: 0;
   flex: 1;
   gap: 3px;
+  min-height: 63px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: linear-gradient(110deg, #d7121e, #a640bd 62%, #7746d6);
+  box-shadow: inset 0 1px #ffffff1c;
 }
 
 .slotRoomStatus strong {
@@ -958,11 +969,15 @@
 
 .slotRoomStatus small,
 .slotUsage small {
-  color: #aaa2b8;
+  color: #f3eaffc9;
   font-size: 10px;
 }
 
 .slotUsage {
+  position: absolute;
+  z-index: 2;
+  top: 97px;
+  right: 21px;
   z-index: 1;
   display: grid;
   justify-items: end;
@@ -1061,7 +1076,9 @@
   border: 1px solid #ffffff17;
   border-radius: 15px;
   color: #f6f3fc;
-  background: linear-gradient(135deg, #ffffff0d, #ffffff06);
+  background: #ffffff09;
+  box-shadow: inset 0 1px #ffffff0a;
+  backdrop-filter: blur(10px);
   text-decoration: none;
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
@@ -1069,8 +1086,8 @@
 a.slotChoice:hover {
   transform: translateY(-2px);
   border-color: #aa8eff88;
-  background: linear-gradient(135deg, #8b62ff38, #ffffff0c);
-  box-shadow: 0 10px 24px #0004;
+  background: #8b62ff22;
+  box-shadow: 0 10px 24px #0003, inset 0 1px #ffffff12;
 }
 
 .slotChoiceIcon {

@@ -210,7 +210,8 @@ export default function TopUpPage() {
               <i />
             </button>
           </div>
-          <div className={styles.paymentDetail}>
+          {pendingTopUp?.qrImage && (
+          <div className={`${styles.paymentDetail} ${styles.paymentResult}`}>
             {pendingTopUp?.qrImage ? (
               <div className={styles.qrImageBox}>
                 <Image
@@ -257,7 +258,8 @@ export default function TopUpPage() {
               )}
             </div>
           </div>
-          <div className={styles.divider} />
+          )}
+          {pendingTopUp?.qrImage && <div className={styles.divider} />}
           {message && (
             <p className={styles.message} role="status" aria-live="polite">
               {message}
