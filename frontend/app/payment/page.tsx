@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { apiFetch } from "../lib/api";
@@ -14,6 +15,7 @@ const topUps = [
 ];
 
 export default function TopUpPage() {
+  const router = useRouter();
   const { user, refreshSession } = useSession();
   const [points, setPoints] = useState(150);
   const [method, setMethod] = useState<"promptpay" | "wallet">("promptpay");
@@ -23,7 +25,7 @@ export default function TopUpPage() {
 
   async function createTopUp() {
     if (!user) {
-      window.location.assign("/register");
+      router.push("/register");
       return;
     }
     setIsSubmitting(true);
@@ -57,7 +59,7 @@ export default function TopUpPage() {
           <BrandLogo />
         </Link>
         <Link className={styles.back} href="/profile">
-          ← Point Wallet
+          ← กลับบัญชี
         </Link>
       </header>
       <section className={styles.content}>
@@ -82,13 +84,14 @@ export default function TopUpPage() {
           </div>
         </div>
         <div className={styles.paymentCard}>
-          <p className={styles.label}>เลือกจำนวน Point</p>
-          <div className={styles.topUpGrid}>
+          <p className={styles.label}>01 · เลือกจำนวน Point</p>
+          <div className={styles.topUpGrid} role="group" aria-label="จำนวน Point">
             {topUps.map((item) => (
               <button
                 className={points === item.points ? styles.activePackage : ""}
                 key={item.points}
                 onClick={() => setPoints(item.points)}
+                aria-pressed={points === item.points}
                 type="button"
               >
                 <small>{item.label}</small>
@@ -97,12 +100,16 @@ export default function TopUpPage() {
               </button>
             ))}
           </div>
-          <p className={styles.label}>เลือกช่องทางชำระเงิน</p>
-          <div className={styles.methods}>
+          <p className={styles.label}>02 · เลือกช่องทางชำระเงิน</p>
+          <div className={styles.methods} role="group" aria-label="ช่องทางชำระเงิน">
             <button
               className={method === "promptpay" ? styles.active : ""}
+              aria-pressed={method === "promptpay"}
               type="button"
-              onClick={() => setMethod("promptpay")}
+              onClick={() => {
+                setMethod("promptpay");
+                setMessage("");
+              }}
             >
               <span className={styles.promptpayIcon}>P</span>
               <span>
@@ -112,8 +119,12 @@ export default function TopUpPage() {
             </button>
             <button
               className={method === "wallet" ? styles.active : ""}
+              aria-pressed={method === "wallet"}
               type="button"
-              onClick={() => setMethod("wallet")}
+              onClick={() => {
+                setMethod("wallet");
+                setMessage("");
+              }}
             >
               <span className={styles.walletIcon}>T</span>
               <span>
@@ -127,9 +138,9 @@ export default function TopUpPage() {
               <div className={styles.qrPlaceholder}>
                 <div className={styles.qrMark}>QR</div>
                 <p>
-                  วาง QR PromptPay
+                  QR PromptPay
                   <br />
-                  ของร้านตรงนี้
+                  จะแสดงตรงนี้
                 </p>
               </div>
             ) : (
@@ -140,15 +151,20 @@ export default function TopUpPage() {
               </div>
             )}
             <div>
-              <h2>เติม {selected.points} Point</h2>
+              <h2>เติม {selected.points.toLocaleString()} Point</h2>
               <p>
-                ชำระยอด {selected.price} บาท แล้ว server จะยืนยันและเพิ่ม Point
-                ให้บัญชีนี้
+                ยอดชำระ {selected.price.toLocaleString()} บาท
+                <br />
+                บัญชีจะได้รับ Point หลังยืนยันรายการ
               </p>
             </div>
           </div>
           <div className={styles.divider} />
-          {message && <p className={styles.message}>{message}</p>}
+          {message && (
+            <p className={styles.message} role="status" aria-live="polite">
+              {message}
+            </p>
+          )}
           <button
             className={styles.paidButton}
             type="button"

@@ -69,6 +69,7 @@
   gap: 78px;
   align-items: center;
   min-height: calc(100vh - 152px);
+  animation: topup-reveal 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .content > *,
 .paymentDetail > div {
@@ -120,12 +121,14 @@
   font-size: 25px;
 }
 .paymentCard {
+  min-width: 0;
   padding: 25px;
   border: 1px solid #ffffff1c;
   border-radius: 23px;
   background: #1a1724d9;
   box-shadow: 0 28px 70px #0006;
   backdrop-filter: blur(18px);
+  animation: topup-reveal 0.65s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .label {
   margin: 0 0 13px;
@@ -141,6 +144,9 @@
 }
 .topUpGrid button {
   display: grid;
+  min-width: 0;
+  min-height: 92px;
+  align-content: start;
   gap: 3px;
   padding: 13px 9px;
   border: 1px solid #ffffff16;
@@ -150,6 +156,20 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.topUpGrid button:hover {
+  transform: translateY(-2px);
+  border-color: #a783ff88;
+}
+.topUpGrid button:focus-visible,
+.methods button:focus-visible,
+.paidButton:focus-visible {
+  outline: 2px solid #b59cff;
+  outline-offset: 3px;
 }
 .topUpGrid button.activePackage {
   border-color: #a783ff;
@@ -164,7 +184,8 @@
 .topUpGrid strong {
   color: #f7f4ff;
   font-size: 21px;
-  letter-spacing: -1px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .methods {
   display: grid;
@@ -174,6 +195,7 @@
 .methods button {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 9px;
   padding: 11px;
   border: 1px solid #ffffff16;
@@ -183,6 +205,14 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.methods button:hover {
+  border-color: #a783ff88;
+  transform: translateY(-1px);
 }
 .methods button.active {
   border-color: #9877fb;
@@ -191,6 +221,7 @@
 }
 .methods button > span:nth-child(2) {
   display: grid;
+  min-width: 0;
   gap: 3px;
   font-size: 12px;
   font-weight: 800;
@@ -280,9 +311,14 @@
 .paymentDetail {
   display: grid;
   grid-template-columns: 140px 1fr;
+  min-width: 0;
   gap: 25px;
   align-items: center;
   margin: 26px 0;
+  padding: 14px;
+  border: 1px solid #ffffff12;
+  border-radius: 16px;
+  background: #100e16aa;
 }
 .qrPlaceholder {
   display: grid;
@@ -314,6 +350,7 @@
 .paymentDetail h2 {
   margin: 0 0 8px;
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
 .paymentDetail p {
   margin: 0;
@@ -361,6 +398,14 @@
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+.paidButton:hover:not(:disabled) {
+  box-shadow: 0 16px 34px #7048f066;
+  transform: translateY(-2px);
 }
 .paidButton span {
   float: right;
@@ -406,6 +451,28 @@
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
+@keyframes topup-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content,
+  .paymentCard,
+  .topUpGrid button,
+  .methods button,
+  .paidButton {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
 @media (max-width: 720px) {
   .page {
     padding: 15px 20px 45px;
@@ -427,7 +494,8 @@
   }
   .paymentDetail {
     grid-template-columns: 110px 1fr;
-    gap: 17px;
+    gap: 14px;
+    padding: 12px;
   }
   .paymentCard {
     padding: 19px;

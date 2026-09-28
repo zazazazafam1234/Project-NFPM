@@ -99,8 +99,8 @@ export default function ProfilePage() {
           <small>POINTS AVAILABLE</small>
           <div className={styles.walletRule} />
           <p>ใช้ Point เพื่อเลือกซื้อโปรได้ทันทีในหน้าชำระเงิน</p>
-          <Link href="/#packages">
-            ไปเลือกแพ็กเกจ <b>→</b>
+          <Link href="/payment">
+            เติม Point <b>→</b>
           </Link>
         </div>
 
