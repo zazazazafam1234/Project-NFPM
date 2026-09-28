@@ -95,6 +95,7 @@ admin.get("/inventory", async (c) => {
         me.service,
         me.email,
         me.status,
+        me.max_profiles AS "maxProfiles",
         me.purchased_at,
         me.master_expired_at,
         me.note,
@@ -644,9 +645,31 @@ admin.post("/automation/profiles", async (c) => {
     return c.json({ message: "masterEmailId and profiles required" }, 400);
   }
 
+  const [room] = await sql`
+    SELECT id, email, max_profiles
+    FROM master_emails
+    WHERE id = ${body.masterEmailId}::uuid
+      AND deleted_at IS NULL
+  `;
+  if (!room) return c.json({ message: "ไม่พบห้องบัญชีแม่" }, 404);
+
+  const [countRow] = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM profiles
+    WHERE master_email_id = ${body.masterEmailId}::uuid
+      AND deleted_at IS NULL
+  `;
+  const currentCount = Number(countRow.count);
+  const maxProfiles = Number(room.max_profiles);
+  const validItems = body.profiles.filter((item) => item.profileName);
+  if (currentCount + validItems.length > maxProfiles) {
+    return c.json({
+      message: `ห้องนี้รองรับสูงสุด ${maxProfiles} profile (ปัจจุบัน ${currentCount}) ไม่สามารถเพิ่มได้อีก ${validItems.length} profile`,
+    }, 400);
+  }
+
   const created = [];
-  for (const item of body.profiles) {
-    if (!item.profileName) continue;
+  for (const item of validItems) {
     const [profile] = await sql`
       INSERT INTO profiles (
         master_email_id, profile_name, profile_pin_ciphertext, status, profile_expires_at, note
@@ -778,6 +801,7 @@ admin.post("/master-emails", async (c) => {
     purchasedAt?: string;
     masterExpiredAt: string;
     status?: "active" | "inactive" | "expired" | "suspended";
+    maxProfiles?: number;
     note?: string;
   }>();
 
@@ -787,6 +811,11 @@ admin.post("/master-emails", async (c) => {
 
   if (!body.packageId) {
     return c.json({ message: "กรุณาเลือก package ที่จะผูกกับ Email แม่" }, 400);
+  }
+
+  const maxProfiles = Number(body.maxProfiles ?? 5);
+  if (!Number.isInteger(maxProfiles) || maxProfiles < 1 || maxProfiles > 100) {
+    return c.json({ message: "จำนวน profile สูงสุดต้องอยู่ระหว่าง 1-100" }, 400);
   }
 
   const [pkg] = await sql`
@@ -801,7 +830,7 @@ admin.post("/master-emails", async (c) => {
 
   const [account] = await sql`
     INSERT INTO master_emails (
-      package_id, service, email, password_ciphertext, status, purchased_at, master_expired_at, note
+      package_id, service, email, password_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
     )
     VALUES (
       ${pkg.id},
@@ -811,9 +840,10 @@ admin.post("/master-emails", async (c) => {
       ${body.status ?? "active"},
       ${body.purchasedAt ?? new Date().toISOString()},
       ${body.masterExpiredAt},
+      ${maxProfiles},
       ${body.note ?? null}
     )
-    RETURNING id, package_id AS "packageId", service, email, status, purchased_at, master_expired_at, note
+    RETURNING id, package_id AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
   `;
 
   return c.json(account, 201);
@@ -828,8 +858,16 @@ admin.patch("/master-emails/:id", async (c) => {
     purchasedAt?: string;
     masterExpiredAt?: string;
     status?: "active" | "inactive" | "expired" | "suspended";
+    maxProfiles?: number;
     note?: string | null;
   }>();
+
+  if (body.maxProfiles !== undefined) {
+    const mp = Number(body.maxProfiles);
+    if (!Number.isInteger(mp) || mp < 1 || mp > 100) {
+      return c.json({ message: "จำนวน profile สูงสุดต้องอยู่ระหว่าง 1-100" }, 400);
+    }
+  }
 
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -850,6 +888,7 @@ admin.patch("/master-emails/:id", async (c) => {
   if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", body.purchasedAt);
   if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", body.masterExpiredAt);
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::master_email_status");
+  if (body.maxProfiles !== undefined) addUpdate(sets, values, "max_profiles", Number(body.maxProfiles));
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
 
   if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
@@ -861,7 +900,7 @@ admin.patch("/master-emails/:id", async (c) => {
     SET ${sets.join(", ")}, updated_at = NOW()
     WHERE id = $${values.length}::uuid
       AND deleted_at IS NULL
-    RETURNING id, package_id AS "packageId", service, email, status, purchased_at, master_expired_at, note
+    RETURNING id, package_id AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
     `,
     values,
   );
@@ -914,22 +953,48 @@ admin.post("/profiles", async (c) => {
     return c.json({ message: "masterEmailId and profileName required" }, 400);
   }
 
-  const [profile] = await sql`
-    INSERT INTO profiles (
-      master_email_id, profile_name, profile_pin_ciphertext, status, profile_expires_at, note
-    )
-    VALUES (
-      ${body.masterEmailId}::uuid,
-      ${body.profileName},
-      ${body.pin ? encryptSecret(body.pin) : null},
-      ${body.status ?? "available"},
-      ${body.profileExpiresAt ?? null},
-      ${body.note ?? null}
-    )
-    RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
-  `;
+  try {
+    const profile = await sql.begin(async (db) => {
+      const [room] = await db`
+        SELECT id, email, max_profiles
+        FROM master_emails
+        WHERE id = ${body.masterEmailId}::uuid
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      if (!room) throw new Error("ไม่พบห้องบัญชีแม่");
 
-  return c.json(profile, 201);
+      const [countRow] = await db`
+        SELECT COUNT(*)::int AS count
+        FROM profiles
+        WHERE master_email_id = ${body.masterEmailId}::uuid
+          AND deleted_at IS NULL
+      `;
+      if (Number(countRow.count) >= Number(room.max_profiles)) {
+        throw new Error(`ห้องนี้รองรับสูงสุด ${room.max_profiles} profile แล้ว (ปัจจุบัน ${countRow.count})`);
+      }
+
+      const [created] = await db`
+        INSERT INTO profiles (
+          master_email_id, profile_name, profile_pin_ciphertext, status, profile_expires_at, note
+        )
+        VALUES (
+          ${body.masterEmailId}::uuid,
+          ${body.profileName},
+          ${body.pin ? encryptSecret(body.pin) : null},
+          ${body.status ?? "available"},
+          ${body.profileExpiresAt ?? null},
+          ${body.note ?? null}
+        )
+        RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
+      `;
+      return created;
+    });
+
+    return c.json(profile, 201);
+  } catch (err) {
+    return c.json({ message: err instanceof Error ? err.message : "เพิ่ม profile ไม่สำเร็จ" }, 400);
+  }
 });
 
 admin.patch("/profiles/:id", async (c) => {

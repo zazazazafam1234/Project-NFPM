@@ -209,6 +209,7 @@ export type AdminInventory = {
     service: string;
     email: string;
     status: string;
+    maxProfiles: number;
     purchased_at: string;
     master_expired_at: string;
     note: string | null;
@@ -322,6 +323,7 @@ export function saveMasterEmail(body: {
   purchasedAt?: string;
   masterExpiredAt: string;
   status?: string;
+  maxProfiles?: number;
   note?: string;
 }) {
   return apiFetch("/admin/master-emails", {
@@ -337,6 +339,7 @@ export function updateMasterEmail(masterEmailId: string, body: {
   purchasedAt?: string;
   masterExpiredAt?: string;
   status?: string;
+  maxProfiles?: number;
   note?: string | null;
 }) {
   return apiFetch(`/admin/master-emails/${masterEmailId}`, {

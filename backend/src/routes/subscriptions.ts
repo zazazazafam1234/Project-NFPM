@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import sql from "../db";
 import { decryptSecret } from "../crypto";
 import { getSessionUserId } from "../session";
+import { sendSubscriptionEmail } from "../libs/gmail/mailsender";
 
 const subscriptions = new Hono();
 
@@ -101,7 +102,7 @@ subscriptions.post("/", async (c) => {
       const expiresAt = addDays(now, pkg.duration_days);
 
       const [user] = await sql`
-        SELECT *
+        SELECT id, email, points, status
         FROM "User"
         WHERE id = ${userId}
           AND status = 'active'
@@ -217,8 +218,24 @@ subscriptions.post("/", async (c) => {
         subscription,
         package: pkg,
         profile,
+        userEmail: user.email,
         points: updatedUser.points,
       };
+    });
+
+    const credentials = {
+      email: result.profile.master_email,
+      password: decryptSecret(result.profile.master_password_ciphertext),
+      profileName: result.profile.profile_name,
+      pin: decryptSecret(result.profile.profile_pin_ciphertext),
+    };
+
+    sendSubscriptionEmail({ to: result.userEmail, credentials }).catch((err) => {
+      console.error("[gmail] sendSubscriptionEmail failed", {
+        userId,
+        subscriptionId: result.subscription.id,
+        error: err instanceof Error ? err.message : err,
+      });
     });
 
     return c.json({
@@ -227,12 +244,7 @@ subscriptions.post("/", async (c) => {
       startedAt: result.subscription.started_at,
       expiresAt: result.subscription.expires_at,
       points: result.points,
-      credentials: {
-        email: result.profile.master_email,
-        password: decryptSecret(result.profile.master_password_ciphertext),
-        profileName: result.profile.profile_name,
-        pin: decryptSecret(result.profile.profile_pin_ciphertext),
-      },
+      credentials,
     }, 201);
   } catch (err) {
     return c.json(

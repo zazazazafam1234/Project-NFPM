@@ -761,6 +761,7 @@ function AccountsPanel({
     purchasedAt: tomorrow,
     masterExpiredAt: tomorrow,
     status: "active",
+    maxProfiles: 5,
     note: "",
   });
   const [editForm, setEditForm] = useState(form);
@@ -794,6 +795,7 @@ function AccountsPanel({
       purchasedAt: tomorrow,
       masterExpiredAt: tomorrow,
       status: "active",
+      maxProfiles: 5,
       note: "",
     });
   }
@@ -856,7 +858,7 @@ function AccountsPanel({
             <motion.div key={account.id} {...rowMotion}>
               <b>{account.email}</b>
               <span>
-                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} slot
+                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} slot (max {account.maxProfiles})
               </span>
               <em className={account.status === "active" ? styles.green : styles.yellow}>
                 {account.status}
@@ -872,6 +874,7 @@ function AccountsPanel({
                     purchasedAt: dateInputValue(account.purchased_at) || tomorrow,
                     masterExpiredAt: dateInputValue(account.master_expired_at) || tomorrow,
                     status: account.status,
+                    maxProfiles: account.maxProfiles ?? 5,
                     note: account.note ?? "",
                   });
                 }}
@@ -958,6 +961,18 @@ function AccountsPanel({
             </select>
           </label>
           <label>
+            จำนวน Profile สูงสุด (Capacity)
+            <input
+              inputMode="numeric"
+              min={1}
+              max={100}
+              value={form.maxProfiles}
+              onChange={(event) =>
+                setForm({ ...form, maxProfiles: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
             Note
             <input
               value={form.note}
@@ -1042,6 +1057,18 @@ function AccountsPanel({
               <option value="expired">expired</option>
               <option value="suspended">suspended</option>
             </select>
+          </label>
+          <label>
+            จำนวน Profile สูงสุด (Capacity)
+            <input
+              inputMode="numeric"
+              min={1}
+              max={100}
+              value={editForm.maxProfiles}
+              onChange={(event) =>
+                setEditForm({ ...editForm, maxProfiles: Number(event.target.value) })
+              }
+            />
           </label>
           <label>
             Note
@@ -1226,7 +1253,10 @@ function ProfilesPanel({
           {visibleProfiles.map((profile) => (
             <motion.div key={profile.id} {...rowMotion}>
               <b>{profile.profile_name}</b>
-              <span>{profile.masterEmail} · {profile.packageName ?? profile.service}</span>
+              <span>{profile.masterEmail} · {profile.packageName ?? profile.service} · {(() => {
+                const room = (inventory?.masterEmails ?? []).find((a) => a.id === profile.master_email_id);
+                return room ? `${room.profileCount}/${room.maxProfiles}` : "";
+              })()}</span>
               <em className={profile.status === "available" ? styles.green : styles.yellow}>
                 {profile.status}
               </em>
@@ -1284,13 +1314,23 @@ function ProfilesPanel({
               }
             >
               <option value="">เลือกห้องบัญชีแม่</option>
-              {(inventory?.masterEmails ?? []).map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.email} · {account.packageName ?? account.service}
-                </option>
-              ))}
+              {(inventory?.masterEmails ?? []).map((account) => {
+                const isFull = account.profileCount >= account.maxProfiles;
+                return (
+                  <option key={account.id} value={account.id}>
+                    {account.email} · {account.packageName ?? account.service} · {account.profileCount}/{account.maxProfiles} profile{isFull ? " (เต็ม)" : ""}
+                  </option>
+                );
+              })}
             </select>
           </label>
+          {(() => {
+            const selected = (inventory?.masterEmails ?? []).find((a) => a.id === selectedMasterEmailId);
+            if (selected && selected.profileCount >= selected.maxProfiles) {
+              return <p style={{ color: "var(--red, #f04)", fontSize: "0.85rem" }}>ห้องนี้เต็มแล้ว ({selected.profileCount}/{selected.maxProfiles}) กรุณาเลือกห้องอื่นหรือเพิ่ม Capacity</p>;
+            }
+            return null;
+          })()}
           <label>
             ชื่อ Slot / Profile
             <input
@@ -1341,7 +1381,10 @@ function ProfilesPanel({
           <div className={styles.formActions}>
             <button
               className={styles.primary}
-              disabled={!selectedMasterEmailId || !form.profileName}
+              disabled={!selectedMasterEmailId || !form.profileName || (() => {
+                const selected = (inventory?.masterEmails ?? []).find((a) => a.id === selectedMasterEmailId);
+                return Boolean(selected && selected.profileCount >= selected.maxProfiles);
+              })()}
               onClick={() => void submit()}
               type="button"
             >
