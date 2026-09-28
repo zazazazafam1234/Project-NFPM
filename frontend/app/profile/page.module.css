@@ -257,7 +257,7 @@
   height: 320px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #3a3148 transparent;
+  scrollbar-color: #7953ed transparent;
 }
 .listWrapper::-webkit-scrollbar {
   width: 4px;
@@ -266,7 +266,7 @@
   background: transparent;
 }
 .listWrapper::-webkit-scrollbar-thumb {
-  background: #3a3148;
+  background: #7953ed;
   border-radius: 4px;
 }
 .list {

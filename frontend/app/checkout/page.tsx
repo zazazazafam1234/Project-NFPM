@@ -92,7 +92,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${styles.checkout}`}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/">
           <BrandLogo />
@@ -107,7 +107,7 @@ export default function CheckoutPage() {
           <h1>
             เลือกโปร
             <br />
-            <em>ให้ Slot นี้</em>
+            <em>ที่เหมาะกับคุณ</em>
           </h1>
           <p>
             {selectedRoom && selectedSlot

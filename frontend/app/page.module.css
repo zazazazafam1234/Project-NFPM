@@ -1149,7 +1149,7 @@
   scroll-behavior: smooth;
   scroll-snap-type: y mandatory;
   scrollbar-width: thin;
-  scrollbar-color: #7953ed transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .scrollStage > section,
