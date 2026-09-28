@@ -178,6 +178,15 @@ export default function AdminPage() {
 
 function Overview({ inventory }: { inventory: AdminInventory | null }) {
   const metrics = inventory?.metrics;
+  const [stockSearch, setStockSearch] = useState("");
+  const visiblePackages = (inventory?.packages ?? []).filter((pkg) => {
+    const query = stockSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [pkg.name, pkg.slug, pkg.service, pkg.status]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+
   return (
     <>
       <div className={styles.metrics}>
@@ -213,9 +222,15 @@ function Overview({ inventory }: { inventory: AdminInventory | null }) {
               <p className={styles.eyebrow}>LIVE STOCK</p>
               <h2>ห้องและ Slot หน้าร้าน</h2>
             </div>
+            <input
+              className={styles.search}
+              placeholder="ค้นหา stock"
+              value={stockSearch}
+              onChange={(event) => setStockSearch(event.target.value)}
+            />
           </div>
           <div className={styles.roomList}>
-            {(inventory?.packages ?? []).map((pkg) => (
+            {visiblePackages.map((pkg) => (
               <div key={pkg.id}>
                 <span className={`${styles.statusDot} ${styles.green}`} />
                 <b>{pkg.name}</b>
@@ -225,6 +240,9 @@ function Overview({ inventory }: { inventory: AdminInventory | null }) {
                 </em>
               </div>
             ))}
+            {visiblePackages.length === 0 && (
+              <p className={styles.emptyInline}>ไม่พบรายการที่ค้นหา</p>
+            )}
           </div>
         </section>
         <section className={`${styles.panel} ${styles.activity}`}>
@@ -344,8 +362,16 @@ function PackagesPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const canSave = form.slug && form.name && form.durationDays > 0;
   const canSaveEdit = editForm.slug && editForm.name && editForm.durationDays > 0;
+  const visiblePackages = (inventory?.packages ?? []).filter((pkg) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [pkg.slug, pkg.name, pkg.service, pkg.status, pkg.description]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
 
   function resetForm() {
     setEditingId(null);
@@ -385,10 +411,20 @@ function PackagesPanel({
     <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>CUSTOMER PROMOTIONS</p>
-        <h2>โปรโมชันให้ลูกค้าเลือก</h2>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>CUSTOMER PROMOTIONS</p>
+            <h2>โปรโมชันให้ลูกค้าเลือก</h2>
+          </div>
+          <input
+            className={styles.search}
+            placeholder="ค้นหาโปรโมชัน"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
         <div className={styles.packageAdmin}>
-          {(inventory?.packages ?? []).map((pkg) => (
+          {visiblePackages.map((pkg) => (
             <div key={pkg.id}>
               <span>{pkg.slug}</span>
               <b>{pkg.price_amount} Point</b>
@@ -424,6 +460,9 @@ function PackagesPanel({
               </button>
             </div>
           ))}
+          {visiblePackages.length === 0 && (
+            <p className={styles.emptyInline}>ไม่พบโปรโมชันที่ค้นหา</p>
+          )}
         </div>
       </section>
       <section className={styles.panel}>
@@ -606,8 +645,23 @@ function AccountsPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const selectedPackageId = form.packageId || firstPackageId;
   const selectedEditPackageId = editForm.packageId || firstPackageId;
+  const visibleAccounts = (inventory?.masterEmails ?? []).filter((account) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      account.email,
+      account.packageName,
+      account.packageSlug,
+      account.service,
+      account.status,
+      account.note,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
 
   function resetForm() {
     setEditingId(null);
@@ -658,10 +712,20 @@ function AccountsPanel({
     <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>ROOM ACCOUNTS</p>
-        <h2>ห้อง / Email แม่</h2>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>ROOM ACCOUNTS</p>
+            <h2>ห้อง / Email แม่</h2>
+          </div>
+          <input
+            className={styles.search}
+            placeholder="ค้นหาห้อง"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
         <div className={styles.table}>
-          {(inventory?.masterEmails ?? []).map((account) => (
+          {visibleAccounts.map((account) => (
             <div key={account.id}>
               <b>{account.email}</b>
               <span>
@@ -696,6 +760,9 @@ function AccountsPanel({
               </button>
             </div>
           ))}
+          {visibleAccounts.length === 0 && (
+            <p className={styles.emptyInline}>ไม่พบห้องที่ค้นหา</p>
+          )}
         </div>
       </section>
       <section className={styles.panel}>
@@ -892,8 +959,40 @@ function ProfilesPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
+  const profiles = inventory?.profiles ?? [];
+  const statusTabs = [
+    ["all", "ทั้งหมด"],
+    ["available", "ว่าง"],
+    ["rented", "เช่าอยู่"],
+    ["reserved", "จองไว้"],
+    ["inactive", "ปิดใช้งาน"],
+    ["expired", "หมดอายุ"],
+  ] as const;
+  const visibleProfiles = profiles.filter((profile) => {
+    if (statusFilter !== "all" && profile.status !== statusFilter) return false;
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      profile.profile_name,
+      profile.masterEmail,
+      profile.packageName,
+      profile.packageSlug,
+      profile.service,
+      profile.status,
+      profile.note,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const countByStatus = profiles.reduce<Record<string, number>>((acc, profile) => {
+    acc.all = (acc.all ?? 0) + 1;
+    acc[profile.status] = (acc[profile.status] ?? 0) + 1;
+    return acc;
+  }, { all: 0 });
 
   function resetForm() {
     setEditingId(null);
@@ -950,10 +1049,33 @@ function ProfilesPanel({
     <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
-        <p className={styles.eyebrow}>ROOM SLOTS</p>
-        <h2>Slot / โปรไฟล์ที่ดูได้</h2>
+        <div className={styles.panelHead}>
+          <div>
+            <p className={styles.eyebrow}>ROOM SLOTS</p>
+            <h2>Slot / โปรไฟล์ที่ดูได้</h2>
+          </div>
+          <input
+            className={styles.search}
+            placeholder="ค้นหา slot"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <div className={styles.categoryTabs}>
+          {statusTabs.map(([key, label]) => (
+            <button
+              className={statusFilter === key ? styles.categoryActive : ""}
+              key={key}
+              onClick={() => setStatusFilter(key)}
+              type="button"
+            >
+              {label}
+              <span>{countByStatus[key] ?? 0}</span>
+            </button>
+          ))}
+        </div>
         <div className={styles.table}>
-          {(inventory?.profiles ?? []).map((profile) => (
+          {visibleProfiles.map((profile) => (
             <div key={profile.id}>
               <b>{profile.profile_name}</b>
               <span>{profile.masterEmail} · {profile.packageName ?? profile.service}</span>
@@ -996,6 +1118,9 @@ function ProfilesPanel({
               </button>
             </div>
           ))}
+          {visibleProfiles.length === 0 && (
+            <p className={styles.emptyInline}>ไม่พบ Slot ในหมวดหมู่/คำค้นนี้</p>
+          )}
         </div>
       </section>
       <section className={styles.panel}>

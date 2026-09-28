@@ -359,6 +359,16 @@
   font-weight: 800;
   cursor: pointer;
 }
+.emptyInline {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed #ffffff18;
+  border-radius: 10px;
+  color: #8f879b;
+  background: #0f0e1566;
+  font-size: 11px;
+  text-align: center;
+}
 .roomList {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -571,6 +581,41 @@
 .search {
   width: 220px;
 }
+.categoryTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 16px;
+}
+.categoryTabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid #ffffff14;
+  border-radius: 999px;
+  color: #9c94a7;
+  background: #0f0e15;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.categoryTabs button:hover,
+.categoryTabs .categoryActive {
+  border-color: #8b66f255;
+  color: #f4efff;
+  background: #7953ed22;
+}
+.categoryTabs span {
+  min-width: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #c9b8ff;
+  background: #ffffff10;
+  font-size: 10px;
+  text-align: center;
+}
 .emptyState {
   display: grid;
   min-height: 265px;
@@ -641,6 +686,13 @@
   .roomList {
     grid-template-columns: 1fr;
   }
+  .panelHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .search {
+    width: 100%;
+  }
 }
 @media (max-width: 580px) {
   .metrics,
@@ -659,9 +711,6 @@
   .formRows label {
     grid-template-columns: 1fr;
     gap: 6px;
-  }
-  .search {
-    width: 145px;
   }
   .table > div span {
     display: none;
