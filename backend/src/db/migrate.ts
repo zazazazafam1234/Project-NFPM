@@ -82,6 +82,21 @@ await sql`
 `;
 
 await sql`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_name = 'Transaction'
+        AND column_name = 'topUpId'
+    ) THEN
+      ALTER TABLE "Transaction"
+      ADD COLUMN "topUpId" UUID;
+    END IF;
+  END $$;
+`;
+
+await sql`
   CREATE TABLE IF NOT EXISTS "Category" (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -254,6 +269,29 @@ await sql`
   )
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS point_topups (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id               TEXT NOT NULL REFERENCES "User"(id) ON DELETE RESTRICT,
+    points                INTEGER NOT NULL CHECK (points > 0),
+    payment_method        TEXT NOT NULL DEFAULT 'promptpay',
+    status                TEXT NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'paid', 'expired', 'cancelled', 'failed')),
+    base_amount_cents     INTEGER NOT NULL CHECK (base_amount_cents > 0),
+    payable_amount_cents  INTEGER NOT NULL CHECK (payable_amount_cents > 0),
+    ref_decimal           INTEGER NOT NULL CHECK (ref_decimal BETWEEN 1 AND 99),
+    qr_payload            TEXT,
+    expires_at            TIMESTAMPTZ NOT NULL,
+    paid_at               TIMESTAMPTZ,
+    matched_amount_cents  INTEGER,
+    line_message          JSONB,
+    note                  TEXT,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT point_topups_paid_has_paid_at CHECK (status <> 'paid' OR paid_at IS NOT NULL)
+  )
+`;
+
 await sql`CREATE INDEX IF NOT EXISTS packages_active_idx ON packages (service, sort_order, price_amount) WHERE status = 'active' AND deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS master_emails_package_idx ON master_emails (package_id, status, master_expired_at) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_active_unique ON master_emails (LOWER(email), service) WHERE deleted_at IS NULL`;
@@ -265,6 +303,14 @@ await sql`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (us
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_profile_idx ON subscriptions (profile_id, expires_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_status_role_idx ON "User" (status, role, "createdAt" DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_email_search_idx ON "User" (LOWER(email))`;
+await sql`CREATE INDEX IF NOT EXISTS point_topups_user_idx ON point_topups (user_id, created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS point_topups_status_expires_idx ON point_topups (status, expires_at)`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS point_topups_pending_amount_unique
+  ON point_topups (payable_amount_cents)
+  WHERE status = 'pending'
+`;
+await sql`CREATE INDEX IF NOT EXISTS transaction_topup_idx ON "Transaction" ("topUpId") WHERE "topUpId" IS NOT NULL`;
 await sql`
   DO $$
   BEGIN

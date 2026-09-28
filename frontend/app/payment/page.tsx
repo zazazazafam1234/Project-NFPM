@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { apiFetch } from "../lib/api";
 import { useSession } from "../providers";
@@ -13,23 +15,61 @@ const topUps = [
   { points: 350, price: 350, label: "ยอดนิยม" },
 ];
 
+type TopUpResponse = {
+  id: string;
+  status: "pending" | "paid" | "expired" | "cancelled" | "failed";
+  points: number;
+  baseAmount: number;
+  payableAmount: number;
+  refDecimal: number;
+  expiresAt: string;
+  paidAt: string | null;
+  qrImage: string | null;
+};
+
 export default function TopUpPage() {
+  const router = useRouter();
   const { user, refreshSession } = useSession();
   const [points, setPoints] = useState(150);
-  const [method, setMethod] = useState<"promptpay" | "wallet">("promptpay");
+  const [method, setMethod] = useState<"promptpay">("promptpay");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
   const selected = topUps.find((item) => item.points === points) ?? topUps[1];
+
+  useEffect(() => {
+    if (!pendingTopUp || pendingTopUp.status !== "pending") return;
+    const interval = window.setInterval(() => {
+      apiFetch<TopUpResponse>(`/points/top-ups/${pendingTopUp.id}`)
+        .then(async (topUp) => {
+          setPendingTopUp({ ...topUp, qrImage: pendingTopUp.qrImage });
+          if (topUp.status === "paid") {
+            window.clearInterval(interval);
+            await refreshSession();
+            setMessage("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
+            window.alert("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
+          }
+          if (topUp.status === "expired") {
+            window.clearInterval(interval);
+            setMessage("รายการ QR หมดอายุแล้ว กรุณาสร้างรายการใหม่");
+          }
+        })
+        .catch(() => undefined);
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, [pendingTopUp, refreshSession]);
 
   async function createTopUp() {
     if (!user) {
-      window.location.assign("/register");
+      router.push("/register");
       return;
     }
     setIsSubmitting(true);
     setMessage("");
+    setPendingTopUp(null);
     try {
-      await apiFetch("/points/top-ups", {
+      const topUp = await apiFetch<TopUpResponse>("/points/top-ups", {
         method: "POST",
         body: JSON.stringify({
           points: selected.points,
@@ -37,8 +77,8 @@ export default function TopUpPage() {
           paymentMethod: method,
         }),
       });
-      await refreshSession();
-      setMessage("สร้างรายการเติม Point แล้ว กรุณาชำระเงินตามช่องทางที่เลือก");
+      setPendingTopUp(topUp);
+      setMessage("สร้าง QR แล้ว กรุณาโอนยอดให้ตรงรวมทศนิยมเพื่อยืนยันอัตโนมัติ");
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -110,41 +150,59 @@ export default function TopUpPage() {
               </span>
               <i />
             </button>
-            <button
-              className={method === "wallet" ? styles.active : ""}
-              type="button"
-              onClick={() => setMethod("wallet")}
-            >
+            <button className={styles.disabledMethod} type="button" disabled>
               <span className={styles.walletIcon}>T</span>
               <span>
-                TrueMoney<small>โอนผ่าน Wallet</small>
+                TrueMoney<small>เร็ว ๆ นี้</small>
               </span>
               <i />
             </button>
           </div>
           <div className={styles.paymentDetail}>
-            {method === "promptpay" ? (
+            {pendingTopUp?.qrImage ? (
+              <div className={styles.qrImageBox}>
+                <Image
+                  alt="PromptPay QR"
+                  height={150}
+                  src={pendingTopUp.qrImage}
+                  unoptimized
+                  width={150}
+                />
+              </div>
+            ) : (
               <div className={styles.qrPlaceholder}>
                 <div className={styles.qrMark}>QR</div>
                 <p>
-                  วาง QR PromptPay
+                  กดสร้างรายการ
                   <br />
-                  ของร้านตรงนี้
+                  เพื่อรับ QR
                 </p>
-              </div>
-            ) : (
-              <div className={styles.walletPlaceholder}>
-                ทรู
-                <br />
-                มันนี่
               </div>
             )}
             <div>
               <h2>เติม {selected.points} Point</h2>
-              <p>
-                ชำระยอด {selected.price} บาท แล้ว server จะยืนยันและเพิ่ม Point
-                ให้บัญชีนี้
-              </p>
+              {pendingTopUp ? (
+                <div className={styles.paymentRef}>
+                  <span>ยอดที่ต้องโอน</span>
+                  <strong>{pendingTopUp.payableAmount.toFixed(2)} บาท</strong>
+                  <small>
+                    โอน {pendingTopUp.baseAmount.toLocaleString()} บาท +
+                    ref .{String(pendingTopUp.refDecimal).padStart(2, "0")}
+                  </small>
+                  <em>
+                    สถานะ: {pendingTopUp.status} · หมดอายุ{" "}
+                    {new Date(pendingTopUp.expiresAt).toLocaleTimeString("th-TH", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </em>
+                </div>
+              ) : (
+                <p>
+                  ระบบจะสร้างยอดทศนิยมเป็น ref ให้โอน เช่น 150.37 บาท
+                  แล้ว LINE worker จะยืนยันอัตโนมัติเมื่อยอดเงินเข้าตรงกัน
+                </p>
+              )}
             </div>
           </div>
           <div className={styles.divider} />
