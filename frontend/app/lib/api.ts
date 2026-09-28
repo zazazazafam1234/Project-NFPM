@@ -319,7 +319,7 @@ export function deleteAdminPackage(packageId: string) {
 }
 
 export function saveMasterEmail(body: {
-  packageId: string;
+  service: string;
   email: string;
   password: string;
   purchasedAt?: string;
@@ -335,7 +335,7 @@ export function saveMasterEmail(body: {
 }
 
 export function updateMasterEmail(masterEmailId: string, body: {
-  packageId?: string;
+  service?: string;
   email?: string;
   password?: string;
   purchasedAt?: string;

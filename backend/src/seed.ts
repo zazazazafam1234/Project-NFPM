@@ -196,60 +196,51 @@ for (const pkg of streamingPackages) {
   `;
 }
 
-const packageRows = await sql`
-  SELECT id, slug, service
-  FROM packages
-  WHERE slug IN ('netflix-week', 'disney-week', 'youtube-week', 'spotify-month')
-`;
-const packageBySlug = new Map(packageRows.map((row) => [row.slug, row]));
-const defaultPackage = packageBySlug.get("netflix-week");
-if (!defaultPackage) throw new Error("Missing default package after seed");
-
 const demoRooms = [
   {
-    packageSlug: "netflix-week",
+    service: "netflix",
     email: "demo-room-01@fastmovie.local",
     password: "DemoRoom01!",
     note: "Netflix Demo Room 01",
     profiles: ["Slot 1", "Slot 2", "Slot 3", "Slot 4"],
   },
   {
-    packageSlug: "netflix-week",
+    service: "netflix",
     email: "demo-room-02@fastmovie.local",
     password: "DemoRoom02!",
     note: "Netflix Demo Room 02",
     profiles: ["Slot 1", "Slot 2", "Slot 3", "Slot 4"],
   },
   {
-    packageSlug: "netflix-week",
+    service: "netflix",
     email: "demo-room-03@fastmovie.local",
     password: "DemoRoom03!",
     note: "Netflix Demo Room 03",
     profiles: ["Movie A", "Movie B", "Movie C", "Kids"],
   },
   {
-    packageSlug: "disney-week",
+    service: "disney",
     email: "disney-room-01@fastmovie.local",
     password: "DisneyRoom01!",
     note: "Disney Demo Room 01",
     profiles: ["Mickey", "Marvel", "Pixar", "Star"],
   },
   {
-    packageSlug: "disney-week",
+    service: "disney",
     email: "disney-room-02@fastmovie.local",
     password: "DisneyRoom02!",
     note: "Disney Demo Room 02",
     profiles: ["Slot 1", "Slot 2", "Slot 3", "Kids"],
   },
   {
-    packageSlug: "youtube-week",
+    service: "youtube",
     email: "youtube-room-01@fastmovie.local",
     password: "YoutubeRoom01!",
     note: "YouTube Demo Room 01",
     profiles: ["Main", "Music", "Family", "Kids"],
   },
   {
-    packageSlug: "spotify-month",
+    service: "spotify",
     email: "spotify-room-01@fastmovie.local",
     password: "SpotifyRoom01!",
     note: "Spotify Demo Room 01",
@@ -261,12 +252,11 @@ const purchasedAt = new Date();
 const masterExpiredAt = addDays(purchasedAt, 90);
 
 for (const room of demoRooms) {
-  const roomPackage = packageBySlug.get(room.packageSlug) ?? defaultPackage;
   const [existing] = await sql`
     SELECT id
     FROM master_emails
     WHERE LOWER(email) = LOWER(${room.email})
-      AND service = ${roomPackage.service}
+      AND service = ${room.service}
       AND deleted_at IS NULL
     LIMIT 1
   `;
@@ -275,8 +265,8 @@ for (const room of demoRooms) {
     ? await sql`
         UPDATE master_emails
         SET
-          package_id = ${roomPackage.id},
-          service = ${roomPackage.service},
+          package_id = NULL,
+          service = ${room.service},
           password_ciphertext = ${encryptSecret(room.password)},
           status = 'active',
           master_expired_at = ${masterExpiredAt.toISOString()},
@@ -287,12 +277,11 @@ for (const room of demoRooms) {
       `
     : await sql`
         INSERT INTO master_emails (
-          package_id, service, email, password_ciphertext, status,
+          service, email, password_ciphertext, status,
           purchased_at, master_expired_at, note
         )
         VALUES (
-          ${roomPackage.id},
-          ${roomPackage.service},
+          ${room.service},
           ${room.email},
           ${encryptSecret(room.password)},
           'active',

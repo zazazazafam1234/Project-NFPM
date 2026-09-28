@@ -196,18 +196,7 @@ await sql`
 
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES packages(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS max_profiles INTEGER NOT NULL DEFAULT 5 CHECK (max_profiles > 0)`;
-await sql`
-  UPDATE master_emails me
-  SET package_id = (
-    SELECT id
-    FROM packages
-    WHERE service = me.service
-      AND deleted_at IS NULL
-    ORDER BY status = 'active' DESC, sort_order, price_amount, created_at
-    LIMIT 1
-  )
-  WHERE me.package_id IS NULL
-`;
+await sql`UPDATE master_emails SET package_id = NULL WHERE package_id IS NOT NULL`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS profiles (

@@ -91,9 +91,9 @@ admin.get("/inventory", async (c) => {
     sql`
       SELECT
         me.id,
-        me.package_id AS "packageId",
-        pkg.name AS "packageName",
-        pkg.slug AS "packageSlug",
+        NULL::uuid AS "packageId",
+        NULL::text AS "packageName",
+        NULL::text AS "packageSlug",
         me.service,
         me.email,
         me.status,
@@ -116,10 +116,9 @@ admin.get("/inventory", async (c) => {
             )
         )::int AS "availableProfiles"
       FROM master_emails me
-      LEFT JOIN packages pkg ON pkg.id = me.package_id
       LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL
       WHERE me.deleted_at IS NULL
-      GROUP BY me.id, pkg.id
+      GROUP BY me.id
       ORDER BY me.created_at DESC
       LIMIT 100
     `,
@@ -134,11 +133,10 @@ admin.get("/inventory", async (c) => {
         p.created_at,
         me.email AS "masterEmail",
         me.service,
-        pkg.name AS "packageName",
-        pkg.slug AS "packageSlug"
+        NULL::text AS "packageName",
+        NULL::text AS "packageSlug"
       FROM profiles p
       JOIN master_emails me ON me.id = p.master_email_id
-      LEFT JOIN packages pkg ON pkg.id = me.package_id
       WHERE p.deleted_at IS NULL
       ORDER BY p.created_at DESC
       LIMIT 150
@@ -600,9 +598,9 @@ admin.get("/automation/master-emails", async (c) => {
   const accounts = await sql`
     SELECT
       me.id,
-      me.package_id AS "packageId",
-      pkg.name AS "packageName",
-      pkg.slug AS "packageSlug",
+      NULL::uuid AS "packageId",
+      NULL::text AS "packageName",
+      NULL::text AS "packageSlug",
       me.service,
       me.email,
       me.password_ciphertext,
@@ -625,14 +623,13 @@ admin.get("/automation/master-emails", async (c) => {
           )
       )::int AS "availableProfiles"
     FROM master_emails me
-    LEFT JOIN packages pkg ON pkg.id = me.package_id
     LEFT JOIN profiles p ON p.master_email_id = me.id AND p.deleted_at IS NULL
     WHERE me.deleted_at IS NULL
       AND me.status = 'active'
       AND me.master_expired_at > NOW()
       AND me.service = ${service}
       AND (${email ?? null}::text IS NULL OR me.email = ${email ?? null})
-    GROUP BY me.id, pkg.id
+    GROUP BY me.id
     ORDER BY me.created_at DESC
     LIMIT 100
   `;
@@ -836,7 +833,6 @@ admin.delete("/packages/:id", async (c) => {
 
 admin.post("/master-emails", async (c) => {
   const body = await c.req.json<{
-    packageId?: string;
     service?: string;
     email: string;
     password: string;
@@ -847,36 +843,24 @@ admin.post("/master-emails", async (c) => {
     note?: string;
   }>();
 
-  if (!body.email || !body.password || !body.masterExpiredAt) {
-    return c.json({ message: "email, password, masterExpiredAt required" }, 400);
+  if (!body.service || !body.email || !body.password || !body.masterExpiredAt) {
+    return c.json({ message: "service, email, password, masterExpiredAt required" }, 400);
   }
 
-  if (!body.packageId) {
-    return c.json({ message: "กรุณาเลือก package ที่จะผูกกับ Email แม่" }, 400);
-  }
+  const service = body.service.trim().toLowerCase();
+  if (!service) return c.json({ message: "กรุณาระบุ service ของห้อง" }, 400);
 
   const maxProfiles = Number(body.maxProfiles ?? 5);
   if (!Number.isInteger(maxProfiles) || maxProfiles < 1 || maxProfiles > 100) {
     return c.json({ message: "จำนวน profile สูงสุดต้องอยู่ระหว่าง 1-100" }, 400);
   }
 
-  const [pkg] = await sql`
-    SELECT id, service
-    FROM packages
-    WHERE id = ${body.packageId}::uuid
-      AND deleted_at IS NULL
-    LIMIT 1
-  `;
-
-  if (!pkg) return c.json({ message: "ไม่พบ package ที่เลือก" }, 404);
-
   const [account] = await sql`
     INSERT INTO master_emails (
-      package_id, service, email, password_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
+      service, email, password_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
     )
     VALUES (
-      ${pkg.id},
-      ${pkg.service},
+      ${service},
       ${body.email},
       ${encryptSecret(body.password)},
       ${body.status ?? "active"},
@@ -885,7 +869,7 @@ admin.post("/master-emails", async (c) => {
       ${maxProfiles},
       ${body.note ?? null}
     )
-    RETURNING id, package_id AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
+    RETURNING id, NULL::uuid AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
   `;
 
   return c.json(account, 201);
@@ -894,7 +878,7 @@ admin.post("/master-emails", async (c) => {
 admin.patch("/master-emails/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{
-    packageId?: string;
+    service?: string;
     email?: string;
     password?: string;
     purchasedAt?: string;
@@ -913,17 +897,11 @@ admin.patch("/master-emails/:id", async (c) => {
 
   const sets: string[] = [];
   const values: unknown[] = [];
-  if (body.packageId !== undefined) {
-    const [pkg] = await sql`
-      SELECT id, service
-      FROM packages
-      WHERE id = ${body.packageId}::uuid
-        AND deleted_at IS NULL
-      LIMIT 1
-    `;
-    if (!pkg) return c.json({ message: "ไม่พบโปรโมชันที่เลือก" }, 404);
-    addUpdate(sets, values, "package_id", pkg.id, "::uuid");
-    addUpdate(sets, values, "service", pkg.service);
+  if (body.service !== undefined) {
+    const service = body.service.trim().toLowerCase();
+    if (!service) return c.json({ message: "กรุณาระบุ service ของห้อง" }, 400);
+    addUpdate(sets, values, "service", service);
+    addUpdate(sets, values, "package_id", null);
   }
   if (body.email !== undefined) addUpdate(sets, values, "email", body.email);
   if (body.password) addUpdate(sets, values, "password_ciphertext", encryptSecret(body.password));
@@ -942,7 +920,7 @@ admin.patch("/master-emails/:id", async (c) => {
     SET ${sets.join(", ")}, updated_at = NOW()
     WHERE id = $${values.length}::uuid
       AND deleted_at IS NULL
-    RETURNING id, package_id AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
+    RETURNING id, NULL::uuid AS "packageId", service, email, status, max_profiles AS "maxProfiles", purchased_at, master_expired_at, note
     `,
     values,
   );

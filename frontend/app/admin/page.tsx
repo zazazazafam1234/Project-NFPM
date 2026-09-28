@@ -753,9 +753,14 @@ function AccountsPanel({
   inventory: AdminInventory | null;
   onDone: (message: string) => void;
 }) {
-  const firstPackageId = inventory?.packages[0]?.id ?? "";
+  const serviceOptions = Array.from(new Set([
+    ...(inventory?.packages ?? []).map((pkg) => pkg.service),
+    ...(inventory?.masterEmails ?? []).map((account) => account.service),
+    "netflix",
+  ].filter(Boolean))).sort();
+  const defaultService = serviceOptions[0] ?? "netflix";
   const [form, setForm] = useState({
-    packageId: firstPackageId,
+    service: defaultService,
     email: "",
     password: "",
     purchasedAt: tomorrow,
@@ -769,15 +774,11 @@ function AccountsPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<{ id: string; email: string } | null>(null);
   const [search, setSearch] = useState("");
-  const selectedPackageId = form.packageId || firstPackageId;
-  const selectedEditPackageId = editForm.packageId || firstPackageId;
   const visibleAccounts = (inventory?.masterEmails ?? []).filter((account) => {
     const query = search.trim().toLowerCase();
     if (!query) return true;
     return [
       account.email,
-      account.packageName,
-      account.packageSlug,
       account.service,
       account.status,
       account.note,
@@ -789,7 +790,7 @@ function AccountsPanel({
   function resetForm() {
     setEditingId(null);
     setForm({
-      packageId: firstPackageId,
+      service: defaultService,
       email: "",
       password: "",
       purchasedAt: tomorrow,
@@ -803,7 +804,7 @@ function AccountsPanel({
   async function submit() {
     const payload = {
       ...form,
-      packageId: selectedPackageId,
+      service: form.service.trim().toLowerCase(),
       purchasedAt: new Date(form.purchasedAt).toISOString(),
       masterExpiredAt: new Date(form.masterExpiredAt).toISOString(),
     };
@@ -817,7 +818,7 @@ function AccountsPanel({
     if (!editingId) return;
     await updateMasterEmail(editingId, {
       ...editForm,
-      packageId: selectedEditPackageId,
+      service: editForm.service.trim().toLowerCase(),
       password: editForm.password || undefined,
       purchasedAt: new Date(editForm.purchasedAt).toISOString(),
       masterExpiredAt: new Date(editForm.masterExpiredAt).toISOString(),
@@ -858,7 +859,7 @@ function AccountsPanel({
             <motion.div key={account.id} {...rowMotion}>
               <b>{account.email}</b>
               <span>
-                {account.packageName ?? account.service} · {account.availableProfiles} / {account.profileCount} slot (max {account.maxProfiles})
+                {account.service} · {account.availableProfiles} / {account.profileCount} slot (max {account.maxProfiles})
               </span>
               <em className={account.status === "active" ? styles.green : styles.yellow}>
                 {account.status}
@@ -868,7 +869,7 @@ function AccountsPanel({
                 onClick={() => {
                   setEditingId(account.id);
                   setEditForm({
-                    packageId: account.packageId ?? firstPackageId,
+                    service: account.service,
                     email: account.email,
                     password: "",
                     purchasedAt: dateInputValue(account.purchased_at) || tomorrow,
@@ -900,19 +901,19 @@ function AccountsPanel({
         <EditModal title="เพิ่มห้องบัญชีแม่" eyebrow="ADD" onClose={() => setIsAdding(false)}>
         <div className={styles.formRows}>
           <label>
-            โปรโมชันตั้งต้น / Service
-            <select
-              value={selectedPackageId}
-              onChange={(event) => setForm({ ...form, packageId: event.target.value })}
-            >
-              <option value="">เลือกโปรโมชันตั้งต้น</option>
-              {(inventory?.packages ?? []).map((pkg) => (
-                <option key={pkg.id} value={pkg.id}>
-                  {pkg.name} · {pkg.price_amount} Point · {pkg.duration_days} วัน
-                </option>
-              ))}
-            </select>
+            Service
+            <input
+              list="account-service-options"
+              placeholder="เช่น netflix"
+              value={form.service}
+              onChange={(event) => setForm({ ...form, service: event.target.value })}
+            />
           </label>
+          <datalist id="account-service-options">
+            {serviceOptions.map((service) => (
+              <option key={service} value={service} />
+            ))}
+          </datalist>
           <label>
             Email
             <input
@@ -982,7 +983,7 @@ function AccountsPanel({
           <div className={styles.formActions}>
             <button
               className={styles.primary}
-              disabled={!selectedPackageId || !form.email || !form.password}
+              disabled={!form.service.trim() || !form.email || !form.password}
               onClick={() => void submit()}
               type="button"
             >
@@ -998,18 +999,13 @@ function AccountsPanel({
         <EditModal title="แก้ไขห้องบัญชีแม่" onClose={() => setEditingId(null)}>
         <div className={styles.formRows}>
           <label>
-            โปรโมชันตั้งต้น / Service
-            <select
-              value={selectedEditPackageId}
-              onChange={(event) => setEditForm({ ...editForm, packageId: event.target.value })}
-            >
-              <option value="">เลือกโปรโมชันตั้งต้น</option>
-              {(inventory?.packages ?? []).map((pkg) => (
-                <option key={pkg.id} value={pkg.id}>
-                  {pkg.name} · {pkg.price_amount} Point · {pkg.duration_days} วัน
-                </option>
-              ))}
-            </select>
+            Service
+            <input
+              list="account-service-options"
+              placeholder="เช่น netflix"
+              value={editForm.service}
+              onChange={(event) => setEditForm({ ...editForm, service: event.target.value })}
+            />
           </label>
           <label>
             Email
@@ -1080,7 +1076,7 @@ function AccountsPanel({
           <div className={styles.formActions}>
             <button
               className={styles.primary}
-              disabled={!selectedEditPackageId || !editForm.email}
+              disabled={!editForm.service.trim() || !editForm.email}
               onClick={() => void submitEdit()}
               type="button"
             >
@@ -1253,7 +1249,7 @@ function ProfilesPanel({
           {visibleProfiles.map((profile) => (
             <motion.div key={profile.id} {...rowMotion}>
               <b>{profile.profile_name}</b>
-              <span>{profile.masterEmail} · {profile.packageName ?? profile.service} · {(() => {
+              <span>{profile.masterEmail} · {profile.service} · {(() => {
                 const room = (inventory?.masterEmails ?? []).find((a) => a.id === profile.master_email_id);
                 return room ? `${room.profileCount}/${room.maxProfiles}` : "";
               })()}</span>
@@ -1318,7 +1314,7 @@ function ProfilesPanel({
                 const isFull = account.profileCount >= account.maxProfiles;
                 return (
                   <option key={account.id} value={account.id}>
-                    {account.email} · {account.packageName ?? account.service} · {account.profileCount}/{account.maxProfiles} profile{isFull ? " (เต็ม)" : ""}
+                    {account.email} · {account.service} · {account.profileCount}/{account.maxProfiles} profile{isFull ? " (เต็ม)" : ""}
                   </option>
                 );
               })}
@@ -1410,7 +1406,7 @@ function ProfilesPanel({
               <option value="">เลือกห้องบัญชีแม่</option>
               {(inventory?.masterEmails ?? []).map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.email} · {account.packageName ?? account.service}
+                  {account.email} · {account.service}
                 </option>
               ))}
             </select>
