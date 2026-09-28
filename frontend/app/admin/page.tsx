@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import {
   deleteAdminPackage,
@@ -292,6 +292,39 @@ function Activity({
   );
 }
 
+function EditModal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={onClose}>
+      <section
+        className={styles.modalCard}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className={styles.modalHead}>
+          <div>
+            <p className={styles.eyebrow}>EDIT</p>
+            <h2>{title}</h2>
+          </div>
+          <button className={styles.modalClose} onClick={onClose} type="button">
+            ×
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+
 function PackagesPanel({
   inventory,
   onDone,
@@ -309,9 +342,10 @@ function PackagesPanel({
     currency: "THB",
     status: "active",
   });
+  const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
   const canSave = form.slug && form.name && form.durationDays > 0;
-  const isEditing = Boolean(editingId);
+  const canSaveEdit = editForm.slug && editForm.name && editForm.durationDays > 0;
 
   function resetForm() {
     setEditingId(null);
@@ -328,24 +362,27 @@ function PackagesPanel({
   }
 
   async function submit() {
-    if (editingId) {
-      await updateAdminPackage(editingId, form);
-      onDone(`แก้ไขโปรโมชัน ${form.name} แล้ว`);
-    } else {
-      await saveAdminPackage(form);
-      onDone(`เพิ่มโปรโมชัน ${form.name} แล้ว`);
-    }
+    await saveAdminPackage(form);
+    onDone(`เพิ่มโปรโมชัน ${form.name} แล้ว`);
     resetForm();
+  }
+
+  async function submitEdit() {
+    if (!editingId) return;
+    await updateAdminPackage(editingId, editForm);
+    onDone(`แก้ไขโปรโมชัน ${editForm.name} แล้ว`);
+    setEditingId(null);
   }
 
   async function removePackage(packageId: string, name: string) {
     if (!window.confirm(`ลบ/Archive โปรโมชัน ${name}?`)) return;
     await deleteAdminPackage(packageId);
     onDone(`Archive โปรโมชัน ${name} แล้ว`);
-    if (editingId === packageId) resetForm();
+    if (editingId === packageId) setEditingId(null);
   }
 
   return (
+    <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>CUSTOMER PROMOTIONS</p>
@@ -363,7 +400,7 @@ function PackagesPanel({
                 onClick={() =>
                 {
                   setEditingId(pkg.id);
-                  setForm({
+                  setEditForm({
                     slug: pkg.slug,
                     name: pkg.name,
                     service: pkg.service,
@@ -391,9 +428,9 @@ function PackagesPanel({
       </section>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>UPSERT PROMOTION</p>
-        <h2>เพิ่ม/แก้โปรโมชัน</h2>
+        <h2>เพิ่มโปรโมชัน</h2>
         <p className={styles.muted}>
-          {isEditing ? `กำลังแก้ ${form.slug}` : "สร้างโปรโมชันใหม่ให้ลูกค้าเลือกหลังเลือก slot"}
+          สร้างโปรโมชันใหม่ให้ลูกค้าเลือกหลังเลือก slot
         </p>
         <div className={styles.formRows}>
           <label>
@@ -462,17 +499,91 @@ function PackagesPanel({
               onClick={() => void submit()}
               type="button"
             >
-              {isEditing ? "บันทึกการแก้ไข" : "เพิ่มโปรโมชัน"}
+              เพิ่มโปรโมชัน
             </button>
-            {isEditing && (
-              <button className={styles.secondary} onClick={resetForm} type="button">
-                ยกเลิก
-              </button>
-            )}
           </div>
         </div>
       </section>
     </div>
+    {editingId && (
+      <EditModal title="แก้ไขโปรโมชัน" onClose={() => setEditingId(null)}>
+        <div className={styles.formRows}>
+          <label>
+            Slug
+            <input
+              value={editForm.slug}
+              onChange={(event) => setEditForm({ ...editForm, slug: event.target.value })}
+            />
+          </label>
+          <label>
+            ชื่อ
+            <input
+              value={editForm.name}
+              onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+            />
+          </label>
+          <label>
+            Service
+            <input
+              value={editForm.service}
+              onChange={(event) => setEditForm({ ...editForm, service: event.target.value })}
+            />
+          </label>
+          <label>
+            รายละเอียด
+            <input
+              value={editForm.description}
+              onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
+            />
+          </label>
+          <label>
+            ระยะเวลา
+            <input
+              inputMode="numeric"
+              value={editForm.durationDays}
+              onChange={(event) =>
+                setEditForm({ ...editForm, durationDays: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
+            ราคา Point
+            <input
+              inputMode="numeric"
+              value={editForm.priceAmount}
+              onChange={(event) =>
+                setEditForm({ ...editForm, priceAmount: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
+            สถานะ
+            <select
+              value={editForm.status}
+              onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}
+            >
+              <option value="active">active</option>
+              <option value="inactive">inactive</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
+          <div className={styles.formActions}>
+            <button
+              className={styles.primary}
+              disabled={!canSaveEdit}
+              onClick={() => void submitEdit()}
+              type="button"
+            >
+              บันทึกการแก้ไข
+            </button>
+            <button className={styles.secondary} onClick={() => setEditingId(null)} type="button">
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      </EditModal>
+    )}
+    </>
   );
 }
 
@@ -493,8 +604,10 @@ function AccountsPanel({
     status: "active",
     note: "",
   });
+  const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
   const selectedPackageId = form.packageId || firstPackageId;
+  const selectedEditPackageId = editForm.packageId || firstPackageId;
 
   function resetForm() {
     setEditingId(null);
@@ -516,27 +629,33 @@ function AccountsPanel({
       purchasedAt: new Date(form.purchasedAt).toISOString(),
       masterExpiredAt: new Date(form.masterExpiredAt).toISOString(),
     };
-    if (editingId) {
-      await updateMasterEmail(editingId, {
-        ...payload,
-        password: form.password || undefined,
-      });
-      onDone(`แก้ไขห้อง ${form.email} แล้ว`);
-    } else {
-      await saveMasterEmail(payload);
-      onDone("เพิ่มห้องบัญชีแม่และเข้ารหัส password แล้ว");
-    }
+    await saveMasterEmail(payload);
+    onDone("เพิ่มห้องบัญชีแม่และเข้ารหัส password แล้ว");
     resetForm();
+  }
+
+  async function submitEdit() {
+    if (!editingId) return;
+    await updateMasterEmail(editingId, {
+      ...editForm,
+      packageId: selectedEditPackageId,
+      password: editForm.password || undefined,
+      purchasedAt: new Date(editForm.purchasedAt).toISOString(),
+      masterExpiredAt: new Date(editForm.masterExpiredAt).toISOString(),
+    });
+    onDone(`แก้ไขห้อง ${editForm.email} แล้ว`);
+    setEditingId(null);
   }
 
   async function removeAccount(accountId: string, email: string) {
     if (!window.confirm(`ลบ/ปิดห้อง ${email}? Slot ที่ไม่ได้เช่าอยู่จะถูกปิดด้วย`)) return;
     await deleteMasterEmail(accountId);
     onDone(`ปิดห้อง ${email} แล้ว`);
-    if (editingId === accountId) resetForm();
+    if (editingId === accountId) setEditingId(null);
   }
 
   return (
+    <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>ROOM ACCOUNTS</p>
@@ -555,7 +674,7 @@ function AccountsPanel({
                 type="button"
                 onClick={() => {
                   setEditingId(account.id);
-                  setForm({
+                  setEditForm({
                     packageId: account.packageId ?? firstPackageId,
                     email: account.email,
                     password: "",
@@ -581,7 +700,7 @@ function AccountsPanel({
       </section>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>ADD ROOM ACCOUNT</p>
-        <h2>{editingId ? "แก้ไขห้องบัญชีแม่" : "เพิ่มห้องบัญชีแม่"}</h2>
+        <h2>เพิ่มห้องบัญชีแม่</h2>
         <div className={styles.formRows}>
           <label>
             โปรโมชันตั้งต้น / Service
@@ -605,7 +724,7 @@ function AccountsPanel({
             />
           </label>
           <label>
-            Password {editingId ? "(เว้นว่าง = ไม่เปลี่ยน)" : ""}
+            Password
             <input
               type="password"
               value={form.password}
@@ -654,21 +773,104 @@ function AccountsPanel({
           <div className={styles.formActions}>
             <button
               className={styles.primary}
-              disabled={!selectedPackageId || !form.email || (!editingId && !form.password)}
+              disabled={!selectedPackageId || !form.email || !form.password}
               onClick={() => void submit()}
               type="button"
             >
-              {editingId ? "บันทึกห้อง" : "เพิ่มห้องและ Encrypt"}
+              เพิ่มห้องและ Encrypt
             </button>
-            {editingId && (
-              <button className={styles.secondary} onClick={resetForm} type="button">
-                ยกเลิก
-              </button>
-            )}
           </div>
         </div>
       </section>
     </div>
+    {editingId && (
+      <EditModal title="แก้ไขห้องบัญชีแม่" onClose={() => setEditingId(null)}>
+        <div className={styles.formRows}>
+          <label>
+            โปรโมชันตั้งต้น / Service
+            <select
+              value={selectedEditPackageId}
+              onChange={(event) => setEditForm({ ...editForm, packageId: event.target.value })}
+            >
+              <option value="">เลือกโปรโมชันตั้งต้น</option>
+              {(inventory?.packages ?? []).map((pkg) => (
+                <option key={pkg.id} value={pkg.id}>
+                  {pkg.name} · {pkg.price_amount} Point · {pkg.duration_days} วัน
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Email
+            <input
+              value={editForm.email}
+              onChange={(event) => setEditForm({ ...editForm, email: event.target.value })}
+            />
+          </label>
+          <label>
+            Password (เว้นว่าง = ไม่เปลี่ยน)
+            <input
+              type="password"
+              value={editForm.password}
+              onChange={(event) => setEditForm({ ...editForm, password: event.target.value })}
+            />
+          </label>
+          <label>
+            วันที่ซื้อ
+            <input
+              type="date"
+              value={editForm.purchasedAt}
+              onChange={(event) =>
+                setEditForm({ ...editForm, purchasedAt: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            หมดอายุจริง
+            <input
+              type="date"
+              value={editForm.masterExpiredAt}
+              onChange={(event) =>
+                setEditForm({ ...editForm, masterExpiredAt: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            สถานะ
+            <select
+              value={editForm.status}
+              onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}
+            >
+              <option value="active">active</option>
+              <option value="inactive">inactive</option>
+              <option value="expired">expired</option>
+              <option value="suspended">suspended</option>
+            </select>
+          </label>
+          <label>
+            Note
+            <input
+              value={editForm.note}
+              onChange={(event) => setEditForm({ ...editForm, note: event.target.value })}
+            />
+          </label>
+          <div className={styles.formActions}>
+            <button
+              className={styles.primary}
+              disabled={!selectedEditPackageId || !editForm.email}
+              onClick={() => void submitEdit()}
+              type="button"
+            >
+              บันทึกห้อง
+            </button>
+            <button className={styles.secondary} onClick={() => setEditingId(null)} type="button">
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      </EditModal>
+    )}
+    </>
   );
 }
 
@@ -688,8 +890,10 @@ function ProfilesPanel({
     profileExpiresAt: "",
     note: "",
   });
+  const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
+  const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
 
   function resetForm() {
     setEditingId(null);
@@ -711,18 +915,23 @@ function ProfilesPanel({
         ? new Date(form.profileExpiresAt).toISOString()
         : undefined,
     };
-    if (editingId) {
-      await updateProfile(editingId, {
-        ...payload,
-        pin: form.pin || undefined,
-        profileExpiresAt: payload.profileExpiresAt ?? null,
-      });
-      onDone(`แก้ไข Slot ${form.profileName} แล้ว`);
-    } else {
-      await saveProfile(payload);
-      onDone("เพิ่ม Slot และเข้ารหัส PIN แล้ว");
-    }
+    await saveProfile(payload);
+    onDone("เพิ่ม Slot และเข้ารหัส PIN แล้ว");
     resetForm();
+  }
+
+  async function submitEdit() {
+    if (!editingId) return;
+    await updateProfile(editingId, {
+      ...editForm,
+      masterEmailId: selectedEditMasterEmailId,
+      pin: editForm.pin || undefined,
+      profileExpiresAt: editForm.profileExpiresAt
+        ? new Date(editForm.profileExpiresAt).toISOString()
+        : null,
+    });
+    onDone(`แก้ไข Slot ${editForm.profileName} แล้ว`);
+    setEditingId(null);
   }
 
   async function changeStatus(profileId: string, status: string) {
@@ -734,10 +943,11 @@ function ProfilesPanel({
     if (!window.confirm(`ลบ/ปิด Slot ${profileName}?`)) return;
     await deleteProfile(profileId);
     onDone(`ลบ Slot ${profileName} แล้ว`);
-    if (editingId === profileId) resetForm();
+    if (editingId === profileId) setEditingId(null);
   }
 
   return (
+    <>
     <div className={styles.dashboardGrid}>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>ROOM SLOTS</p>
@@ -764,7 +974,7 @@ function ProfilesPanel({
               <button
                 onClick={() => {
                   setEditingId(profile.id);
-                  setForm({
+                  setEditForm({
                     masterEmailId: profile.master_email_id,
                     profileName: profile.profile_name,
                     pin: "",
@@ -790,7 +1000,7 @@ function ProfilesPanel({
       </section>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>ADD SLOT</p>
-        <h2>{editingId ? "แก้ไข Slot โปรไฟล์" : "เพิ่ม Slot โปรไฟล์"}</h2>
+        <h2>เพิ่ม Slot โปรไฟล์</h2>
         <div className={styles.formRows}>
           <label>
             ห้อง / Email แม่
@@ -818,7 +1028,7 @@ function ProfilesPanel({
             />
           </label>
           <label>
-            PIN / Password {editingId ? "(เว้นว่าง = ไม่เปลี่ยน)" : ""}
+            PIN / Password
             <input
               type="password"
               value={form.pin}
@@ -862,17 +1072,95 @@ function ProfilesPanel({
               onClick={() => void submit()}
               type="button"
             >
-              {editingId ? "บันทึก Slot" : "เพิ่ม Slot"}
+              เพิ่ม Slot
             </button>
-            {editingId && (
-              <button className={styles.secondary} onClick={resetForm} type="button">
-                ยกเลิก
-              </button>
-            )}
           </div>
         </div>
       </section>
     </div>
+    {editingId && (
+      <EditModal title="แก้ไข Slot โปรไฟล์" onClose={() => setEditingId(null)}>
+        <div className={styles.formRows}>
+          <label>
+            ห้อง / Email แม่
+            <select
+              value={selectedEditMasterEmailId}
+              onChange={(event) =>
+                setEditForm({ ...editForm, masterEmailId: event.target.value })
+              }
+            >
+              <option value="">เลือกห้องบัญชีแม่</option>
+              {(inventory?.masterEmails ?? []).map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.email} · {account.packageName ?? account.service}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            ชื่อ Slot / Profile
+            <input
+              value={editForm.profileName}
+              onChange={(event) =>
+                setEditForm({ ...editForm, profileName: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            PIN / Password (เว้นว่าง = ไม่เปลี่ยน)
+            <input
+              type="password"
+              value={editForm.pin}
+              onChange={(event) => setEditForm({ ...editForm, pin: event.target.value })}
+            />
+          </label>
+          <label>
+            สถานะ
+            <select
+              value={editForm.status}
+              onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}
+            >
+              <option value="available">available</option>
+              <option value="rented">rented</option>
+              <option value="inactive">inactive</option>
+              <option value="expired">expired</option>
+              <option value="reserved">reserved</option>
+            </select>
+          </label>
+          <label>
+            Slot ใช้ได้ถึง
+            <input
+              type="date"
+              value={editForm.profileExpiresAt}
+              onChange={(event) =>
+                setEditForm({ ...editForm, profileExpiresAt: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Note
+            <input
+              value={editForm.note}
+              onChange={(event) => setEditForm({ ...editForm, note: event.target.value })}
+            />
+          </label>
+          <div className={styles.formActions}>
+            <button
+              className={styles.primary}
+              disabled={!selectedEditMasterEmailId || !editForm.profileName}
+              onClick={() => void submitEdit()}
+              type="button"
+            >
+              บันทึก Slot
+            </button>
+            <button className={styles.secondary} onClick={() => setEditingId(null)} type="button">
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      </EditModal>
+    )}
+    </>
   );
 }
 
