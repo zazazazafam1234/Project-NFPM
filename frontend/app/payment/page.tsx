@@ -19,6 +19,8 @@ type TopUpResponse = {
   id: string;
   status: "pending" | "paid" | "expired" | "cancelled" | "failed";
   points: number;
+  paymentAccountId?: string | null;
+  paymentAccountName?: string | null;
   baseAmount: number;
   payableAmount: number;
   refDecimal: number;
@@ -26,6 +28,20 @@ type TopUpResponse = {
   paidAt: string | null;
   qrImage: string | null;
 };
+
+function formatBaht(value: number) {
+  return value.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("th-TH", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
 
 export default function TopUpPage() {
   const router = useRouter();
@@ -186,11 +202,26 @@ export default function TopUpPage() {
             )}
             <div>
               <h2>เติม {selected.points.toLocaleString()} Point</h2>
-              <p>
-                ยอดชำระ {selected.price.toLocaleString()} บาท
-                <br />
-                บัญชีจะได้รับ Point หลังยืนยันรายการ
-              </p>
+              {pendingTopUp ? (
+                <div className={styles.paymentRef}>
+                  <span>ยอดที่ต้องโอนให้ตรง</span>
+                  <strong>{formatBaht(pendingTopUp.payableAmount)} บาท</strong>
+                  <small>
+                    ยอดหลัก {formatBaht(pendingTopUp.baseAmount)} + ref .
+                    {String(pendingTopUp.refDecimal).padStart(2, "0")}
+                  </small>
+                  <em>
+                    บัญชีรับเงิน {pendingTopUp.paymentAccountName ?? "PromptPay"} · หมดอายุ{" "}
+                    {formatDateTime(pendingTopUp.expiresAt)}
+                  </em>
+                </div>
+              ) : (
+                <p>
+                  ยอดชำระ {selected.price.toLocaleString()} บาท
+                  <br />
+                  บัญชีจะได้รับ Point หลังยืนยันรายการ
+                </p>
+              )}
             </div>
           </div>
           <div className={styles.divider} />
