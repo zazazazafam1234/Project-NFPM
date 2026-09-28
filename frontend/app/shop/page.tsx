@@ -128,7 +128,7 @@ export default function ShopPage() {
                       return slot.isAvailable ? (
                         <Link
                           className={styles.slotAvailable}
-                          href={user ? href : "/register"}
+                          href={href}
                           key={slot.id}
                         >
                           <strong>{slot.name}</strong>

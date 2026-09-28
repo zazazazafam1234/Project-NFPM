@@ -1,4 +1,11 @@
 import sql from "./db";
+import { encryptSecret } from "./crypto";
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
 
 // Rooms
 const rooms = [
@@ -68,5 +75,168 @@ for (const p of products) {
   `;
 }
 
-console.log("Seed completed: 6 rooms · 3 plans · 4 categories · 10 products");
+const streamingPackages = [
+  {
+    slug: "netflix-day",
+    name: "Netflix รายวัน",
+    service: "netflix",
+    description: "เลือก Slot ก่อน แล้วใช้ได้ 24 ชั่วโมง",
+    durationDays: 1,
+    priceAmount: 10,
+    sortOrder: 10,
+  },
+  {
+    slug: "netflix-week",
+    name: "Netflix รายสัปดาห์",
+    service: "netflix",
+    description: "เหมาะสำหรับดูซีรีส์สั้น ๆ หนึ่งสัปดาห์",
+    durationDays: 7,
+    priceAmount: 49,
+    sortOrder: 20,
+  },
+  {
+    slug: "netflix-month",
+    name: "Netflix รายเดือน",
+    service: "netflix",
+    description: "ใช้งานยาวครบเดือน",
+    durationDays: 30,
+    priceAmount: 129,
+    sortOrder: 30,
+  },
+];
+
+for (const pkg of streamingPackages) {
+  await sql`
+    INSERT INTO packages (
+      slug, name, service, description, duration_days, price_amount, sort_order, status, updated_at
+    )
+    VALUES (
+      ${pkg.slug},
+      ${pkg.name},
+      ${pkg.service},
+      ${pkg.description},
+      ${pkg.durationDays},
+      ${pkg.priceAmount},
+      ${pkg.sortOrder},
+      'active',
+      NOW()
+    )
+    ON CONFLICT (slug) DO UPDATE SET
+      name = EXCLUDED.name,
+      service = EXCLUDED.service,
+      description = EXCLUDED.description,
+      duration_days = EXCLUDED.duration_days,
+      price_amount = EXCLUDED.price_amount,
+      sort_order = EXCLUDED.sort_order,
+      status = EXCLUDED.status,
+      updated_at = NOW(),
+      deleted_at = NULL
+  `;
+}
+
+const [defaultPackage] = await sql`
+  SELECT id, service
+  FROM packages
+  WHERE slug = 'netflix-week'
+  LIMIT 1
+`;
+
+const demoRooms = [
+  {
+    email: "demo-room-01@fastmovie.local",
+    password: "DemoRoom01!",
+    note: "Demo Room 01",
+    profiles: ["Slot 1", "Slot 2", "Slot 3", "Slot 4"],
+  },
+  {
+    email: "demo-room-02@fastmovie.local",
+    password: "DemoRoom02!",
+    note: "Demo Room 02",
+    profiles: ["Slot 1", "Slot 2", "Slot 3", "Slot 4"],
+  },
+];
+
+const purchasedAt = new Date();
+const masterExpiredAt = addDays(purchasedAt, 90);
+
+for (const room of demoRooms) {
+  const [existing] = await sql`
+    SELECT id
+    FROM master_emails
+    WHERE LOWER(email) = LOWER(${room.email})
+      AND service = ${defaultPackage.service}
+      AND deleted_at IS NULL
+    LIMIT 1
+  `;
+
+  const [masterEmail] = existing
+    ? await sql`
+        UPDATE master_emails
+        SET
+          package_id = ${defaultPackage.id},
+          password_ciphertext = ${encryptSecret(room.password)},
+          status = 'active',
+          master_expired_at = ${masterExpiredAt.toISOString()},
+          note = ${room.note},
+          updated_at = NOW()
+        WHERE id = ${existing.id}
+        RETURNING id
+      `
+    : await sql`
+        INSERT INTO master_emails (
+          package_id, service, email, password_ciphertext, status,
+          purchased_at, master_expired_at, note
+        )
+        VALUES (
+          ${defaultPackage.id},
+          ${defaultPackage.service},
+          ${room.email},
+          ${encryptSecret(room.password)},
+          'active',
+          ${purchasedAt.toISOString()},
+          ${masterExpiredAt.toISOString()},
+          ${room.note}
+        )
+        RETURNING id
+      `;
+
+  for (const profileName of room.profiles) {
+    await sql`
+      INSERT INTO profiles (
+        master_email_id, profile_name, profile_pin_ciphertext, status, profile_expires_at, note
+      )
+      VALUES (
+        ${masterEmail.id},
+        ${profileName},
+        ${encryptSecret("1234")},
+        'available',
+        NULL,
+        'Demo seed slot'
+      )
+      ON CONFLICT (master_email_id, LOWER(profile_name)) WHERE deleted_at IS NULL
+      DO UPDATE SET
+        profile_pin_ciphertext = EXCLUDED.profile_pin_ciphertext,
+        status = CASE
+          WHEN profiles.status IN ('rented', 'reserved') THEN profiles.status
+          ELSE 'available'::profile_status
+        END,
+        profile_expires_at = NULL,
+        note = EXCLUDED.note,
+        updated_at = NOW()
+    `;
+  }
+}
+
+if (process.env.SEED_USER_EMAIL && process.env.SEED_USER_POINTS) {
+  const points = Number(process.env.SEED_USER_POINTS);
+  if (Number.isFinite(points) && points >= 0) {
+    await sql`
+      UPDATE "User"
+      SET points = ${points}, "updatedAt" = NOW()
+      WHERE LOWER(email) = LOWER(${process.env.SEED_USER_EMAIL})
+    `;
+  }
+}
+
+console.log("Seed completed: legacy catalog + streaming packages + 2 demo rooms + 8 slots");
 await sql.end();
