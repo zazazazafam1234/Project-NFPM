@@ -33,6 +33,7 @@ import { useSession } from "../providers";
 import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
 import { DecoyRoomsPanel } from "./Decoys";
+import { PendingTopupsPanel } from "./PendingTopups";
 import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
 import styles from "./page.module.css";
 
@@ -267,7 +268,10 @@ export default function AdminPage() {
           <ProfilesPanel inventory={inventory} onDone={handleDone} />
         )}
         {section === "users" && (
-          <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
+          <>
+            <PendingTopupsPanel onDone={handleDone} />
+            <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
+          </>
         )}
         {section === "topupPromotions" && <TopupPromotionsPanel onDone={handleDone} />}
         {section === "streamers" && <StreamersPanel onDone={handleDone} />}

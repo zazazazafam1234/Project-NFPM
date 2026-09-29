@@ -726,3 +726,25 @@ export function deleteDecoyRoom(id: string) {
 export function deleteAllDecoyRooms() {
   return apiFetch<{ removed: number }>("/admin/decoys", { method: "DELETE" });
 }
+
+export type PendingTopup = {
+  id: string;
+  points: number;
+  createdAt: string;
+  expiresAt: string;
+  payableCents: number;
+  discountCents: number;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  streamerName: string | null;
+  streamerCode: string | null;
+};
+
+export function fetchPendingTopups() {
+  return apiFetch<{ topups: PendingTopup[] }>("/admin/topups/pending");
+}
+
+export function cancelTopup(id: string) {
+  return apiFetch(`/admin/topups/${id}/cancel`, { method: "POST" });
+}

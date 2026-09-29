@@ -102,7 +102,7 @@ export async function checkStreamerCode(db: Db, code: string, userId: string): P
   `;
   if (history.used_code) return { ok: false, message: "บัญชีนี้เคยใช้โค้ดสตรีมเมอร์ไปแล้ว (ใช้ได้ 1 ครั้งต่อบัญชี)" };
   if (history.code_waiting) {
-    return { ok: false, message: "มีรายการเติมที่ใช้โค้ดรอชำระอยู่ กรุณาชำระ QR เดิม หรือรอให้หมดอายุก่อน" };
+    return { ok: false, message: "มีรายการเติมที่ใช้โค้ดรอชำระอยู่ กรุณาชำระ QR เดิม รอให้หมดอายุ หรือติดต่อแอดมินให้ยกเลิก" };
   }
   if (history.has_paid_topup) return { ok: false, message: "โค้ดนี้ใช้ได้เฉพาะการเติมครั้งแรกของบัญชีใหม่เท่านั้น" };
   if (streamer.max_uses && Number(streamer.used) >= Number(streamer.max_uses)) {
