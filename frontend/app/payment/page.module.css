@@ -326,7 +326,13 @@
   font-weight: 900;
 }
 .promptpayIcon {
-  background: linear-gradient(135deg, var(--c-2084e9ff), var(--c-e8576cff));
+  overflow: hidden;
+  background: #173f77;
+}
+.promptpayIcon img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .walletIcon {
   background: var(--c-ff6b21ff);
