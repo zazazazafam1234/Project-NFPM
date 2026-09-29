@@ -152,7 +152,7 @@ export function TopupPromotionsPanel({ onDone }: { onDone: Notify }) {
           <p className={styles.eyebrow}>TOP-UP PROMOTIONS</p>
           <h2>โปรเติมเงิน</h2>
           <p className={styles.muted}>
-            เติมครบตามยอด → ได้เงินส่วนลดเข้ากระเป๋าส่วนลดเมื่อชำระสำเร็จ (ได้โปรที่คุ้มที่สุดโปรเดียว)
+            เติมครบตามยอด → ลดยอดโอนทันทีตอนสร้าง QR แต่ได้ Point เต็มจำนวน (ได้โปรที่คุ้มที่สุดโปรเดียว)
           </p>
         </div>
         <div className={styles.panelTools}>
@@ -308,7 +308,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
           <p className={styles.eyebrow}>STREAMER CODES</p>
           <h2>โค้ดส่วนลดสตรีมเมอร์</h2>
           <p className={styles.muted}>
-            ลูกค้าใหม่กรอกโค้ดตอนเติมครั้งแรก · 1 บัญชีใช้ได้ 1 ครั้ง · ส่วนลดเข้ากระเป๋าส่วนลดเมื่อชำระสำเร็จ
+            ลูกค้าใหม่กรอกโค้ดตอนเติมครั้งแรก · 1 บัญชีใช้ได้ 1 ครั้ง · ลดยอดโอนทันทีตอนสร้าง QR
           </p>
         </div>
         <div className={styles.panelTools}>

@@ -439,6 +439,8 @@ await sql`CREATE INDEX IF NOT EXISTS streamer_redemptions_streamer_idx ON stream
 await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS referred_streamer_id UUID REFERENCES streamers(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_id UUID REFERENCES topup_promotions(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_reward_cents INTEGER NOT NULL DEFAULT 0`;
+// Promotion + streamer-code discount taken off the transfer when the QR is made.
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0`;
 
 // Decoy rooms: display-only full rooms for the storefront. Kept apart from
 // master_emails/profiles so they never touch real accounts, stock or sales.

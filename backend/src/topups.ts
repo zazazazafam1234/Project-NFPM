@@ -74,7 +74,9 @@ function publicTopUp(row: Record<string, any>, qrImage?: string | null) {
     paidAt: row.paid_at,
     qrPayload: row.qr_payload,
     qrImage: qrImage ?? null,
-    // Discount-wallet rewards this top-up earns once paid (satang).
+    // Discounts already taken off the transfer (satang).
+    discountCents: Number(row.discount_cents ?? 0),
+    chargeAmount: centsToAmount(Number(row.payable_amount_cents) - Number(row.ref_decimal)),
     promotionName: row.promotion_name ?? null,
     promotionRewardCents: Number(row.promotion_reward_cents ?? 0),
     streamerName: row.streamer_name ?? null,
@@ -149,7 +151,8 @@ async function expireOldTopUps(db = sql) {
   await voidUnpaidRedemptions(db);
 }
 
-async function nextAvailableRefDecimal(baseAmountCents: number, paymentAccountId: string | null, db = sql) {
+// Picks a satang ref not used by another pending top-up that charges the same amount.
+async function nextAvailableRefDecimal(chargeCents: number, paymentAccountId: string | null, db = sql) {
   const rows = await db`
     SELECT ref_decimal
     FROM point_topups
@@ -158,7 +161,7 @@ async function nextAvailableRefDecimal(baseAmountCents: number, paymentAccountId
         (${paymentAccountId}::uuid IS NULL AND payment_account_id IS NULL)
         OR payment_account_id = ${paymentAccountId}::uuid
       )
-      AND base_amount_cents = ${baseAmountCents}
+      AND payable_amount_cents - ref_decimal = ${chargeCents}
       AND expires_at >= NOW()
     ORDER BY ref_decimal
   `;
@@ -243,34 +246,37 @@ export async function createPromptPayTopUp({
       throw new Error("ยังไม่ได้ตั้งค่าบัญชี PromptPay ในหน้า Admin");
     }
 
+    // Promotion and streamer-code discounts come off the transfer; points stay in full.
     const baseAmountCents = points * 100;
-    const refDecimal = await nextAvailableRefDecimal(baseAmountCents, paymentAccount.id, db);
-    const payableAmountCents = baseAmountCents + refDecimal;
+    const promotion = await bestTopupPromotion(db, baseAmountCents);
+    const promotionCents = promotion?.rewardCents ?? 0;
+    const streamerCents = codeCheck?.ok ? rewardCents(codeCheck.streamer, baseAmountCents) : 0;
+    const discountCents = Math.min(promotionCents + streamerCents, baseAmountCents - 100); // pay at least ฿1
+    const chargeCents = baseAmountCents - discountCents;
+
+    const refDecimal = await nextAvailableRefDecimal(chargeCents, paymentAccount.id, db);
+    const payableAmountCents = chargeCents + refDecimal;
     const payableAmount = centsToAmount(payableAmountCents);
     const qrPayload = buildPromptPayPayload(paymentAccount.promptPayId, payableAmount);
     const expiresAt = getExpiresAt(paymentAccount.topupExpiresMinutes);
 
-    // Rewards are fixed when the QR is created, so the customer gets what was shown.
-    const promotion = await bestTopupPromotion(db, baseAmountCents);
     const [inserted] = await db`
       INSERT INTO point_topups (
         user_id, payment_account_id, points, payment_method, status, base_amount_cents,
-        payable_amount_cents, ref_decimal, qr_payload, expires_at, promotion_id, promotion_reward_cents
+        payable_amount_cents, ref_decimal, qr_payload, expires_at, promotion_id, promotion_reward_cents,
+        discount_cents
       )
       VALUES (
         ${userId}, ${paymentAccount.id}, ${points}, 'promptpay', 'pending', ${baseAmountCents},
         ${payableAmountCents}, ${refDecimal}, ${qrPayload}, ${expiresAt.toISOString()},
-        ${promotion?.id ?? null}, ${promotion?.rewardCents ?? 0}
+        ${promotion?.id ?? null}, ${promotionCents}, ${discountCents}
       )
       RETURNING id
     `;
     if (codeCheck?.ok) {
       await db`
         INSERT INTO streamer_redemptions (streamer_id, user_id, topup_id, status, reward_cents)
-        VALUES (
-          ${codeCheck.streamer.id}, ${userId}, ${inserted.id}, 'pending',
-          ${rewardCents(codeCheck.streamer, baseAmountCents)}
-        )
+        VALUES (${codeCheck.streamer.id}, ${userId}, ${inserted.id}, 'pending', ${streamerCents})
       `;
     }
 
@@ -443,16 +449,8 @@ export async function confirmTopUpByAmount({
       reason: `เศษสตางค์จากการเติม Point (.${String(satang).padStart(2, "0")})`,
       topupId: topUp.id,
     });
-    if (topUp.promotion_id && Number(topUp.promotion_reward_cents) > 0) {
-      const [promotion] = await db`SELECT name FROM topup_promotions WHERE id = ${topUp.promotion_id}`;
-      await creditDiscount(db, {
-        userId: topUp.user_id,
-        cents: Number(topUp.promotion_reward_cents),
-        kind: "topup_promotion",
-        reason: `โปรเติมเงิน: ${promotion?.name ?? "-"}`,
-        topupId: topUp.id,
-      });
-    }
+    // Promotion/code discounts were already taken off the transfer; the code
+    // redemption is confirmed here and the customer is tied to the streamer.
     const [redemption] = await db`
       UPDATE streamer_redemptions r
       SET status = 'redeemed', redeemed_at = NOW()
@@ -465,13 +463,6 @@ export async function confirmTopUpByAmount({
         UPDATE "User" SET referred_streamer_id = ${redemption.streamer_id}
         WHERE id = ${topUp.user_id} AND referred_streamer_id IS NULL
       `;
-      await creditDiscount(db, {
-        userId: topUp.user_id,
-        cents: Number(redemption.reward_cents),
-        kind: "streamer_code",
-        reason: `โค้ดสตรีมเมอร์ ${redemption.name}`,
-        topupId: topUp.id,
-      });
     }
 
     const [paid] = await db`
@@ -505,7 +496,9 @@ export async function confirmTopUpByAmount({
         ${topUp.id},
         'topup',
         ${topUp.points},
-        ${`เติม ${Number(topUp.points).toLocaleString()} Point — PromptPay ${centsToAmount(amountCents).toFixed(2)} บาท`},
+        ${`เติม ${Number(topUp.points).toLocaleString()} Point — PromptPay ${centsToAmount(amountCents).toFixed(2)} บาท${
+          Number(topUp.discount_cents) > 0 ? ` (ส่วนลด ${centsToAmount(Number(topUp.discount_cents)).toFixed(2)} บาท)` : ""
+        }`},
         NOW()
       )
     `;

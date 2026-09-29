@@ -39,6 +39,8 @@ type TopUpResponse = {
   expiresAt: string;
   paidAt: string | null;
   qrImage: string | null;
+  discountCents?: number;
+  chargeAmount?: number;
   promotionName?: string | null;
   promotionRewardCents?: number;
   streamerName?: string | null;
@@ -87,7 +89,8 @@ async function renderQrPng(topUp: TopUpResponse): Promise<Blob> {
   ctx.font = `500 26px ${font}`;
   ctx.fillStyle = "#4d4659";
   ctx.fillText("กรุณาโอนยอดนี้ให้ตรงทุกสตางค์", width / 2, 768);
-  ctx.fillText(`เติม ${topUp.points.toLocaleString()} Point · หมดอายุ ${formatDateTime(topUp.expiresAt)}`, width / 2, 812);
+  const discount = topUp.discountCents ? ` (ลดแล้ว ฿${formatBaht(topUp.discountCents / 100)})` : "";
+  ctx.fillText(`เติม ${topUp.points.toLocaleString()} Point${discount} · หมดอายุ ${formatDateTime(topUp.expiresAt)}`, width / 2, 812);
   ctx.fillStyle = "#6a44e0";
   ctx.fillText(
     `เศษ .${String(topUp.refDecimal).padStart(2, "0")} บาท สะสมเป็นเงินส่วนลดใช้ครั้งถัดไป`,
@@ -181,6 +184,10 @@ export default function TopUpPage() {
     .filter((promotion) => baseCents >= promotion.minAmountCents)
     .map((promotion) => ({ promotion, cents: rewardCentsFor(promotion, baseCents) }))
     .sort((a, b) => b.cents - a.cents)[0];
+  const preDiscountCents = Math.min(
+    (bestPromotion?.cents ?? 0) + (codeInfo ? rewardCentsFor(codeInfo, baseCents) : 0),
+    Math.max(baseCents - 100, 0),
+  );
 
   useEffect(() => {
     fetchTopupSettings()
@@ -304,7 +311,7 @@ export default function TopUpPage() {
           </label>
           {promotions.length > 0 && (
             <div className={styles.promoList}>
-              <p className={styles.label}>โปรเติมเงิน · ส่วนลดเข้ากระเป๋าส่วนลด</p>
+              <p className={styles.label}>โปรเติมเงิน · ลดยอดโอนทันที</p>
               {promotions.map((promotion) => (
                 <span
                   className={bestPromotion?.promotion.id === promotion.id ? styles.promoActive : ""}
@@ -315,7 +322,7 @@ export default function TopUpPage() {
               ))}
               {bestPromotion && (
                 <small>
-                  ยอดนี้ได้ {formatDiscount(bestPromotion.cents)} จากโปร “{bestPromotion.promotion.name}”
+                  ยอดนี้ลด {formatDiscount(bestPromotion.cents)} จากโปร “{bestPromotion.promotion.name}”
                 </small>
               )}
             </div>
@@ -344,11 +351,31 @@ export default function TopUpPage() {
             {codeInfo && (
               <small className={styles.codeOk}>
                 ✓ โค้ดของ {codeInfo.streamerName} · {describeReward(codeInfo)}
-                {baseCents > 0 ? ` = ${formatDiscount(rewardCentsFor(codeInfo, baseCents))}` : ""} เมื่อชำระสำเร็จ
+                {baseCents > 0 ? ` = ลดยอดโอน ${formatDiscount(rewardCentsFor(codeInfo, baseCents))}` : ""}
               </small>
             )}
             {codeError && <small className={styles.codeError}>✕ {codeError}</small>}
           </div>
+          {baseCents > 0 && preDiscountCents > 0 && (
+            <div className={styles.discountSummary}>
+              <span>เติม {topUpPoints.toLocaleString()} Point</span>
+              <b>฿{formatBaht(topUpPoints)}</b>
+              {bestPromotion && (
+                <>
+                  <span>ส่วนลดโปร “{bestPromotion.promotion.name}”</span>
+                  <b>-{formatDiscount(bestPromotion.cents)}</b>
+                </>
+              )}
+              {codeInfo && (
+                <>
+                  <span>ส่วนลดโค้ด {codeInfo.streamerName}</span>
+                  <b>-{formatDiscount(rewardCentsFor(codeInfo, baseCents))}</b>
+                </>
+              )}
+              <span>ยอดที่ต้องจ่าย (+ เศษสตางค์ตอนสร้าง QR)</span>
+              <strong>฿{formatBaht((baseCents - preDiscountCents) / 100)}</strong>
+            </div>
+          )}
           <p className={styles.label}>ราคาแนะนำ</p>
           <div className={styles.topUpGrid} role="group" aria-label="จำนวน Point">
             {topUps.filter((item) => item.points >= minTopupPoints).map((item) => (
@@ -435,20 +462,23 @@ export default function TopUpPage() {
                   <span>ยอดที่ต้องโอนให้ตรง</span>
                   <strong>{formatBaht(pendingTopUp.payableAmount)} บาท</strong>
                   <small>
-                    ยอดหลัก {formatBaht(pendingTopUp.baseAmount)} + ref .
-                    {String(pendingTopUp.refDecimal).padStart(2, "0")}
+                    {(pendingTopUp.discountCents ?? 0) > 0
+                      ? `ราคา ${formatBaht(pendingTopUp.baseAmount)} − ส่วนลด ${formatBaht((pendingTopUp.discountCents ?? 0) / 100)} = ${formatBaht(pendingTopUp.chargeAmount ?? pendingTopUp.baseAmount)}`
+                      : `ยอดหลัก ${formatBaht(pendingTopUp.baseAmount)}`}{" "}
+                    + ref .{String(pendingTopUp.refDecimal).padStart(2, "0")}
                   </small>
-                  {((pendingTopUp.promotionRewardCents ?? 0) > 0 || (pendingTopUp.streamerRewardCents ?? 0) > 0) && (
+                  {(pendingTopUp.discountCents ?? 0) > 0 && (
                     <p className={styles.discountNote}>
-                      🎁 เมื่อชำระสำเร็จจะได้เงินส่วนลดเพิ่ม
+                      🎁 ลดแล้ว <b>{formatDiscount(pendingTopUp.discountCents)}</b> · ได้ครบ{" "}
+                      <b>{pendingTopUp.points.toLocaleString()} Point</b>
                       {(pendingTopUp.promotionRewardCents ?? 0) > 0 && (
                         <>
-                          <br />· โปร “{pendingTopUp.promotionName}” <b>{formatDiscount(pendingTopUp.promotionRewardCents)}</b>
+                          <br />· โปร “{pendingTopUp.promotionName}” -{formatDiscount(pendingTopUp.promotionRewardCents)}
                         </>
                       )}
                       {(pendingTopUp.streamerRewardCents ?? 0) > 0 && (
                         <>
-                          <br />· โค้ด {pendingTopUp.streamerName} <b>{formatDiscount(pendingTopUp.streamerRewardCents)}</b>
+                          <br />· โค้ด {pendingTopUp.streamerName} -{formatDiscount(pendingTopUp.streamerRewardCents)}
                         </>
                       )}
                     </p>
