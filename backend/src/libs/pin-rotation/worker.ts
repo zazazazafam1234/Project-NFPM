@@ -78,7 +78,7 @@ async function expireRentals(profileId: string) {
   `;
 }
 
-async function sendExpiredEmail(rental: ExpiredRental) {
+async function sendExpiredEmail(rental: ExpiredRental, { pinChanged }: { pinChanged: boolean }) {
   const expiredAt = new Date(rental.expires_at).toLocaleString("th-TH", {
     day: "numeric",
     month: "long",
@@ -95,7 +95,9 @@ async function sendExpiredEmail(rental: ExpiredRental) {
     `โปรไฟล์: ${rental.profile_name}`,
     `หมดอายุเมื่อ: ${expiredAt} น.`,
     "",
-    "ระบบได้เปลี่ยน PIN ของโปรไฟล์นี้แล้ว จึงไม่สามารถใช้งานต่อได้",
+    pinChanged
+      ? "ระบบได้เปลี่ยน PIN ของโปรไฟล์นี้แล้ว จึงไม่สามารถใช้งานต่อได้"
+      : "โปรไฟล์นี้ไม่สามารถใช้งานต่อได้แล้ว",
     `หากต้องการใช้งานต่อ สามารถเลือกซื้อแพ็กเกจใหม่ได้ที่เว็บไซต์${site ? ` ${site}` : ""}`,
     "",
     "ขอบคุณที่ใช้บริการครับ",
@@ -167,7 +169,7 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
     `;
   });
   console.log(`[pin-rotation] rotated profile=${rental.profile_name} sub=${rental.subscription_id}`);
-  await sendExpiredEmail(rental);
+  await sendExpiredEmail(rental, { pinChanged: true });
 }
 
 async function checkExpiredRentals(serviceUrl: string, serviceKey: string) {
@@ -186,7 +188,7 @@ async function checkExpiredRentals(serviceUrl: string, serviceKey: string) {
   for (const rental of rentals) {
     if (rental.profile_deleted) {
       await expireRentals(rental.profile_id);
-      await sendExpiredEmail(rental);
+      await sendExpiredEmail(rental, { pinChanged: false });
       continue;
     }
     if (rental.failures >= MAX_ROTATION_ATTEMPTS) continue; // left reserved for an admin
