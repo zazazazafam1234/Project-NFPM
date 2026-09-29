@@ -908,7 +908,7 @@
   align-items: flex-end;
   gap: 14px;
   overflow: hidden;
-  min-height: 218px;
+  min-height: 258px;
   padding: 15px;
   border: 1px solid var(--c-ffffff26);
   border-radius: 22px;
@@ -952,12 +952,16 @@
 }
 
 .slotRoomStatus {
+  position: absolute;
   z-index: 1;
+  right: 15px;
+  bottom: 15px;
+  left: 15px;
   display: grid;
   min-width: 0;
   flex: 1;
   gap: 3px;
-  min-height: 63px;
+  min-height: 82px;
   padding: 11px 13px;
   border-radius: 14px;
   background: linear-gradient(110deg, var(--c-d7121eff), var(--c-a640bdff) 62%, var(--c-7746d6ff));
