@@ -75,6 +75,22 @@ function formatBahtFromCents(value: number | null | undefined) {
   });
 }
 
+async function runEdit(
+  save: () => Promise<unknown>,
+  successMessage: string,
+  onDone: (message: string) => void,
+) {
+  try {
+    await save();
+  } catch (err) {
+    window.alert(err instanceof Error ? err.message : "แก้ไขไม่สำเร็จ");
+    return false;
+  }
+  onDone(successMessage);
+  window.alert(successMessage);
+  return true;
+}
+
 const rowMotion = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
@@ -509,9 +525,12 @@ function PackagesPanel({
 
   async function submitEdit() {
     if (!editingId) return;
-    await updateAdminPackage(editingId, editForm);
-    onDone(`แก้ไขโปรโมชัน ${editForm.name} แล้ว`);
-    setEditingId(null);
+    const saved = await runEdit(
+      () => updateAdminPackage(editingId, editForm),
+      `แก้ไขโปรโมชัน ${editForm.name} สำเร็จ`,
+      onDone,
+    );
+    if (saved) setEditingId(null);
   }
 
   async function removePackage(packageId: string, name: string) {
@@ -828,15 +847,19 @@ function AccountsPanel({
 
   async function submitEdit() {
     if (!editingId) return;
-    await updateMasterEmail(editingId, {
-      ...editForm,
-      service: editForm.service.trim().toLowerCase(),
-      password: editForm.password || undefined,
-      purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
-      masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
-    });
-    onDone(`แก้ไขห้อง ${editForm.email} แล้ว`);
-    setEditingId(null);
+    const saved = await runEdit(
+      () =>
+        updateMasterEmail(editingId, {
+          ...editForm,
+          service: editForm.service.trim().toLowerCase(),
+          password: editForm.password || undefined,
+          purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
+          masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
+        }),
+      `แก้ไขห้อง ${editForm.email} สำเร็จ`,
+      onDone,
+    );
+    if (saved) setEditingId(null);
   }
 
   async function removeAccount(accountId: string, email: string) {
@@ -1200,16 +1223,20 @@ function ProfilesPanel({
 
   async function submitEdit() {
     if (!editingId) return;
-    await updateProfile(editingId, {
-      ...editForm,
-      masterEmailId: selectedEditMasterEmailId,
-      pin: editForm.pin || undefined,
-      profileExpiresAt: editForm.profileExpiresAt
-        ? dateOnlyToIso(editForm.profileExpiresAt, "end")
-        : null,
-    });
-    onDone(`แก้ไข Slot ${editForm.profileName} แล้ว`);
-    setEditingId(null);
+    const saved = await runEdit(
+      () =>
+        updateProfile(editingId, {
+          ...editForm,
+          masterEmailId: selectedEditMasterEmailId,
+          pin: editForm.pin || undefined,
+          profileExpiresAt: editForm.profileExpiresAt
+            ? dateOnlyToIso(editForm.profileExpiresAt, "end")
+            : null,
+        }),
+      `แก้ไข Slot ${editForm.profileName} สำเร็จ`,
+      onDone,
+    );
+    if (saved) setEditingId(null);
   }
 
   async function changeStatus(profileId: string, status: string) {
@@ -1552,9 +1579,12 @@ function UsersPanel({
 
   async function submitEdit() {
     if (!editingId) return;
-    await updateAdminUser(editingId, editForm);
-    onDone(`แก้ไขผู้ใช้ ${editForm.name} แล้ว`);
-    setEditingId(null);
+    const saved = await runEdit(
+      () => updateAdminUser(editingId, editForm),
+      `แก้ไขผู้ใช้ ${editForm.name} สำเร็จ`,
+      onDone,
+    );
+    if (saved) setEditingId(null);
   }
 
   async function toggleStatus(userId: string, name: string, status: string) {
@@ -1831,17 +1861,21 @@ function Settings({
 
   async function submitEdit() {
     if (!editingId) return;
-    await updatePaymentAccount(editingId, {
-      name: form.name,
-      ...(form.promptPayId.trim() ? { promptPayId: form.promptPayId.trim() } : {}),
-      ...(form.lineCookie.trim() ? { lineCookie: form.lineCookie } : {}),
-      status: form.status,
-      isDefault: form.isDefault,
-      topupExpiresMinutes: Number(form.topupExpiresMinutes),
-      note: form.note || null,
-    });
-    onDone(`แก้ไขบัญชีรับเงิน ${form.name} แล้ว`);
-    setEditingId(null);
+    const saved = await runEdit(
+      () =>
+        updatePaymentAccount(editingId, {
+          name: form.name,
+          ...(form.promptPayId.trim() ? { promptPayId: form.promptPayId.trim() } : {}),
+          ...(form.lineCookie.trim() ? { lineCookie: form.lineCookie } : {}),
+          status: form.status,
+          isDefault: form.isDefault,
+          topupExpiresMinutes: Number(form.topupExpiresMinutes),
+          note: form.note || null,
+        }),
+      `แก้ไขบัญชีรับเงิน ${form.name} สำเร็จ`,
+      onDone,
+    );
+    if (saved) setEditingId(null);
   }
 
   async function makeDefault(account: AdminInventory["paymentAccounts"][number]) {
