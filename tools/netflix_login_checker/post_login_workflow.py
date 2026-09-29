@@ -9,6 +9,7 @@ from pathlib import Path
 from .core import (
     DEFAULT_PROFILES_DIR,
     DEFAULT_SESSION_URL,
+    MANAGE_PROFILES_URL,
     DebugCallback,
     PLAYWRIGHT_IMPORT_ERROR,
     PlaywrightError,
@@ -54,7 +55,7 @@ def _run_post_login_workflow_impl(
     account_pin: str | None = None,
     browser_profile_name: str | None = None,
     profiles_dir: str | Path = DEFAULT_PROFILES_DIR,
-    session_url: str = DEFAULT_SESSION_URL,
+    session_url: str = MANAGE_PROFILES_URL,
     new_profile_name: str | None = None,
     profile_lock_pin: str | None = None,
     headless: bool = True,

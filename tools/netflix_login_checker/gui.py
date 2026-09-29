@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover - depends on local environment
 else:
     PYSIDE_IMPORT_ERROR = None
 
-from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, login_netflix, resolve_profile_dir
+from .core import DEFAULT_PROFILES_DIR, MANAGE_PROFILES_URL, login_netflix, resolve_profile_dir
 from .backend_api import BackendApiClient, BackendApiError, MasterEmailAccount
 from .post_login_workflow import WorkflowResult, run_post_login_workflow
 
@@ -156,7 +156,7 @@ class ProfileWorker(QThread):
                     account_password=self.password,
                     account_pin=self.pin,
                     profiles_dir=DEFAULT_PROFILES_DIR,
-                    session_url=DEFAULT_SESSION_URL,
+                    session_url=MANAGE_PROFILES_URL,
                     headless=self.headless,
                     timeout_ms=30000,
                     slow_mo_ms=self.slow_mo_ms,

@@ -10,7 +10,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 
 from .backend_api import BackendApiClient, BackendApiError
-from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, check_netflix_session, login_netflix
+from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, MANAGE_PROFILES_URL, check_netflix_session, login_netflix
 from .post_login_workflow import run_post_login_workflow
 
 
@@ -237,7 +237,7 @@ def create_app() -> Flask:
             account_pin=_clean_credential(data.get("pin")) or None,
             browser_profile_name=browser_profile_name,
             profiles_dir=profiles_dir,
-            session_url=data.get("session_url") or DEFAULT_SESSION_URL,
+            session_url=data.get("session_url") or MANAGE_PROFILES_URL,
             new_profile_name=_clean_credential(data.get("new_profile_name")) or None,
             profile_lock_pin=_clean_credential(data.get("lock_pin")) or None,
             headless=headless,
