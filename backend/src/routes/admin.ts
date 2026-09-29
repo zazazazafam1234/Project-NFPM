@@ -7,12 +7,6 @@ const admin = new Hono();
 
 admin.use("*", requireAdmin);
 
-function nullableDate(value: string | null | undefined) {
-  if (value === undefined) return undefined;
-  if (!value) return null;
-  return value;
-}
-
 function bangkokDateOnlyToUtcIso(value: string, mode: "start" | "end") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return value;
@@ -48,6 +42,11 @@ function addUpdate(
 ) {
   values.push(value);
   sets.push(`${column} = $${values.length}${cast}`);
+}
+
+// Profiles without a rental expire with their master email.
+function masterExpiryDefault(masterEmailId = "profiles.master_email_id") {
+  return `profile_expires_at = (SELECT master_expired_at FROM master_emails WHERE id = ${masterEmailId})`;
 }
 
 function maskPromptPayId(value: string) {
@@ -711,7 +710,7 @@ admin.post("/automation/profiles", async (c) => {
   }
 
   const [room] = await sql`
-    SELECT id, email, max_profiles
+    SELECT id, email, max_profiles, master_expired_at
     FROM master_emails
     WHERE id = ${body.masterEmailId}::uuid
       AND deleted_at IS NULL
@@ -744,7 +743,7 @@ admin.post("/automation/profiles", async (c) => {
         ${item.profileName},
         ${item.pin ? encryptSecret(item.pin) : null},
         ${item.status ?? "available"},
-        ${item.profileExpiresAt ? bangkokDateOnlyToUtcIso(item.profileExpiresAt, "end") : null},
+        ${item.profileExpiresAt ? bangkokDateOnlyToUtcIso(item.profileExpiresAt, "end") : room.master_expired_at},
         ${item.note ?? "Created by NetflixProfileCreator"}
       )
       RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
@@ -940,6 +939,10 @@ admin.patch("/master-emails/:id", async (c) => {
   if (!sets.length) return c.json({ message: "Nothing to update" }, 400);
   values.push(id);
 
+  const [previous] = await sql`
+    SELECT master_expired_at FROM master_emails WHERE id = ${id}::uuid AND deleted_at IS NULL
+  `;
+
   const [account] = await sql.unsafe(
     `
     UPDATE master_emails
@@ -952,6 +955,24 @@ admin.patch("/master-emails/:id", async (c) => {
   );
 
   if (!account) return c.json({ message: "ไม่พบห้องบัญชีแม่" }, 404);
+
+  if (previous && body.masterExpiredAt !== undefined) {
+    await sql`
+      UPDATE profiles p
+      SET profile_expires_at = ${account.master_expired_at}, updated_at = NOW()
+      WHERE p.master_email_id = ${id}::uuid
+        AND p.deleted_at IS NULL
+        AND (p.profile_expires_at IS NULL OR p.profile_expires_at = ${previous.master_expired_at})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM subscriptions s
+          WHERE s.profile_id = p.id
+            AND s.status IN ('pending', 'active')
+            AND s.expires_at > NOW()
+        )
+    `;
+  }
+
   return c.json(account);
 });
 
@@ -1002,7 +1023,7 @@ admin.post("/profiles", async (c) => {
   try {
     const profile = await sql.begin(async (db) => {
       const [room] = await db`
-        SELECT id, email, max_profiles
+        SELECT id, email, max_profiles, master_expired_at
         FROM master_emails
         WHERE id = ${body.masterEmailId}::uuid
           AND deleted_at IS NULL
@@ -1029,7 +1050,7 @@ admin.post("/profiles", async (c) => {
           ${body.profileName},
           ${body.pin ? encryptSecret(body.pin) : null},
           ${body.status ?? "available"},
-          ${body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : null},
+          ${body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : room.master_expired_at},
           ${body.note ?? null}
         )
         RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
@@ -1055,13 +1076,10 @@ admin.patch("/profiles/:id", async (c) => {
   const sets: string[] = [];
   const values: unknown[] = [];
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
-  if (body.profileExpiresAt !== undefined) {
-    addUpdate(
-      sets,
-      values,
-      "profile_expires_at",
-      body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : nullableDate(body.profileExpiresAt),
-    );
+  if (body.profileExpiresAt) {
+    addUpdate(sets, values, "profile_expires_at", bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end"));
+  } else if (body.profileExpiresAt !== undefined) {
+    sets.push(masterExpiryDefault());
   }
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
   if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));
@@ -1100,13 +1118,15 @@ admin.put("/profiles/:id", async (c) => {
   if (body.masterEmailId !== undefined) addUpdate(sets, values, "master_email_id", body.masterEmailId, "::uuid");
   if (body.profileName !== undefined) addUpdate(sets, values, "profile_name", body.profileName);
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
-  if (body.profileExpiresAt !== undefined) {
-    addUpdate(
-      sets,
-      values,
-      "profile_expires_at",
-      body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : nullableDate(body.profileExpiresAt),
-    );
+  if (body.profileExpiresAt) {
+    addUpdate(sets, values, "profile_expires_at", bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end"));
+  } else if (body.profileExpiresAt !== undefined) {
+    if (body.masterEmailId !== undefined) {
+      values.push(body.masterEmailId);
+      sets.push(masterExpiryDefault(`$${values.length}::uuid`));
+    } else {
+      sets.push(masterExpiryDefault());
+    }
   }
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
   if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));

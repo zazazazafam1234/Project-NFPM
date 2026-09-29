@@ -1397,7 +1397,7 @@ function ProfilesPanel({
             </select>
           </label>
           <label>
-            Slot ใช้ได้ถึง
+            Slot ใช้ได้ถึง (เว้นว่าง = ตามวันหมดอายุ Email แม่)
             <input
               type="date"
               value={form.profileExpiresAt}
@@ -1481,7 +1481,7 @@ function ProfilesPanel({
             </select>
           </label>
           <label>
-            Slot ใช้ได้ถึง
+            Slot ใช้ได้ถึง (เว้นว่าง = ตามวันหมดอายุ Email แม่)
             <input
               type="date"
               value={editForm.profileExpiresAt}

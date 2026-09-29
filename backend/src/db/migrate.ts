@@ -224,6 +224,14 @@ await sql`
   WHERE profile_expires_at IS NOT NULL
     AND profile_expires_at::time = TIME '00:00:00'
 `;
+await sql`
+  UPDATE profiles p
+  SET profile_expires_at = me.master_expired_at
+  FROM master_emails me
+  WHERE me.id = p.master_email_id
+    AND p.profile_expires_at IS NULL
+    AND p.deleted_at IS NULL
+`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS subscriptions (
