@@ -45,6 +45,41 @@ function formatDateTime(value: string) {
   });
 }
 
+// PNG of the QR on white with the amount and expiry, so it can be saved to the
+// photo gallery and scanned from a banking app.
+async function renderQrPng(topUp: TopUpResponse): Promise<Blob> {
+  const qr = new window.Image();
+  qr.src = topUp.qrImage ?? "";
+  await qr.decode();
+
+  const width = 720;
+  const qrSize = 560;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = 900;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas_unavailable");
+  const font = getComputedStyle(document.body).fontFamily || "sans-serif";
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#1c1826";
+  ctx.textAlign = "center";
+  ctx.font = `700 34px ${font}`;
+  ctx.fillText("PromptPay · Fast Movie", width / 2, 64);
+  ctx.drawImage(qr, (width - qrSize) / 2, 96, qrSize, qrSize);
+  ctx.font = `800 44px ${font}`;
+  ctx.fillText(`${formatBaht(topUp.payableAmount)} บาท`, width / 2, 720);
+  ctx.font = `500 26px ${font}`;
+  ctx.fillStyle = "#4d4659";
+  ctx.fillText("กรุณาโอนยอดนี้ให้ตรงทุกสตางค์", width / 2, 768);
+  ctx.fillText(`เติม ${topUp.points.toLocaleString()} Point · หมดอายุ ${formatDateTime(topUp.expiresAt)}`, width / 2, 812);
+
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("png_failed"))), "image/png"),
+  );
+}
+
 export default function TopUpPage() {
   const router = useRouter();
   const { user, refreshSession } = useSession();
@@ -54,6 +89,38 @@ export default function TopUpPage() {
   const [message, setMessage] = useState("");
   const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
   const [minTopupPoints, setMinTopupPoints] = useState(DEFAULT_MIN_TOPUP_POINTS);
+  const [isSavingQr, setIsSavingQr] = useState(false);
+
+  async function saveQrCode(topUp: TopUpResponse) {
+    if (!topUp.qrImage) return;
+    setIsSavingQr(true);
+    try {
+      const blob = await renderQrPng(topUp);
+      const fileName = `fastmovie-promptpay-${formatBaht(topUp.payableAmount).replace(/,/g, "")}.png`;
+      const file = new File([blob], fileName, { type: "image/png" });
+      // Phones: the share sheet offers "Save Image" to the photo gallery.
+      if (window.matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "PromptPay QR" });
+          return;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setMessage("บันทึก QR ไม่สำเร็จ กรุณาแคปหน้าจอแทน");
+    } finally {
+      setIsSavingQr(false);
+    }
+  }
   const topUpPoints = Number(pointsInput);
   const isValidTopUp = Number.isInteger(topUpPoints) && topUpPoints >= minTopupPoints;
   const selectedSuggestion = topUps.find((item) => item.points === topUpPoints);
@@ -225,14 +292,24 @@ export default function TopUpPage() {
           {pendingTopUp?.qrImage && (
           <div className={`${styles.paymentDetail} ${styles.paymentResult}`}>
             {pendingTopUp?.qrImage ? (
-              <div className={styles.qrImageBox}>
-                <Image
-                  alt="PromptPay QR"
-                  height={150}
-                  src={pendingTopUp.qrImage}
-                  unoptimized
-                  width={150}
-                />
+              <div className={styles.qrColumn}>
+                <div className={styles.qrImageBox}>
+                  <Image
+                    alt="PromptPay QR"
+                    height={150}
+                    src={pendingTopUp.qrImage}
+                    unoptimized
+                    width={150}
+                  />
+                </div>
+                <button
+                  className={styles.saveQrButton}
+                  disabled={isSavingQr}
+                  onClick={() => void saveQrCode(pendingTopUp)}
+                  type="button"
+                >
+                  {isSavingQr ? "กำลังบันทึก…" : "⬇ บันทึก QR Code"}
+                </button>
               </div>
             ) : (
               <div className={styles.qrPlaceholder}>
