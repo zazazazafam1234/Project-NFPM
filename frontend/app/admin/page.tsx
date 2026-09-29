@@ -29,6 +29,7 @@ import {
   type AdminInventory,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
 import styles from "./page.module.css";
 
@@ -479,6 +480,36 @@ function ConfirmModal({
   );
 }
 
+function DurationInput({
+  value,
+  unit,
+  onChange,
+}: {
+  value: number;
+  unit: DurationUnit;
+  onChange: (value: number, unit: DurationUnit) => void;
+}) {
+  return (
+    <span className={styles.durationInput}>
+      <input
+        inputMode="numeric"
+        min={1}
+        type="number"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value), unit)}
+      />
+      <select value={unit} onChange={(event) => onChange(value, event.target.value as DurationUnit)}>
+        {DURATION_UNITS.map((item) => (
+          <option key={item.unit} value={item.unit}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+      <small>= {formatDuration(toMinutes(value, unit))}</small>
+    </span>
+  );
+}
+
 function PackagesPanel({
   inventory,
   onDone,
@@ -491,7 +522,8 @@ function PackagesPanel({
     name: "Netflix รายสัปดาห์",
     service: "netflix",
     description: "",
-    durationDays: 7,
+    durationValue: 7,
+    durationUnit: "day" as DurationUnit,
     priceAmount: 49,
     currency: "THB",
     status: "active",
@@ -501,8 +533,8 @@ function PackagesPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingPackage, setDeletingPackage] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
-  const canSave = form.slug && form.name && form.durationDays > 0;
-  const canSaveEdit = editForm.slug && editForm.name && editForm.durationDays > 0;
+  const canSave = form.slug && form.name && toMinutes(form.durationValue, form.durationUnit) >= 1;
+  const canSaveEdit = editForm.slug && editForm.name && toMinutes(editForm.durationValue, editForm.durationUnit) >= 1;
   const visiblePackages = (inventory?.packages ?? []).filter((pkg) => {
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -518,15 +550,21 @@ function PackagesPanel({
       name: "Netflix รายสัปดาห์",
       service: "netflix",
       description: "",
-      durationDays: 7,
+      durationValue: 7,
+      durationUnit: "day",
       priceAmount: 49,
       currency: "THB",
       status: "active",
     });
   }
 
+  function packagePayload(values: typeof form) {
+    const { durationValue, durationUnit, ...rest } = values;
+    return { ...rest, durationMinutes: toMinutes(durationValue, durationUnit) };
+  }
+
   async function submit() {
-    await saveAdminPackage(form);
+    await saveAdminPackage(packagePayload(form));
     onDone(`เพิ่มโปรโมชัน ${form.name} แล้ว`);
     resetForm();
     setIsAdding(false);
@@ -535,7 +573,7 @@ function PackagesPanel({
   async function submitEdit() {
     if (!editingId) return;
     const saved = await runEdit(
-      () => updateAdminPackage(editingId, editForm),
+      () => updateAdminPackage(editingId, packagePayload(editForm)),
       `แก้ไขโปรโมชัน ${editForm.name} สำเร็จ`,
       onDone,
     );
@@ -573,7 +611,7 @@ function PackagesPanel({
           {visiblePackages.map((pkg) => (
             <motion.div key={pkg.id} {...rowMotion}>
               <span>{pkg.slug}</span>
-              <b>{pkg.price_amount} Point</b>
+              <b>{pkg.price_amount} Point · {formatDuration(Number(pkg.duration_minutes))}</b>
               <em className={pkg.status === "active" ? styles.green : styles.yellow}>
                 {pkg.availableStock} stock
               </em>
@@ -587,7 +625,10 @@ function PackagesPanel({
                     name: pkg.name,
                     service: pkg.service,
                     description: pkg.description ?? "",
-                    durationDays: Number(pkg.duration_days),
+                    ...(() => {
+                      const { value, unit } = splitDuration(Number(pkg.duration_minutes));
+                      return { durationValue: value, durationUnit: unit };
+                    })(),
                     priceAmount: Number(pkg.price_amount),
                     currency: pkg.currency ?? "THB",
                     status: pkg.status,
@@ -648,12 +689,10 @@ function PackagesPanel({
           </label>
           <label>
             ระยะเวลา
-            <input
-              inputMode="numeric"
-              value={form.durationDays}
-              onChange={(event) =>
-                setForm({ ...form, durationDays: Number(event.target.value) })
-              }
+            <DurationInput
+              value={form.durationValue}
+              unit={form.durationUnit}
+              onChange={(durationValue, durationUnit) => setForm({ ...form, durationValue, durationUnit })}
             />
           </label>
           <label>
@@ -725,12 +764,10 @@ function PackagesPanel({
           </label>
           <label>
             ระยะเวลา
-            <input
-              inputMode="numeric"
-              value={editForm.durationDays}
-              onChange={(event) =>
-                setEditForm({ ...editForm, durationDays: Number(event.target.value) })
-              }
+            <DurationInput
+              value={editForm.durationValue}
+              unit={editForm.durationUnit}
+              onChange={(durationValue, durationUnit) => setEditForm({ ...editForm, durationValue, durationUnit })}
             />
           </label>
           <label>

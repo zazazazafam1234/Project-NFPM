@@ -813,3 +813,15 @@
   align-items: center;
   gap: 12px;
 }
+
+.durationInput {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.durationInput small {
+  grid-column: 1 / -1;
+  color: var(--c-8f89a3ff);
+  font-size: 11px;
+}

@@ -50,6 +50,7 @@ export type Plan = {
   price: number;
   duration: string;
   durationDays: number;
+  durationMinutes: number;
   tag: string;
 };
 
@@ -68,6 +69,7 @@ export type StreamingPackage = {
   service: string;
   description: string | null;
   durationDays: number;
+  durationMinutes: number;
   priceAmount: number;
   currency: string;
   status: string;
@@ -168,6 +170,7 @@ export type Subscription = {
   packageName: string;
   service: string;
   durationDays: number;
+  durationMinutes: number;
   profileName: string;
   masterEmail: string;
 };
@@ -192,6 +195,7 @@ export type AdminInventory = {
     service: string;
     description: string | null;
     duration_days: number;
+    duration_minutes: number;
     price_amount: number;
     currency: string;
     status: string;
@@ -282,7 +286,7 @@ export function saveAdminPackage(body: {
   name: string;
   service: string;
   description?: string | null;
-  durationDays: number;
+  durationMinutes: number;
   priceAmount: number;
   currency?: string;
   status?: string;
@@ -298,7 +302,7 @@ export function updateAdminPackage(packageId: string, body: {
   name?: string;
   service?: string;
   description?: string | null;
-  durationDays?: number;
+  durationMinutes?: number;
   priceAmount?: number;
   currency?: string;
   status?: string;

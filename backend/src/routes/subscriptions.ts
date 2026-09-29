@@ -13,10 +13,8 @@ type PurchaseBody = {
   paymentMethod?: string;
 };
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
 subscriptions.get("/", async (c) => {
@@ -35,6 +33,7 @@ subscriptions.get("/", async (c) => {
       pkg.name AS "packageName",
       pkg.service,
       pkg.duration_days AS "durationDays",
+      pkg.duration_minutes AS "durationMinutes",
       p.profile_name AS "profileName",
       me.email AS "masterEmail"
     FROM subscriptions s
@@ -58,6 +57,7 @@ subscriptions.get("/", async (c) => {
       packageName: row.packageName,
       service: row.service,
       durationDays: row.durationDays,
+      durationMinutes: row.durationMinutes,
       profileName: row.profileName,
       masterEmail: row.masterEmail,
     })),
@@ -99,7 +99,7 @@ subscriptions.post("/", async (c) => {
       if (!pkg) throw new Error("ไม่พบแพ็กเกจที่เลือก");
 
       const now = new Date();
-      const expiresAt = addDays(now, pkg.duration_days);
+      const expiresAt = addMinutes(now, pkg.duration_minutes);
 
       const [user] = await sql`
         SELECT id, email, points, status
@@ -273,7 +273,7 @@ subscriptions.post("/:id/renew", async (c) => {
       const [current] = await sql`
         SELECT
           s.*,
-          pkg.duration_days,
+          pkg.duration_minutes,
           pkg.price_amount,
           pkg.name AS package_name,
           p.profile_expires_at,
@@ -293,7 +293,7 @@ subscriptions.post("/:id/renew", async (c) => {
       const baseDate = new Date(current.expires_at) > new Date()
         ? new Date(current.expires_at)
         : new Date();
-      const nextExpiresAt = addDays(baseDate, current.duration_days);
+      const nextExpiresAt = addMinutes(baseDate, current.duration_minutes);
 
       if (new Date(current.master_expired_at) < nextExpiresAt) {
         throw new Error("บัญชีแม่หมดอายุก่อนระยะเวลาต่ออายุ กรุณาติดต่อแอดมิน");

@@ -13,6 +13,7 @@ import {
   type StreamingRoomSlot,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { formatDuration } from "../lib/duration";
 import styles from "../payment/page.module.css";
 
 export default function CheckoutPage() {
@@ -143,7 +144,7 @@ export default function CheckoutPage() {
                   <small>{pkg.service.toUpperCase()}</small>
                   <strong>{pkg.name}</strong>
                   <span>
-                    {pkg.priceAmount} Point · {pkg.durationDays} วัน
+                    {pkg.priceAmount} Point · {formatDuration(pkg.durationMinutes)}
                   </span>
                 </button>
               ))}

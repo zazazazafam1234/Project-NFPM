@@ -61,6 +61,17 @@ function addUpdate(
   sets.push(`${column} = $${values.length}${cast}`);
 }
 
+const MAX_PACKAGE_MINUTES = 5 * 365 * 1440;
+
+// Package length in minutes from durationMinutes (or legacy durationDays); null if invalid/missing.
+function packageDurationMinutes(body: { durationMinutes?: number; durationDays?: number }) {
+  const minutes =
+    body.durationMinutes !== undefined ? Number(body.durationMinutes)
+    : body.durationDays !== undefined ? Number(body.durationDays) * 1440
+    : NaN;
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_PACKAGE_MINUTES ? minutes : null;
+}
+
 // A profile with a running rental must stay "rented" so it is never sold twice.
 async function activeRentalStatusError(profileId: string, status: string | undefined) {
   if (status === undefined || status === "rented") return null;
@@ -801,26 +812,29 @@ admin.post("/packages", async (c) => {
     name: string;
     service?: string;
     description?: string;
-    durationDays: number;
+    durationMinutes?: number;
+    durationDays?: number;
     priceAmount: number;
     currency?: string;
     status?: "active" | "inactive" | "archived";
   }>();
 
-  if (!body.slug || !body.name || !body.durationDays || body.priceAmount === undefined) {
-    return c.json({ message: "slug, name, durationDays, priceAmount required" }, 400);
+  const durationMinutes = packageDurationMinutes(body);
+  if (!body.slug || !body.name || !durationMinutes || body.priceAmount === undefined) {
+    return c.json({ message: "slug, name, ระยะเวลา (นาที 1-2,628,000), priceAmount required" }, 400);
   }
 
   const [pkg] = await sql`
     INSERT INTO packages (
-      slug, name, service, description, duration_days, price_amount, currency, status, updated_at
+      slug, name, service, description, duration_minutes, duration_days, price_amount, currency, status, updated_at
     )
     VALUES (
       ${body.slug},
       ${body.name},
       ${body.service ?? "netflix"},
       ${body.description ?? null},
-      ${body.durationDays},
+      ${durationMinutes},
+      ${Math.max(1, Math.ceil(durationMinutes / 1440))},
       ${body.priceAmount},
       ${body.currency ?? "THB"},
       ${body.status ?? "active"},
@@ -830,7 +844,7 @@ admin.post("/packages", async (c) => {
       name = EXCLUDED.name,
       service = EXCLUDED.service,
       description = EXCLUDED.description,
-      duration_days = EXCLUDED.duration_days,
+      duration_minutes = EXCLUDED.duration_minutes,
       price_amount = EXCLUDED.price_amount,
       currency = EXCLUDED.currency,
       status = EXCLUDED.status,
@@ -848,11 +862,17 @@ admin.patch("/packages/:id", async (c) => {
     name?: string;
     service?: string;
     description?: string | null;
+    durationMinutes?: number;
     durationDays?: number;
     priceAmount?: number;
     currency?: string;
     status?: "active" | "inactive" | "archived";
   }>();
+
+  const durationMinutes = packageDurationMinutes(body);
+  if ((body.durationMinutes !== undefined || body.durationDays !== undefined) && !durationMinutes) {
+    return c.json({ message: "ระยะเวลาต้องเป็นจำนวนเต็ม 1-2,628,000 นาที" }, 400);
+  }
 
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -860,7 +880,7 @@ admin.patch("/packages/:id", async (c) => {
   if (body.name !== undefined) addUpdate(sets, values, "name", body.name);
   if (body.service !== undefined) addUpdate(sets, values, "service", body.service);
   if (body.description !== undefined) addUpdate(sets, values, "description", body.description);
-  if (body.durationDays !== undefined) addUpdate(sets, values, "duration_days", body.durationDays);
+  if (durationMinutes) addUpdate(sets, values, "duration_minutes", durationMinutes);
   if (body.priceAmount !== undefined) addUpdate(sets, values, "price_amount", body.priceAmount);
   if (body.currency !== undefined) addUpdate(sets, values, "currency", body.currency);
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::package_status");
