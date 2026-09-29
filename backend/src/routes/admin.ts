@@ -1197,6 +1197,9 @@ admin.put("/profiles/:id", async (c) => {
 
 admin.delete("/profiles/:id", async (c) => {
   const id = c.req.param("id");
+  const rentalError = await activeRentalStatusError(id, "inactive");
+  if (rentalError) return c.json({ message: rentalError.replace("เปลี่ยนสถานะเป็น inactive ", "ลบ") }, 400);
+
   const [profile] = await sql`
     UPDATE profiles
     SET status = 'inactive', deleted_at = NOW(), updated_at = NOW()

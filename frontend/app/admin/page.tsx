@@ -1257,10 +1257,9 @@ function ProfilesPanel({
   }
 
   async function removeProfile(profileId: string, profileName: string) {
-    await deleteProfile(profileId);
-    onDone(`ลบ Slot ${profileName} แล้ว`);
-    if (editingId === profileId) setEditingId(null);
     setDeletingProfile(null);
+    const removed = await runEdit(() => deleteProfile(profileId), `ลบ Slot ${profileName} แล้ว`, onDone);
+    if (removed && editingId === profileId) setEditingId(null);
   }
 
   return (
