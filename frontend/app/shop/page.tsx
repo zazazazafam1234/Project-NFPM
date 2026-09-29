@@ -55,8 +55,10 @@ export default function ShopPage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
-        <nav className={styles.navLinks}>
-          <Link href="/">หน้าแรก</Link>
+        <nav className={styles.navLinks} aria-label="เมนูหลัก">
+          <Link href="/#packages">แพ็กเกจ</Link>
+          <Link href="/#how-it-works">ขั้นตอน</Link>
+          <Link href="/#faq">ช่วยเหลือ</Link>
           <Link href="/shop" aria-current="page">
             ร้านค้า
           </Link>
