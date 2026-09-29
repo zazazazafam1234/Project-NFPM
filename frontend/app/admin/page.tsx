@@ -11,6 +11,7 @@ import {
   deleteMasterEmail,
   deletePaymentAccount,
   deleteProfile,
+  expireProfileRental,
   fetchAdminInventory,
   fetchAdminSettings,
   saveAdminPackage,
@@ -1230,6 +1231,7 @@ function ProfilesPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
+  const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
@@ -1317,6 +1319,20 @@ function ProfilesPanel({
     );
   }
 
+  async function expireProfile(profileId: string, profileName: string) {
+    setExpiringProfile(null);
+    try {
+      const { pinRotation } = await expireProfileRental(profileId);
+      const message = pinRotation
+        ? `${profileName} หมดเวลาแล้ว · ระบบกำลังเปลี่ยน PIN และจะปล่อย Slot ภายใน 1 นาที`
+        : `${profileName} หมดเวลาแล้ว · ปล่อย Slot แล้ว (ไม่ได้เปลี่ยน PIN อัตโนมัติ กรุณาเปลี่ยนเอง)`;
+      onDone(message);
+      window.alert(message);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ทำรายการไม่สำเร็จ");
+    }
+  }
+
   async function removeProfile(profileId: string, profileName: string) {
     setDeletingProfile(null);
     const removed = await runEdit(() => deleteProfile(profileId), `ลบ Slot ${profileName} แล้ว`, onDone);
@@ -1396,6 +1412,15 @@ function ProfilesPanel({
               >
                 แก้ไข
               </button>
+              {profile.status === "rented" && (
+                <button
+                  className={styles.danger}
+                  onClick={() => setExpiringProfile({ id: profile.id, name: profile.profile_name })}
+                  type="button"
+                >
+                  หมดเวลา
+                </button>
+              )}
               <button
                 className={styles.danger}
                 onClick={() => setDeletingProfile({ id: profile.id, name: profile.profile_name })}
@@ -1596,6 +1621,17 @@ function ProfilesPanel({
           confirmLabel="ลบ Slot"
           onClose={() => setDeletingProfile(null)}
           onConfirm={() => void removeProfile(deletingProfile.id, deletingProfile.name)}
+        />
+      )}
+    </AnimatePresence>
+    <AnimatePresence>
+      {expiringProfile && (
+        <ConfirmModal
+          title="ให้ Slot หมดเวลาทันที"
+          message={`จบการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ`}
+          confirmLabel="หมดเวลาเลย"
+          onClose={() => setExpiringProfile(null)}
+          onConfirm={() => void expireProfile(expiringProfile.id, expiringProfile.name)}
         />
       )}
     </AnimatePresence>

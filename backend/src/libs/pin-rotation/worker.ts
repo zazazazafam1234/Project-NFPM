@@ -31,7 +31,7 @@ type ExpiredRental = {
 };
 
 // Latest ended rental per profile, skipping profiles that already have a follow-up rental.
-async function findExpiredRentals() {
+async function findExpiredRentals(profileId: string | null = null) {
   return sql<ExpiredRental[]>`
     SELECT DISTINCT ON (s.profile_id)
       s.id AS subscription_id,
@@ -53,6 +53,7 @@ async function findExpiredRentals() {
     JOIN master_emails me ON me.id = p.master_email_id
     WHERE s.status = 'active'
       AND s.expires_at <= NOW()
+      AND (${profileId}::uuid IS NULL OR s.profile_id = ${profileId}::uuid)
       AND NOT EXISTS (
         SELECT 1 FROM subscriptions n
         WHERE n.profile_id = s.profile_id
@@ -194,6 +195,55 @@ async function checkExpiredRentals(serviceUrl: string, serviceKey: string) {
     if (rental.failures >= MAX_ROTATION_ATTEMPTS) continue; // left reserved for an admin
     await rotate(rental, serviceUrl, serviceKey);
   }
+}
+
+export function pinRotationEnabled() {
+  return Boolean(process.env.PIN_SERVICE_URL && process.env.PIN_SERVICE_KEY);
+}
+
+/**
+ * Admin action: end the running rental on a profile now. With PIN rotation on, the
+ * worker picks it up within a minute (new PIN, slot released, customer emailed);
+ * otherwise the slot is released right away and the customer is emailed.
+ * Returns how many rentals were ended.
+ */
+export async function expireProfileRentalNow(profileId: string, actorUserId: string | null) {
+  const ended = await sql.begin(async (tx) => {
+    // Renewals that have not started yet are cancelled outright.
+    const cancelled = await tx`
+      UPDATE subscriptions
+      SET status = 'cancelled', cancelled_at = started_at, updated_at = NOW()
+      WHERE profile_id = ${profileId}::uuid AND status IN ('pending', 'active') AND started_at > NOW()
+      RETURNING id
+    `;
+    const current = await tx`
+      UPDATE subscriptions
+      SET expires_at = GREATEST(NOW(), started_at + INTERVAL '1 millisecond'), updated_at = NOW()
+      WHERE profile_id = ${profileId}::uuid AND status IN ('pending', 'active') AND expires_at > NOW()
+      RETURNING id
+    `;
+    const ids = [...cancelled, ...current].map((row) => row.id as string);
+    for (const id of ids) {
+      await tx`
+        INSERT INTO subscription_events (subscription_id, actor_user_id, event_type, message)
+        VALUES (${id}, ${actorUserId}, 'expired_by_admin', 'Rental ended early by an admin')
+      `;
+    }
+    return ids.length;
+  });
+  if (ended === 0 || pinRotationEnabled()) return ended;
+
+  for (const rental of await findExpiredRentals(profileId)) {
+    await expireRentals(rental.profile_id);
+    await sql`
+      UPDATE profiles p
+      SET status = 'available', profile_expires_at = me.master_expired_at, updated_at = NOW()
+      FROM master_emails me
+      WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
+    `;
+    await sendExpiredEmail(rental, { pinChanged: false });
+  }
+  return ended;
 }
 
 export function startPinRotationWorker() {

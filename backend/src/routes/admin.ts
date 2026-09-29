@@ -3,6 +3,7 @@ import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 import reports from "./reports";
+import { expireProfileRentalNow, pinRotationEnabled } from "../libs/pin-rotation/worker";
 import { getMinTopupPoints, MAX_TOPUP_POINTS, setMinTopupPoints } from "../settings";
 
 const admin = new Hono();
@@ -1219,6 +1220,14 @@ admin.put("/profiles/:id", async (c) => {
 
   if (!profile) return c.json({ message: "ไม่พบโปรไฟล์" }, 404);
   return c.json(profile);
+});
+
+admin.post("/profiles/:id/expire", async (c) => {
+  const id = c.req.param("id");
+  const actor = await getAdminSession(c);
+  const ended = await expireProfileRentalNow(id, actor?.id ?? null);
+  if (ended === 0) return c.json({ message: "Slot นี้ไม่มีการเช่าที่ยังไม่หมดเวลา" }, 400);
+  return c.json({ ended, pinRotation: pinRotationEnabled() });
 });
 
 admin.delete("/profiles/:id", async (c) => {

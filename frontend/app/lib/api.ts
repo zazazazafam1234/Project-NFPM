@@ -389,6 +389,12 @@ export function updateProfileStatus(profileId: string, status: string) {
   });
 }
 
+export function expireProfileRental(profileId: string) {
+  return apiFetch<{ ended: number; pinRotation: boolean }>(`/admin/profiles/${profileId}/expire`, {
+    method: "POST",
+  });
+}
+
 export function deleteProfile(profileId: string) {
   return apiFetch(`/admin/profiles/${profileId}`, { method: "DELETE" });
 }
