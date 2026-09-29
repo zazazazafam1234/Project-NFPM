@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import sql from "../db";
+import { MAX_ROTATION_ATTEMPTS } from "../libs/pin-rotation/worker";
 
 const reports = new Hono();
 
@@ -178,6 +179,11 @@ reports.get("/", async (c) => {
             AND master_expired_at > NOW() AND master_expired_at <= NOW() + INTERVAL '7 days')::int AS "mastersExpiringIn7d",
         (SELECT COUNT(*) FROM point_topups
           WHERE status = 'pending' AND expires_at > NOW())::int AS "pendingTopups",
+        (SELECT COUNT(DISTINCT s.profile_id) FROM subscriptions s
+          WHERE s.status = 'active' AND s.expires_at <= NOW()
+            AND (SELECT COUNT(*) FROM subscription_events se
+                  WHERE se.subscription_id = s.id AND se.event_type = 'pin_rotation_failed') >= ${MAX_ROTATION_ATTEMPTS}
+        )::int AS "pinRotationFailed",
         (SELECT COUNT(*) FROM "User")::int AS "totalUsers",
         (SELECT COALESCE(SUM(points), 0) FROM "User")::int AS "outstandingPoints"
     `,

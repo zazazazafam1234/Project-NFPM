@@ -10,6 +10,7 @@ import profile from "./routes/profile";
 import subscriptions from "./routes/subscriptions";
 import track from "./routes/track";
 import { startReminderWorker } from "./libs/gmail/reminder-worker";
+import { startPinRotationWorker } from "./libs/pin-rotation/worker";
 
 const app = new Hono();
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
@@ -40,6 +41,7 @@ app.route("/api", api);
 app.get("/", (c) => c.json({ ok: true, service: "Fast Movie API" }));
 
 startReminderWorker();
+startPinRotationWorker();
 
 const port = parseInt(process.env.PORT ?? "4000");
 console.log(`Server running at http://localhost:${port}`);

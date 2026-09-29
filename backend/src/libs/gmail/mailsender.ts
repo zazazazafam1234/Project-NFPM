@@ -127,6 +127,12 @@ async function sendRawEmail({
   return { messageId: data.id, threadId: data.threadId };
 }
 
+export async function sendPlainEmail({ to, subject, text }: { to: string; subject: string; text: string }) {
+  const result = await sendRawEmail({ to, subject, textBody: text });
+  console.log(`[gmail] sent email to=${to} subject="${subject}" messageId=${result.messageId}`);
+  return result;
+}
+
 /**
  * ส่ง email แจ้งข้อมูลการเข้าใช้งานหลังซื้อสำเร็จ
  * Fire-and-forget: ควร call โดยไม่ await และ .catch(console.error)

@@ -1,0 +1,56 @@
+# Profile PIN service
+
+Python API that changes the profile-lock PIN of a Netflix profile when its
+rental has expired, so the previous customer can no longer use it. The Fast
+Movie backend calls it; it reuses the login and profile code from
+`../tools/netflix_login_checker`.
+
+## Flow
+
+1. The backend worker finds rentals that have expired, holds the slot
+   (`reserved`, not for sale) and calls `POST /rotate-pin` with the master
+   email, password, account PIN, profile name and a new 4-digit PIN.
+2. This service logs in (skipped when the saved browser session is still
+   signed in), opens the profile's Profile Lock settings and saves the new PIN.
+3. On success the backend stores the new PIN, puts the slot back on sale,
+   marks the rental `expired` and emails the customer. On failure it retries
+   (3 attempts in total), then leaves the slot `reserved` for an admin.
+
+## Run
+
+```bash
+pip install -r pin-service/requirements.txt
+python -m playwright install chromium
+PIN_SERVICE_KEY=change-me python pin-service/run.py        # http://127.0.0.1:5055
+```
+
+Docker (from the repository root):
+
+```bash
+docker build -f pin-service/Dockerfile -t fastmovie-pin-service .
+docker run -d --name fastmovie-pin-service -p 5055:5055 \
+  -e PIN_SERVICE_KEY=change-me -v pin_profiles:/data/profiles fastmovie-pin-service
+```
+
+| Env | Default | |
+|---|---|---|
+| `PIN_SERVICE_KEY` | — (required) | shared secret, sent by the backend as `x-service-key` |
+| `PIN_SERVICE_HOST` / `PIN_SERVICE_PORT` | `127.0.0.1` / `5055` | |
+| `PIN_SERVICE_HEADLESS` | `true` | `false` to watch the browser |
+| `PIN_SERVICE_PROFILES_DIR` | `.netflix_profiles` | saved browser sessions, one per master email |
+| `PIN_SERVICE_PROXY` | — | e.g. `socks5://host:1080` |
+
+Backend side (`backend/.env`): `PIN_SERVICE_URL=http://<host>:5055` and the same
+`PIN_SERVICE_KEY`. The rotation worker stays off until both are set.
+
+## API
+
+`POST /rotate-pin` with header `x-service-key`:
+
+```json
+{ "masterEmail": "a@b.com", "masterPassword": "...", "accountPin": "1234",
+  "profileName": "n4v7wi", "newPin": "5831" }
+```
+
+`200 {"success": true, "reason": "pin_changed", ...}` or an error status with
+`{"success": false, "reason": "..."}`. `GET /health` reports whether a job is running.

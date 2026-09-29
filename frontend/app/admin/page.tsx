@@ -803,6 +803,7 @@ function AccountsPanel({
     service: defaultService,
     email: "",
     password: "",
+    accountPin: "",
     purchasedAt: tomorrow,
     masterExpiredAt: tomorrow,
     status: "active",
@@ -811,6 +812,7 @@ function AccountsPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const editingAccount = (inventory?.masterEmails ?? []).find((account) => account.id === editingId);
   const [isAdding, setIsAdding] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<{ id: string; email: string } | null>(null);
   const [search, setSearch] = useState("");
@@ -833,6 +835,7 @@ function AccountsPanel({
       service: defaultService,
       email: "",
       password: "",
+      accountPin: "",
       purchasedAt: tomorrow,
       masterExpiredAt: tomorrow,
       status: "active",
@@ -844,6 +847,7 @@ function AccountsPanel({
   async function submit() {
     const payload = {
       ...form,
+      accountPin: form.accountPin.trim() || undefined,
       service: form.service.trim().toLowerCase(),
       purchasedAt: dateOnlyToIso(form.purchasedAt, "start"),
       masterExpiredAt: dateOnlyToIso(form.masterExpiredAt, "end"),
@@ -862,6 +866,7 @@ function AccountsPanel({
           ...editForm,
           service: editForm.service.trim().toLowerCase(),
           password: editForm.password || undefined,
+          accountPin: editForm.accountPin.trim() || undefined,
           purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
           masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
         }),
@@ -916,6 +921,7 @@ function AccountsPanel({
                     service: account.service,
                     email: account.email,
                     password: "",
+                    accountPin: "",
                     purchasedAt: dateInputValue(account.purchased_at) || tomorrow,
                     masterExpiredAt: dateInputValue(account.master_expired_at) || tomorrow,
                     status: account.status,
@@ -971,6 +977,15 @@ function AccountsPanel({
               type="password"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
+            />
+          </label>
+          <label>
+            PIN บัญชีแม่ (ถ้ามี · ใช้เปลี่ยน PIN โปรไฟล์อัตโนมัติ)
+            <input
+              inputMode="numeric"
+              maxLength={4}
+              value={form.accountPin}
+              onChange={(event) => setForm({ ...form, accountPin: event.target.value.replace(/\D/g, "") })}
             />
           </label>
           <label>
@@ -1064,6 +1079,15 @@ function AccountsPanel({
               type="password"
               value={editForm.password}
               onChange={(event) => setEditForm({ ...editForm, password: event.target.value })}
+            />
+          </label>
+          <label>
+            PIN บัญชีแม่ ({editingAccount?.hasAccountPin ? "มีแล้ว · เว้นว่าง = ไม่เปลี่ยน" : "ยังไม่ได้ตั้ง"})
+            <input
+              inputMode="numeric"
+              maxLength={4}
+              value={editForm.accountPin}
+              onChange={(event) => setEditForm({ ...editForm, accountPin: event.target.value.replace(/\D/g, "") })}
             />
           </label>
           <label>
