@@ -234,7 +234,12 @@ subscriptions.post("/", async (c) => {
       pin: decryptSecret(result.profile.profile_pin_ciphertext),
     };
 
-    sendSubscriptionEmail({ to: result.userEmail, credentials }).catch((err) => {
+    const order = {
+      packageName: result.package.name,
+      startedAt: result.subscription.started_at,
+      expiresAt: result.subscription.expires_at,
+    };
+    sendSubscriptionEmail({ to: result.userEmail, credentials, order }).catch((err) => {
       console.error("[gmail] sendSubscriptionEmail failed", {
         userId,
         subscriptionId: result.subscription.id,
