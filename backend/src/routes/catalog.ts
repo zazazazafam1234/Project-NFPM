@@ -178,7 +178,7 @@ catalog.get("/streaming-rooms", async (c) => {
         return {
           id: profile.id,
           name: profile.profile_name,
-          status: isFree ? "available" : profile.status,
+          status: isFree ? "available" : activeProfileIds.has(profile.id) ? "rented" : profile.status,
           profileExpiresAt: profile.profile_expires_at,
           isAvailable: availablePackages.length > 0,
           availablePackages,
@@ -194,7 +194,8 @@ catalog.get("/streaming-rooms", async (c) => {
         service: room.service,
         status: room.status,
         masterExpiredAt: room.master_expired_at,
-        capacity: Number(room.max_profiles),
+        // Slots that exist in this room; max_profiles is only the upper limit for adding more.
+        capacity: slots.length,
         profileCount: Number(room.profileCount),
         availableSlots,
         occupiedSlots,

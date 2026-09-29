@@ -46,6 +46,27 @@ function addUpdate(
   sets.push(`${column} = $${values.length}${cast}`);
 }
 
+// A profile with a running rental must stay "rented" so it is never sold twice.
+async function activeRentalStatusError(profileId: string, status: string | undefined) {
+  if (status === undefined || status === "rented") return null;
+  const [rental] = await sql`
+    SELECT expires_at
+    FROM subscriptions
+    WHERE profile_id = ${profileId}::uuid
+      AND status IN ('pending', 'active')
+      AND expires_at > NOW()
+    ORDER BY expires_at DESC
+    LIMIT 1
+  `;
+  if (!rental) return null;
+  const until = new Date(rental.expires_at).toLocaleString("th-TH", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  });
+  return `Slot นี้มีลูกค้าเช่าอยู่ถึง ${until} จึงเปลี่ยนสถานะเป็น ${status} ไม่ได้`;
+}
+
 // Profiles without a rental expire with their master email.
 function masterExpiryDefault(masterEmailId = "profiles.master_email_id") {
   return `profile_expires_at = (SELECT master_expired_at FROM master_emails WHERE id = ${masterEmailId})`;
@@ -1077,6 +1098,9 @@ admin.patch("/profiles/:id", async (c) => {
     pin?: string | null;
   }>();
 
+  const rentalError = await activeRentalStatusError(id, body.status);
+  if (rentalError) return c.json({ message: rentalError }, 400);
+
   const sets: string[] = [];
   const values: unknown[] = [];
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
@@ -1116,6 +1140,9 @@ admin.put("/profiles/:id", async (c) => {
     profileExpiresAt?: string | null;
     note?: string | null;
   }>();
+
+  const rentalError = await activeRentalStatusError(id, body.status);
+  if (rentalError) return c.json({ message: rentalError }, 400);
 
   const sets: string[] = [];
   const values: unknown[] = [];

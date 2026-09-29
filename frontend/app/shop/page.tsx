@@ -6,6 +6,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "../lib/api";
 import { useSession } from "../providers";
+import { unavailableSlotLabel } from "../lib/slots";
 import styles from "./page.module.css";
 
 function CapacityDots({ room }: { room: StreamingRoom }) {
@@ -189,7 +190,7 @@ export default function ShopPage() {
                         <button className={styles.slotUnavailable} disabled key={slot.id}>
                           <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
                           <strong>{slot.name}</strong>
-                          <span>{slot.status === "available" ? "ติดจองอยู่" : slot.status}</span>
+                          <span>{unavailableSlotLabel(slot.status)}</span>
                         </button>
                       );
                     })}

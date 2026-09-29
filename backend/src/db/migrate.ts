@@ -355,6 +355,17 @@ await sql`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
+// Repair: a profile with a running rental is always "rented".
+await sql`
+  UPDATE profiles p
+  SET status = 'rented', updated_at = NOW()
+  WHERE p.status <> 'rented'
+    AND p.deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.profile_id = p.id AND s.status IN ('pending', 'active') AND s.expires_at > NOW()
+    )
+`;
 await sql`CREATE INDEX IF NOT EXISTS page_views_created_idx ON page_views (created_at)`;
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_created_idx ON subscriptions (created_at)`;
 await sql`CREATE INDEX IF NOT EXISTS point_topups_paid_idx ON point_topups (paid_at) WHERE status = 'paid'`;

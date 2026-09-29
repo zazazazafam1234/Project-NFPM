@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
+import { unavailableSlotLabel } from "./lib/slots";
 import styles from "./page.module.css";
 
 type RevealSectionProps = {
@@ -358,9 +359,7 @@ export default function Home() {
                 const canChoose = slot.isAvailable && Boolean(lowestPackage);
                 const slotStatus = slot.isAvailable
                   ? "ไม่มีโปรโมชัน"
-                  : slot.status === "available"
-                    ? "ติดจองอยู่"
-                    : slot.status;
+                  : unavailableSlotLabel(slot.status);
 
                 return canChoose ? (
                   <Link

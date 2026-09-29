@@ -1247,8 +1247,11 @@ function ProfilesPanel({
   }
 
   async function changeStatus(profileId: string, status: string) {
-    await updateProfileStatus(profileId, status);
-    onDone(`เปลี่ยนสถานะ profile เป็น ${status} แล้ว`);
+    await runEdit(
+      () => updateProfileStatus(profileId, status),
+      `เปลี่ยนสถานะ profile เป็น ${status} แล้ว`,
+      onDone,
+    );
   }
 
   async function removeProfile(profileId: string, profileName: string) {
@@ -1303,6 +1306,8 @@ function ProfilesPanel({
                 {profile.status}
               </em>
               <button
+                disabled={profile.status === "rented" || profile.status === "reserved"}
+                title={profile.status === "rented" ? "Slot นี้มีลูกค้าเช่าอยู่" : undefined}
                 onClick={() =>
                   void changeStatus(
                     profile.id,
