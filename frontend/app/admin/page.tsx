@@ -27,9 +27,11 @@ import {
   type AdminInventory,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { Dashboard } from "./Dashboard";
 import styles from "./page.module.css";
 
 const menu = [
+  ["dashboard", "Dashboard", "◭"],
   ["overview", "ภาพรวม", "◫"],
   ["packages", "โปรโมชัน", "▦"],
   ["accounts", "ห้อง / Email แม่", "◎"],
@@ -100,7 +102,7 @@ const rowMotion = {
 
 export default function AdminPage() {
   const { user, isLoading: sessionLoading } = useSession();
-  const [section, setSection] = useState<Section>("overview");
+  const [section, setSection] = useState<Section>("dashboard");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [inventory, setInventory] = useState<AdminInventory | null>(null);
@@ -244,6 +246,7 @@ export default function AdminPage() {
           )}
         </AnimatePresence>
 
+        {section === "dashboard" && <Dashboard />}
         {section === "overview" && <Overview inventory={inventory} />}
         {section === "packages" && (
           <PackagesPanel inventory={inventory} onDone={handleDone} />

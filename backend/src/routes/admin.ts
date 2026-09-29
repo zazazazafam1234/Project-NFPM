@@ -2,10 +2,12 @@ import { Hono } from "hono";
 import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
+import reports from "./reports";
 
 const admin = new Hono();
 
 admin.use("*", requireAdmin);
+admin.route("/reports", reports);
 
 function bangkokDateOnlyToUtcIso(value: string, mode: "start" | "end") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());

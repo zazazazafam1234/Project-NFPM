@@ -345,6 +345,20 @@ await sql`
   )
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS page_views (
+    id           BIGSERIAL PRIMARY KEY,
+    visitor_id   TEXT NOT NULL,
+    user_id      TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+    path         TEXT NOT NULL,
+    referrer     TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`CREATE INDEX IF NOT EXISTS page_views_created_idx ON page_views (created_at)`;
+await sql`CREATE INDEX IF NOT EXISTS subscriptions_created_idx ON subscriptions (created_at)`;
+await sql`CREATE INDEX IF NOT EXISTS point_topups_paid_idx ON point_topups (paid_at) WHERE status = 'paid'`;
+
 await sql`CREATE INDEX IF NOT EXISTS packages_active_idx ON packages (service, sort_order, price_amount) WHERE status = 'active' AND deleted_at IS NULL`;
 await sql`CREATE INDEX IF NOT EXISTS master_emails_package_idx ON master_emails (package_id, status, master_expired_at) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS master_emails_email_active_unique ON master_emails (LOWER(email), service) WHERE deleted_at IS NULL`;

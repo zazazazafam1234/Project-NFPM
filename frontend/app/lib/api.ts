@@ -470,3 +470,79 @@ export function fetchProducts(categorySlug?: string) {
   const qs = categorySlug ? `?category=${categorySlug}` : "";
   return apiFetch<Product[]>(`/catalog/products${qs}`);
 }
+
+export type ReportRange = "day" | "week" | "month" | "year";
+
+export type ReportTotals = {
+  visitors: number;
+  pageViews: number;
+  newUsers: number;
+  purchases: number;
+  renewals: number;
+  buyers: number;
+  pointsSpent: number;
+  topups: number;
+  topupCents: number;
+};
+
+export type AdminReport = {
+  range: ReportRange;
+  date: string;
+  from: string;
+  to: string;
+  unit: "hour" | "day" | "month";
+  totals: ReportTotals;
+  previous: ReportTotals;
+  series: Array<{
+    bucket: string;
+    visitors: number;
+    purchases: number;
+    pointsSpent: number;
+    topupCents: number;
+  }>;
+  topPackages: Array<{ name: string; service: string; count: number; points: number }>;
+  topPages: Array<{ path: string; views: number; visitors: number }>;
+  recentPurchases: Array<{
+    id: string;
+    createdAt: string;
+    points: number;
+    isRenewal: boolean;
+    userName: string;
+    userEmail: string;
+    packageName: string;
+    service: string;
+    profileName: string;
+  }>;
+  recentTopups: Array<{
+    id: string;
+    paidAt: string;
+    points: number;
+    amountCents: number;
+    userName: string;
+    userEmail: string;
+  }>;
+  snapshot: {
+    activeSubscriptions: number;
+    expiringIn24h: number;
+    availableSlots: number;
+    mastersExpiringIn7d: number;
+    pendingTopups: number;
+    totalUsers: number;
+    outstandingPoints: number;
+  };
+};
+
+export function fetchAdminReport(range: ReportRange, date: string) {
+  const query = new URLSearchParams({ range, date });
+  return apiFetch<AdminReport>(`/admin/reports?${query}`);
+}
+
+export function trackPageView(body: { visitorId: string; path: string; referrer?: string }) {
+  return fetch(`${apiUrl}/track`, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => undefined);
+}

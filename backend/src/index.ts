@@ -8,6 +8,7 @@ import orders from "./routes/orders";
 import points from "./routes/points";
 import profile from "./routes/profile";
 import subscriptions from "./routes/subscriptions";
+import track from "./routes/track";
 import { startReminderWorker } from "./libs/gmail/reminder-worker";
 
 const app = new Hono();
@@ -32,6 +33,7 @@ api.route("/orders", orders);
 api.route("/points", points);
 api.route("/profile", profile);
 api.route("/subscriptions", subscriptions);
+api.route("/track", track);
 
 app.route("/api", api);
 
