@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type ReactNode } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import {
   deleteAdminPackage,
   deleteMasterEmail,
@@ -203,14 +204,17 @@ export default function AdminPage() {
             <p className={styles.eyebrow}>ADMIN CONSOLE</p>
             <h1>{currentTitle}</h1>
           </div>
-          <div className={styles.adminIdentity}>
-            {user.image
-              ? <Image src={user.image} alt="" width={34} height={34} className={styles.identityAvatar} />
-              : <span>{user.name.slice(0, 2).toUpperCase()}</span>
-            }
-            <div>
-              <b>{user.name}</b>
-              <small>{inventory ? "เชื่อมต่อแล้ว ✓" : isLoading ? "กำลังโหลด…" : "Admin"}</small>
+          <div className={styles.headerActions}>
+            <ThemeToggle />
+            <div className={styles.adminIdentity}>
+              {user.image
+                ? <Image src={user.image} alt="" width={34} height={34} className={styles.identityAvatar} />
+                : <span>{user.name.slice(0, 2).toUpperCase()}</span>
+              }
+              <div>
+                <b>{user.name}</b>
+                <small>{inventory ? "เชื่อมต่อแล้ว ✓" : isLoading ? "กำลังโหลด…" : "Admin"}</small>
+              </div>
             </div>
           </div>
         </header>

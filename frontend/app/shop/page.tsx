@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -64,13 +65,16 @@ export default function ShopPage() {
           </Link>
           <Link href="/profile">บัญชี</Link>
         </nav>
-        <Link className={styles.mobileLogin} href="/register">
-          เข้าสู่ระบบ
-        </Link>
-        <div className={styles.pointsBadge}>
-          <span>✦</span>
-          {user ? user.points.toLocaleString() : "—"}
-          <small>PT</small>
+        <div className={styles.headerActions}>
+          <ThemeToggle />
+          <Link className={styles.mobileLogin} href="/register">
+            เข้าสู่ระบบ
+          </Link>
+          <div className={styles.pointsBadge}>
+            <span>✦</span>
+            {user ? user.points.toLocaleString() : "—"}
+            <small>PT</small>
+          </div>
         </div>
       </header>
 
@@ -139,7 +143,7 @@ export default function ShopPage() {
                       <span className={styles.serviceMark} aria-hidden="true">
                         {room.service.slice(0, 1).toUpperCase()}
                       </span>
-                      <div>
+                      <div className="on-accent">
                         <p className={styles.cardCat}>{room.service.toUpperCase()} ROOM</p>
                         <h3>{room.name}</h3>
                         <span>{room.label}</span>

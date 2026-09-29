@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { apiFetch } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -120,9 +121,12 @@ export default function TopUpPage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
-        <Link className={styles.back} href="/profile">
-          ← กลับบัญชี
-        </Link>
+        <div className={styles.headerActions}>
+          <ThemeToggle />
+          <Link className={styles.back} href="/profile">
+            ← กลับบัญชี
+          </Link>
+        </div>
       </header>
       <section className={styles.content}>
         <div className={styles.intro}>

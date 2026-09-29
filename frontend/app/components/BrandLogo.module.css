@@ -5,7 +5,7 @@
   margin-right: 8px;
   object-fit: contain;
   object-position: center;
-  filter: drop-shadow(0 8px 18px #794dff78);
+  filter: drop-shadow(0 8px 18px var(--s-794dff78));
 }
 
 .markOnly {
@@ -20,7 +20,7 @@
 
 .admin {
   grid-column: 2;
-  color: #9175db;
+  color: var(--c-9175dbff);
   font-size: 9px;
   font-style: normal;
   font-weight: 800;

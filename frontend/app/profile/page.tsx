@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import {
   fetchOrders,
   fetchSubscriptions,
@@ -66,9 +67,12 @@ export default function ProfilePage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
-        <Link href="/" className={styles.back}>
-          ← เลือกห้อง
-        </Link>
+        <div className={styles.headerActions}>
+          <ThemeToggle />
+          <Link href="/" className={styles.back}>
+            ← เลือกห้อง
+          </Link>
+        </div>
       </header>
       <section className={styles.content}>
         <div className={styles.profile}>

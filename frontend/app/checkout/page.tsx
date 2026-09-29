@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import {
   fetchStreamingRooms,
   purchaseProfileSubscription,
@@ -97,9 +98,12 @@ export default function CheckoutPage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
-        <Link className={styles.back} href="/shop">
-          ← เลือกห้อง
-        </Link>
+        <div className={styles.headerActions}>
+          <ThemeToggle />
+          <Link className={styles.back} href="/shop">
+            ← เลือกห้อง
+          </Link>
+        </div>
       </header>
       <section className={styles.content}>
         <div className={styles.intro}>
@@ -125,7 +129,7 @@ export default function CheckoutPage() {
         </div>
         <div className={styles.paymentCard}>
           <p className={styles.label}>Point Wallet ของคุณ</p>
-          <div className={styles.pointBalance}>
+          <div className={`${styles.pointBalance} on-accent`}>
             <span>✦</span>
             <b>{user?.points.toLocaleString() ?? "—"}</b>
             <small>POINTS AVAILABLE</small>

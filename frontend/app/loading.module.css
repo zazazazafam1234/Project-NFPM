@@ -3,8 +3,8 @@
   min-height: 100vh;
   overflow: hidden;
   place-items: center;
-  color: #f7f5ff;
-  background: #09080f;
+  color: var(--c-f7f5ffff);
+  background: var(--c-09080fff);
 }
 
 .orb {
@@ -12,7 +12,7 @@
   width: 430px;
   height: 430px;
   border-radius: 50%;
-  background: #7d4cff;
+  background: var(--c-7d4cffff);
   filter: blur(105px);
   opacity: 0.3;
   animation: drift 4s ease-in-out infinite alternate;
@@ -24,10 +24,10 @@
   min-width: 260px;
   justify-items: center;
   padding: 35px 38px;
-  border: 1px solid #ffffff1c;
+  border: 1px solid var(--c-ffffff1c);
   border-radius: 24px;
-  background: #17141fbd;
-  box-shadow: 0 25px 65px #0008;
+  background: var(--c-17141fbd);
+  box-shadow: 0 25px 65px var(--s-00000088);
   backdrop-filter: blur(18px);
 }
 
@@ -43,8 +43,8 @@
 .spinner {
   width: 29px;
   height: 29px;
-  border: 3px solid #ffffff20;
-  border-top-color: #b394ff;
+  border: 3px solid var(--c-ffffff20);
+  border-top-color: var(--c-b394ffff);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -56,7 +56,7 @@
 }
 
 .card span {
-  color: #a99bbd;
+  color: var(--c-a99bbdff);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.4px;

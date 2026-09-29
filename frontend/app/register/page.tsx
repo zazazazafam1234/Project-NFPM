@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BrandLogo } from "../components/BrandLogo";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { useSession } from "../providers";
 import { googleLoginUrl } from "../lib/api";
 import styles from "./page.module.css";
@@ -13,6 +14,7 @@ export default function RegisterPage() {
     <main className={styles.page}>
       <div className={styles.glow} />
       <section className={styles.card}>
+        <ThemeToggle className={styles.themeToggle} />
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>

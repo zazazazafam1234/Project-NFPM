@@ -40,3 +40,8 @@ textarea {
 :root {
   color-scheme: dark;
 }
+:root[data-theme="light"] {
+  --background: #f6f4fb;
+  --foreground: #1c1826;
+  color-scheme: light;
+}

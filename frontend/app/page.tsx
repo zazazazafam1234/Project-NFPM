@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
 import styles from "./page.module.css";
 
@@ -130,12 +131,15 @@ export default function Home() {
             <Link href="/shop">ร้านค้า</Link>
             <Link href="/profile">บัญชี</Link>
           </div>
-          <Link className={styles.mobileLogin} href="/register">
-            เข้าสู่ระบบ
-          </Link>
-          <a className={styles.navCta} href="#packages">
-            <i /> พร้อมเช่า {availableCount} โปรไฟล์
-          </a>
+          <div className={styles.headerActions}>
+            <ThemeToggle />
+            <Link className={styles.mobileLogin} href="/register">
+              เข้าสู่ระบบ
+            </Link>
+            <a className={styles.navCta} href="#packages">
+              <i /> พร้อมเช่า {availableCount} โปรไฟล์
+            </a>
+          </div>
         </nav>
         <div className={styles.heroContent}>
           <div>
@@ -167,7 +171,7 @@ export default function Home() {
               <br />
               <b>PLAYING</b>
             </p>
-            <span>
+            <span className="on-accent">
               FAST
               <br />
               MOVIE
@@ -325,7 +329,7 @@ export default function Home() {
               <div className={styles.slotServiceMark} aria-hidden="true">
                 {activeRoom.service.slice(0, 1).toUpperCase()}
               </div>
-              <div className={styles.slotRoomStatus}>
+              <div className={`${styles.slotRoomStatus} on-accent`}>
                 <span className={activeRoom.availableSlots > 0 ? styles.slotSummaryOpen : styles.slotSummaryFull}>
                   <i aria-hidden="true" />
                   {activeRoom.availableSlots > 0 ? "พร้อมเลือก Slot" : "ห้องเต็มแล้ว"}
