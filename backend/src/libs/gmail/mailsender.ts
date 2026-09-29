@@ -38,11 +38,37 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-function buildSubscriptionEmailText(credentials: SubscriptionCredentials): string {
+export type SubscriptionOrder = {
+  packageName: string;
+  startedAt: Date | string;
+  expiresAt: Date | string;
+};
+
+function formatBangkokDateTime(value: Date | string) {
+  const text = new Date(value).toLocaleString("th-TH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  });
+  return `${text} น.`;
+}
+
+function buildSubscriptionEmailText(credentials: SubscriptionCredentials, order?: SubscriptionOrder): string {
   const { email, password, profileName, pin } = credentials;
   return [
     "การสั่งซื้อสำเร็จแล้ว ขอบคุณที่ใช้บริการครับ",
     "",
+    ...(order
+      ? [
+          `แพ็กเกจ: ${order.packageName}`,
+          `วันที่ซื้อ: ${formatBangkokDateTime(order.startedAt)}`,
+          `หมดอายุ: ${formatBangkokDateTime(order.expiresAt)}`,
+          "",
+        ]
+      : []),
     "ข้อมูลสำหรับเข้าใช้งาน (กรุณาอย่าแชร์ให้ผู้อื่น)",
     "",
     `Email บัญชีหลัก: ${email}`,
@@ -101,6 +127,12 @@ async function sendRawEmail({
   return { messageId: data.id, threadId: data.threadId };
 }
 
+export async function sendPlainEmail({ to, subject, text }: { to: string; subject: string; text: string }) {
+  const result = await sendRawEmail({ to, subject, textBody: text });
+  console.log(`[gmail] sent email to=${to} subject="${subject}" messageId=${result.messageId}`);
+  return result;
+}
+
 /**
  * ส่ง email แจ้งข้อมูลการเข้าใช้งานหลังซื้อสำเร็จ
  * Fire-and-forget: ควร call โดยไม่ await และ .catch(console.error)
@@ -111,15 +143,17 @@ async function sendRawEmail({
 export async function sendSubscriptionEmail({
   to,
   credentials,
+  order,
   subject,
   bodyOverride,
 }: {
   to: string;
   credentials: SubscriptionCredentials;
+  order?: SubscriptionOrder;
   subject?: string;
   bodyOverride?: string;
 }) {
-  const text = bodyOverride ?? buildSubscriptionEmailText(credentials);
+  const text = bodyOverride ?? buildSubscriptionEmailText(credentials, order);
   const resolvedSubject = subject ?? `ข้อมูลการเข้าใช้งาน — จอ ${credentials.profileName}`;
   const result = await sendRawEmail({ to, subject: resolvedSubject, textBody: text });
   console.log(`[gmail] sent email to=${to} subject="${resolvedSubject}" messageId=${result.messageId}`);

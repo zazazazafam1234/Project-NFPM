@@ -410,7 +410,7 @@
   aspect-ratio: 1;
   border: 1px solid var(--c-ffffff35);
   border-radius: 15px;
-  background: var(--c-ffffffff);
+  background: #ffffff; /* QR needs a white quiet zone in both themes */
   box-shadow: 0 9px 24px var(--s-00000055);
 }
 .qrImageBox img {
@@ -727,4 +727,28 @@
   .successModal {
     animation: none;
   }
+}
+
+.qrColumn {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.saveQrButton {
+  padding: 8px 10px;
+  border: 1px solid var(--c-ffffff1c);
+  border-radius: 10px;
+  color: var(--c-f7f5ffff);
+  background: var(--c-ffffff10);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.saveQrButton:hover {
+  background: var(--c-ffffff18);
+}
+.saveQrButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }

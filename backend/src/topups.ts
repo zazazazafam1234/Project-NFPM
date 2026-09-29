@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import sql from "./db";
 import { decryptSecret } from "./crypto";
 import { buildPromptPayPayload } from "./promptpay";
+import { getMinTopupPoints, MAX_TOPUP_POINTS } from "./settings";
 
 const DEFAULT_EXPIRES_MINUTES = 15;
 
@@ -190,8 +191,12 @@ export async function createPromptPayTopUp({
   userId: string;
   points: number;
 }) {
-  if (!Number.isInteger(points) || points <= 0 || points > 100000) {
+  if (!Number.isInteger(points) || points <= 0 || points > MAX_TOPUP_POINTS) {
     throw new Error("จำนวน Point ไม่ถูกต้อง");
+  }
+  const minPoints = await getMinTopupPoints();
+  if (points < minPoints) {
+    throw new Error(`ยอดเติมขั้นต่ำ ${minPoints} บาท`);
   }
 
   const result = await sql.begin(async (db) => {

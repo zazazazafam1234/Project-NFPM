@@ -195,6 +195,7 @@ await sql`
 `;
 
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES packages(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS account_pin_ciphertext TEXT`;
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS max_profiles INTEGER NOT NULL DEFAULT 5 CHECK (max_profiles > 0)`;
 await sql`UPDATE master_emails SET package_id = NULL WHERE package_id IS NOT NULL`;
 await sql`
@@ -355,6 +356,30 @@ await sql`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
+await sql`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key          TEXT PRIMARY KEY,
+    value        JSONB NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  INSERT INTO app_settings (key, value)
+  VALUES ('min_topup_points', '10'::jsonb)
+  ON CONFLICT (key) DO NOTHING
+`;
+
+// Repair: a profile with a running rental is always "rented".
+await sql`
+  UPDATE profiles p
+  SET status = 'rented', updated_at = NOW()
+  WHERE p.status <> 'rented'
+    AND p.deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.profile_id = p.id AND s.status IN ('pending', 'active') AND s.expires_at > NOW()
+    )
+`;
 await sql`CREATE INDEX IF NOT EXISTS page_views_created_idx ON page_views (created_at)`;
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_created_idx ON subscriptions (created_at)`;
 await sql`CREATE INDEX IF NOT EXISTS point_topups_paid_idx ON point_topups (paid_at) WHERE status = 'paid'`;
@@ -412,6 +437,39 @@ await sql`
     END IF;
   END $$;
 `;
+// Package length is stored in minutes (supports hourly/minute promotions);
+// duration_days is kept in sync (rounded up, min 1) for older readers.
+await sql`ALTER TABLE packages ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`;
+await sql`UPDATE packages SET duration_minutes = duration_days * 1440 WHERE duration_minutes IS NULL`;
+await sql`
+  CREATE OR REPLACE FUNCTION packages_sync_duration() RETURNS trigger AS $$
+  BEGIN
+    IF NEW.duration_minutes IS NULL
+      OR (TG_OP = 'UPDATE'
+          AND NEW.duration_days IS DISTINCT FROM OLD.duration_days
+          AND NEW.duration_minutes IS NOT DISTINCT FROM OLD.duration_minutes) THEN
+      NEW.duration_minutes := NEW.duration_days * 1440;
+    END IF;
+    NEW.duration_days := GREATEST(1, CEIL(NEW.duration_minutes / 1440.0))::int;
+    RETURN NEW;
+  END $$ LANGUAGE plpgsql
+`;
+await sql`DROP TRIGGER IF EXISTS packages_sync_duration ON packages`;
+await sql`
+  CREATE TRIGGER packages_sync_duration
+  BEFORE INSERT OR UPDATE ON packages
+  FOR EACH ROW EXECUTE FUNCTION packages_sync_duration()
+`;
+await sql`ALTER TABLE packages ALTER COLUMN duration_minutes SET NOT NULL`;
+await sql`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'packages_duration_minutes_positive') THEN
+      ALTER TABLE packages ADD CONSTRAINT packages_duration_minutes_positive CHECK (duration_minutes > 0);
+    END IF;
+  END $$;
+`;
+
 await sql`CREATE INDEX IF NOT EXISTS subscription_events_subscription_idx ON subscription_events (subscription_id, created_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS admin_audit_logs_entity_idx ON admin_audit_logs (entity_type, entity_id, created_at DESC)`;
 
@@ -421,13 +479,7 @@ await sql`
     ('netflix-day', 'Netflix รายวัน', 'netflix', 1, 10, 10),
     ('netflix-week', 'Netflix รายสัปดาห์', 'netflix', 7, 49, 20),
     ('netflix-month', 'Netflix รายเดือน', 'netflix', 30, 129, 30)
-  ON CONFLICT (slug) DO UPDATE SET
-    name = EXCLUDED.name,
-    service = EXCLUDED.service,
-    duration_days = EXCLUDED.duration_days,
-    price_amount = EXCLUDED.price_amount,
-    sort_order = EXCLUDED.sort_order,
-    updated_at = NOW()
+  ON CONFLICT (slug) DO NOTHING
 `;
 
 console.log("Migration completed");

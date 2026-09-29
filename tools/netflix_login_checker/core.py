@@ -45,6 +45,12 @@ except ImportError as exc:  # pragma: no cover - depends on local environment
 DEFAULT_LOGIN_URL = "https://www.netflix.com/th-en/login"
 FALLBACK_LOGIN_URL = "https://www.netflix.com/login"
 DEFAULT_SESSION_URL = "https://www.netflix.com/browse"
+MANAGE_PROFILES_URL = "https://www.netflix.com/ManageProfiles"
+EMAIL_INPUT_SELECTORS = (
+    'input[name="userLoginId"]',
+    'input[type="email"]',
+    'input[name="email"]',
+)
 DEFAULT_PROFILES_DIR = ".netflix_profiles"
 STALE_LOGIN_QUERY_KEYS = {"serverstate", "authurl", "state"}
 
@@ -818,8 +824,8 @@ def is_challenge_page(page: Page) -> bool:
 
 
 def looks_logged_in(context: BrowserContext, page: Page) -> bool:
-    success_url_patterns = ("/browse", "/profiles", "/latest", "/search")
-    if any(pattern in page.url for pattern in success_url_patterns):
+    success_url_patterns = ("/browse", "/profiles", "/manageprofiles", "/latest", "/search")
+    if any(pattern in page.url.lower() for pattern in success_url_patterns):
         return True
 
     success_selectors = (
@@ -836,6 +842,22 @@ def looks_logged_in(context: BrowserContext, page: Page) -> bool:
     cookies = context.cookies(["https://www.netflix.com"])
     has_auth_cookie = any(cookie.get("name") == "NetflixId" for cookie in cookies)
     return has_auth_cookie and "/login" not in page.url
+
+
+def has_email_field(page: Page, timeout_ms: int = 6000) -> bool:
+    """True when the login form's email field shows up, i.e. the session is not logged in.
+
+    Stops early once Netflix redirects away from the login page, which only happens
+    for a browser profile that is already signed in.
+    """
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        if has_visible(page, EMAIL_INPUT_SELECTORS, timeout_ms=250):
+            return True
+        if "/login" not in page.url.lower():
+            return False
+        page.wait_for_timeout(250)
+    return has_visible(page, EMAIL_INPUT_SELECTORS, timeout_ms=250)
 
 
 def wait_for_login_result(context: BrowserContext, page: Page, timeout_ms: int) -> LoginResult:
@@ -1148,11 +1170,18 @@ def _login_netflix_impl(
             if persistent_profile and is_stale_login_state(page):
                 return retry_after_stale_state("initial_login_page")
 
-            if looks_logged_in(context, page):
-                emit_debug(debug, "already_logged_in_before_login")
-                return LoginResult(True, "login_success_existing_session", page.url, str(profile_dir) if profile_dir else None)
+            # No email field on the login page means this browser profile is already
+            # signed in: jump straight to ManageProfiles to start creating profiles.
+            if not has_email_field(page):
+                emit_debug(debug, f"email_field_not_found already_logged_in goto={MANAGE_PROFILES_URL}")
+                page.goto(MANAGE_PROFILES_URL, wait_until="domcontentloaded")
+                wait_for_short_network_idle(page, debug=debug)
+                if has_email_field(page, timeout_ms=3000):
+                    emit_debug(debug, "manage_profiles_redirected_to_login session_expired")
+                else:
+                    return LoginResult(True, "login_success_existing_session", page.url, str(profile_dir) if profile_dir else None)
 
-            emit_debug(debug, "fill_email")
+            emit_debug(debug, "email_field_found fill_email")
             if not fill_input_and_verify(
                 page,
                 (

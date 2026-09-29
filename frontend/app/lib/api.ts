@@ -50,6 +50,7 @@ export type Plan = {
   price: number;
   duration: string;
   durationDays: number;
+  durationMinutes: number;
   tag: string;
 };
 
@@ -68,6 +69,7 @@ export type StreamingPackage = {
   service: string;
   description: string | null;
   durationDays: number;
+  durationMinutes: number;
   priceAmount: number;
   currency: string;
   status: string;
@@ -168,6 +170,7 @@ export type Subscription = {
   packageName: string;
   service: string;
   durationDays: number;
+  durationMinutes: number;
   profileName: string;
   masterEmail: string;
 };
@@ -192,6 +195,7 @@ export type AdminInventory = {
     service: string;
     description: string | null;
     duration_days: number;
+    duration_minutes: number;
     price_amount: number;
     currency: string;
     status: string;
@@ -206,6 +210,7 @@ export type AdminInventory = {
     email: string;
     status: string;
     maxProfiles: number;
+    hasAccountPin?: boolean;
     purchased_at: string;
     master_expired_at: string;
     note: string | null;
@@ -281,7 +286,7 @@ export function saveAdminPackage(body: {
   name: string;
   service: string;
   description?: string | null;
-  durationDays: number;
+  durationMinutes: number;
   priceAmount: number;
   currency?: string;
   status?: string;
@@ -297,7 +302,7 @@ export function updateAdminPackage(packageId: string, body: {
   name?: string;
   service?: string;
   description?: string | null;
-  durationDays?: number;
+  durationMinutes?: number;
   priceAmount?: number;
   currency?: string;
   status?: string;
@@ -316,6 +321,7 @@ export function saveMasterEmail(body: {
   service: string;
   email: string;
   password: string;
+  accountPin?: string;
   purchasedAt?: string;
   masterExpiredAt: string;
   status?: string;
@@ -332,6 +338,7 @@ export function updateMasterEmail(masterEmailId: string, body: {
   service?: string;
   email?: string;
   password?: string;
+  accountPin?: string;
   purchasedAt?: string;
   masterExpiredAt?: string;
   status?: string;
@@ -379,6 +386,12 @@ export function updateProfileStatus(profileId: string, status: string) {
   return apiFetch(`/admin/profiles/${profileId}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+export function expireProfileRental(profileId: string) {
+  return apiFetch<{ ended: number; pinRotation: boolean }>(`/admin/profiles/${profileId}/expire`, {
+    method: "POST",
   });
 }
 
@@ -527,6 +540,7 @@ export type AdminReport = {
     availableSlots: number;
     mastersExpiringIn7d: number;
     pendingTopups: number;
+    pinRotationFailed: number;
     totalUsers: number;
     outstandingPoints: number;
   };
@@ -545,4 +559,19 @@ export function trackPageView(body: { visitorId: string; path: string; referrer?
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   }).catch(() => undefined);
+}
+
+export function fetchTopupSettings() {
+  return apiFetch<{ minTopupPoints: number }>("/points/settings");
+}
+
+export function fetchAdminSettings() {
+  return apiFetch<{ minTopupPoints: number }>("/admin/settings");
+}
+
+export function updateAdminSettings(body: { minTopupPoints: number }) {
+  return apiFetch<{ minTopupPoints: number }>("/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }

@@ -67,6 +67,26 @@ services:
     depends_on:
       - backend
 
+  # Changes Netflix profile PINs when rentals end (see pin-service/README.md).
+  # Only started where COMPOSE_PROFILES includes "pin"; the backend reaches it at
+  # http://pin-service:5055 using PIN_SERVICE_KEY from backend/.env.
+  pin-service:
+    build:
+      context: .
+      dockerfile: pin-service/Dockerfile
+    container_name: fastmovie-pin-service
+    restart: unless-stopped
+    profiles: ["pin"]
+    env_file:
+      - ./backend/.env
+    environment:
+      PIN_SERVICE_HOST: 0.0.0.0
+      PIN_SERVICE_PROFILES_DIR: /data/profiles
+    volumes:
+      - pin_profiles:/data/profiles
+    shm_size: "1gb"
+
 volumes:
   postgres_data:
   line_data:
+  pin_profiles:

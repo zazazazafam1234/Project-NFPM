@@ -11,7 +11,9 @@ import {
   deleteMasterEmail,
   deletePaymentAccount,
   deleteProfile,
+  expireProfileRental,
   fetchAdminInventory,
+  fetchAdminSettings,
   saveAdminPackage,
   saveMasterEmail,
   savePaymentAccount,
@@ -19,6 +21,7 @@ import {
   setDefaultPaymentAccount,
   suspendAdminUser,
   updateAdminPackage,
+  updateAdminSettings,
   updateAdminUser,
   updateMasterEmail,
   updatePaymentAccount,
@@ -27,6 +30,7 @@ import {
   type AdminInventory,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
 import styles from "./page.module.css";
 
@@ -477,6 +481,36 @@ function ConfirmModal({
   );
 }
 
+function DurationInput({
+  value,
+  unit,
+  onChange,
+}: {
+  value: number;
+  unit: DurationUnit;
+  onChange: (value: number, unit: DurationUnit) => void;
+}) {
+  return (
+    <span className={styles.durationInput}>
+      <input
+        inputMode="numeric"
+        min={1}
+        type="number"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value), unit)}
+      />
+      <select value={unit} onChange={(event) => onChange(value, event.target.value as DurationUnit)}>
+        {DURATION_UNITS.map((item) => (
+          <option key={item.unit} value={item.unit}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+      <small>= {formatDuration(toMinutes(value, unit))}</small>
+    </span>
+  );
+}
+
 function PackagesPanel({
   inventory,
   onDone,
@@ -489,7 +523,8 @@ function PackagesPanel({
     name: "Netflix รายสัปดาห์",
     service: "netflix",
     description: "",
-    durationDays: 7,
+    durationValue: 7,
+    durationUnit: "day" as DurationUnit,
     priceAmount: 49,
     currency: "THB",
     status: "active",
@@ -499,8 +534,8 @@ function PackagesPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingPackage, setDeletingPackage] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
-  const canSave = form.slug && form.name && form.durationDays > 0;
-  const canSaveEdit = editForm.slug && editForm.name && editForm.durationDays > 0;
+  const canSave = form.slug && form.name && toMinutes(form.durationValue, form.durationUnit) >= 1;
+  const canSaveEdit = editForm.slug && editForm.name && toMinutes(editForm.durationValue, editForm.durationUnit) >= 1;
   const visiblePackages = (inventory?.packages ?? []).filter((pkg) => {
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -516,15 +551,21 @@ function PackagesPanel({
       name: "Netflix รายสัปดาห์",
       service: "netflix",
       description: "",
-      durationDays: 7,
+      durationValue: 7,
+      durationUnit: "day",
       priceAmount: 49,
       currency: "THB",
       status: "active",
     });
   }
 
+  function packagePayload(values: typeof form) {
+    const { durationValue, durationUnit, ...rest } = values;
+    return { ...rest, durationMinutes: toMinutes(durationValue, durationUnit) };
+  }
+
   async function submit() {
-    await saveAdminPackage(form);
+    await saveAdminPackage(packagePayload(form));
     onDone(`เพิ่มโปรโมชัน ${form.name} แล้ว`);
     resetForm();
     setIsAdding(false);
@@ -533,7 +574,7 @@ function PackagesPanel({
   async function submitEdit() {
     if (!editingId) return;
     const saved = await runEdit(
-      () => updateAdminPackage(editingId, editForm),
+      () => updateAdminPackage(editingId, packagePayload(editForm)),
       `แก้ไขโปรโมชัน ${editForm.name} สำเร็จ`,
       onDone,
     );
@@ -571,7 +612,7 @@ function PackagesPanel({
           {visiblePackages.map((pkg) => (
             <motion.div key={pkg.id} {...rowMotion}>
               <span>{pkg.slug}</span>
-              <b>{pkg.price_amount} Point</b>
+              <b>{pkg.price_amount} Point · {formatDuration(Number(pkg.duration_minutes))}</b>
               <em className={pkg.status === "active" ? styles.green : styles.yellow}>
                 {pkg.availableStock} stock
               </em>
@@ -585,7 +626,10 @@ function PackagesPanel({
                     name: pkg.name,
                     service: pkg.service,
                     description: pkg.description ?? "",
-                    durationDays: Number(pkg.duration_days),
+                    ...(() => {
+                      const { value, unit } = splitDuration(Number(pkg.duration_minutes));
+                      return { durationValue: value, durationUnit: unit };
+                    })(),
                     priceAmount: Number(pkg.price_amount),
                     currency: pkg.currency ?? "THB",
                     status: pkg.status,
@@ -646,12 +690,10 @@ function PackagesPanel({
           </label>
           <label>
             ระยะเวลา
-            <input
-              inputMode="numeric"
-              value={form.durationDays}
-              onChange={(event) =>
-                setForm({ ...form, durationDays: Number(event.target.value) })
-              }
+            <DurationInput
+              value={form.durationValue}
+              unit={form.durationUnit}
+              onChange={(durationValue, durationUnit) => setForm({ ...form, durationValue, durationUnit })}
             />
           </label>
           <label>
@@ -723,12 +765,10 @@ function PackagesPanel({
           </label>
           <label>
             ระยะเวลา
-            <input
-              inputMode="numeric"
-              value={editForm.durationDays}
-              onChange={(event) =>
-                setEditForm({ ...editForm, durationDays: Number(event.target.value) })
-              }
+            <DurationInput
+              value={editForm.durationValue}
+              unit={editForm.durationUnit}
+              onChange={(durationValue, durationUnit) => setEditForm({ ...editForm, durationValue, durationUnit })}
             />
           </label>
           <label>
@@ -801,6 +841,7 @@ function AccountsPanel({
     service: defaultService,
     email: "",
     password: "",
+    accountPin: "",
     purchasedAt: tomorrow,
     masterExpiredAt: tomorrow,
     status: "active",
@@ -809,6 +850,7 @@ function AccountsPanel({
   });
   const [editForm, setEditForm] = useState(form);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const editingAccount = (inventory?.masterEmails ?? []).find((account) => account.id === editingId);
   const [isAdding, setIsAdding] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<{ id: string; email: string } | null>(null);
   const [search, setSearch] = useState("");
@@ -831,6 +873,7 @@ function AccountsPanel({
       service: defaultService,
       email: "",
       password: "",
+      accountPin: "",
       purchasedAt: tomorrow,
       masterExpiredAt: tomorrow,
       status: "active",
@@ -842,6 +885,7 @@ function AccountsPanel({
   async function submit() {
     const payload = {
       ...form,
+      accountPin: form.accountPin.trim() || undefined,
       service: form.service.trim().toLowerCase(),
       purchasedAt: dateOnlyToIso(form.purchasedAt, "start"),
       masterExpiredAt: dateOnlyToIso(form.masterExpiredAt, "end"),
@@ -860,6 +904,7 @@ function AccountsPanel({
           ...editForm,
           service: editForm.service.trim().toLowerCase(),
           password: editForm.password || undefined,
+          accountPin: editForm.accountPin.trim() || undefined,
           purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
           masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
         }),
@@ -914,6 +959,7 @@ function AccountsPanel({
                     service: account.service,
                     email: account.email,
                     password: "",
+                    accountPin: "",
                     purchasedAt: dateInputValue(account.purchased_at) || tomorrow,
                     masterExpiredAt: dateInputValue(account.master_expired_at) || tomorrow,
                     status: account.status,
@@ -969,6 +1015,15 @@ function AccountsPanel({
               type="password"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
+            />
+          </label>
+          <label>
+            PIN บัญชีแม่ (ถ้ามี · ใช้เปลี่ยน PIN โปรไฟล์อัตโนมัติ)
+            <input
+              inputMode="numeric"
+              maxLength={4}
+              value={form.accountPin}
+              onChange={(event) => setForm({ ...form, accountPin: event.target.value.replace(/\D/g, "") })}
             />
           </label>
           <label>
@@ -1062,6 +1117,15 @@ function AccountsPanel({
               type="password"
               value={editForm.password}
               onChange={(event) => setEditForm({ ...editForm, password: event.target.value })}
+            />
+          </label>
+          <label>
+            PIN บัญชีแม่ ({editingAccount?.hasAccountPin ? "มีแล้ว · เว้นว่าง = ไม่เปลี่ยน" : "ยังไม่ได้ตั้ง"})
+            <input
+              inputMode="numeric"
+              maxLength={4}
+              value={editForm.accountPin}
+              onChange={(event) => setEditForm({ ...editForm, accountPin: event.target.value.replace(/\D/g, "") })}
             />
           </label>
           <label>
@@ -1167,6 +1231,7 @@ function ProfilesPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
+  const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
@@ -1247,15 +1312,31 @@ function ProfilesPanel({
   }
 
   async function changeStatus(profileId: string, status: string) {
-    await updateProfileStatus(profileId, status);
-    onDone(`เปลี่ยนสถานะ profile เป็น ${status} แล้ว`);
+    await runEdit(
+      () => updateProfileStatus(profileId, status),
+      `เปลี่ยนสถานะ profile เป็น ${status} แล้ว`,
+      onDone,
+    );
+  }
+
+  async function expireProfile(profileId: string, profileName: string) {
+    setExpiringProfile(null);
+    try {
+      const { pinRotation } = await expireProfileRental(profileId);
+      const message = pinRotation
+        ? `${profileName} หมดเวลาแล้ว · ระบบกำลังเปลี่ยน PIN และจะปล่อย Slot ภายใน 1 นาที`
+        : `${profileName} หมดเวลาแล้ว · ปล่อย Slot แล้ว (ไม่ได้เปลี่ยน PIN อัตโนมัติ กรุณาเปลี่ยนเอง)`;
+      onDone(message);
+      window.alert(message);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ทำรายการไม่สำเร็จ");
+    }
   }
 
   async function removeProfile(profileId: string, profileName: string) {
-    await deleteProfile(profileId);
-    onDone(`ลบ Slot ${profileName} แล้ว`);
-    if (editingId === profileId) setEditingId(null);
     setDeletingProfile(null);
+    const removed = await runEdit(() => deleteProfile(profileId), `ลบ Slot ${profileName} แล้ว`, onDone);
+    if (removed && editingId === profileId) setEditingId(null);
   }
 
   return (
@@ -1303,6 +1384,8 @@ function ProfilesPanel({
                 {profile.status}
               </em>
               <button
+                disabled={profile.status === "rented" || profile.status === "reserved"}
+                title={profile.status === "rented" ? "Slot นี้มีลูกค้าเช่าอยู่" : undefined}
                 onClick={() =>
                   void changeStatus(
                     profile.id,
@@ -1329,6 +1412,15 @@ function ProfilesPanel({
               >
                 แก้ไข
               </button>
+              {profile.status === "rented" && (
+                <button
+                  className={styles.danger}
+                  onClick={() => setExpiringProfile({ id: profile.id, name: profile.profile_name })}
+                  type="button"
+                >
+                  หมดเวลา
+                </button>
+              )}
               <button
                 className={styles.danger}
                 onClick={() => setDeletingProfile({ id: profile.id, name: profile.profile_name })}
@@ -1529,6 +1621,17 @@ function ProfilesPanel({
           confirmLabel="ลบ Slot"
           onClose={() => setDeletingProfile(null)}
           onConfirm={() => void removeProfile(deletingProfile.id, deletingProfile.name)}
+        />
+      )}
+    </AnimatePresence>
+    <AnimatePresence>
+      {expiringProfile && (
+        <ConfirmModal
+          title="ให้ Slot หมดเวลาทันที"
+          message={`จบการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ`}
+          confirmLabel="หมดเวลาเลย"
+          onClose={() => setExpiringProfile(null)}
+          onConfirm={() => void expireProfile(expiringProfile.id, expiringProfile.name)}
         />
       )}
     </AnimatePresence>
@@ -1787,6 +1890,64 @@ function blankPaymentAccountForm(): PaymentAccountForm {
   };
 }
 
+function TopupSettingsPanel({ onDone }: { onDone: (message: string) => void }) {
+  const [minTopupPoints, setMinTopupPoints] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    fetchAdminSettings()
+      .then((settings) => {
+        setMinTopupPoints(settings.minTopupPoints);
+        setDraft(String(settings.minTopupPoints));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const value = Number(draft);
+  const canSave = Number.isInteger(value) && value >= 1 && value !== minTopupPoints;
+
+  async function save() {
+    let saved = minTopupPoints;
+    const ok = await runEdit(
+      async () => {
+        saved = (await updateAdminSettings({ minTopupPoints: value })).minTopupPoints;
+      },
+      `ตั้งยอดเติมขั้นต่ำเป็น ${value} บาท สำเร็จ`,
+      onDone,
+    );
+    if (ok) setMinTopupPoints(saved);
+  }
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <p className={styles.eyebrow}>TOP-UP</p>
+          <h2>ตั้งค่าการเติม Point</h2>
+          <p className={styles.muted}>
+            ยอดเติมขั้นต่ำที่ลูกค้าสร้างรายการได้ (1 บาท = 1 Point)
+            {minTopupPoints !== null ? ` · ตอนนี้ ${minTopupPoints} บาท` : ""}
+          </p>
+        </div>
+        <div className={styles.panelTools}>
+          <input
+            aria-label="ยอดเติมขั้นต่ำ (บาท)"
+            className={styles.search}
+            inputMode="numeric"
+            min={1}
+            type="number"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button className={styles.primary} disabled={!canSave} onClick={() => void save()} type="button">
+            บันทึก
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Settings({
   inventory,
   onDone,
@@ -1899,6 +2060,7 @@ function Settings({
 
   return (
     <>
+      <TopupSettingsPanel onDone={onDone} />
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>

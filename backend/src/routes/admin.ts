@@ -3,11 +3,27 @@ import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 import reports from "./reports";
+import { expireProfileRentalNow, pinRotationEnabled } from "../libs/pin-rotation/worker";
+import { getMinTopupPoints, MAX_TOPUP_POINTS, setMinTopupPoints } from "../settings";
 
 const admin = new Hono();
 
 admin.use("*", requireAdmin);
 admin.route("/reports", reports);
+
+admin.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
+
+admin.patch("/settings", async (c) => {
+  const body = await c.req.json<{ minTopupPoints?: number }>();
+  if (body.minTopupPoints !== undefined) {
+    const value = Number(body.minTopupPoints);
+    if (!Number.isInteger(value) || value < 1 || value > MAX_TOPUP_POINTS) {
+      return c.json({ message: `ยอดเติมขั้นต่ำต้องเป็นจำนวนเต็ม 1-${MAX_TOPUP_POINTS.toLocaleString()} บาท` }, 400);
+    }
+    await setMinTopupPoints(value);
+  }
+  return c.json({ minTopupPoints: await getMinTopupPoints() });
+});
 
 function bangkokDateOnlyToUtcIso(value: string, mode: "start" | "end") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
@@ -44,6 +60,38 @@ function addUpdate(
 ) {
   values.push(value);
   sets.push(`${column} = $${values.length}${cast}`);
+}
+
+const MAX_PACKAGE_MINUTES = 5 * 365 * 1440;
+
+// Package length in minutes from durationMinutes (or legacy durationDays); null if invalid/missing.
+function packageDurationMinutes(body: { durationMinutes?: number; durationDays?: number }) {
+  const minutes =
+    body.durationMinutes !== undefined ? Number(body.durationMinutes)
+    : body.durationDays !== undefined ? Number(body.durationDays) * 1440
+    : NaN;
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_PACKAGE_MINUTES ? minutes : null;
+}
+
+// A profile with a running rental must stay "rented" so it is never sold twice.
+async function activeRentalStatusError(profileId: string, status: string | undefined) {
+  if (status === undefined || status === "rented") return null;
+  const [rental] = await sql`
+    SELECT expires_at
+    FROM subscriptions
+    WHERE profile_id = ${profileId}::uuid
+      AND status IN ('pending', 'active')
+      AND expires_at > NOW()
+    ORDER BY expires_at DESC
+    LIMIT 1
+  `;
+  if (!rental) return null;
+  const until = new Date(rental.expires_at).toLocaleString("th-TH", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  });
+  return `Slot นี้มีลูกค้าเช่าอยู่ถึง ${until} จึงเปลี่ยนสถานะเป็น ${status} ไม่ได้`;
 }
 
 // Profiles without a rental expire with their master email.
@@ -128,6 +176,7 @@ admin.get("/inventory", async (c) => {
         me.purchased_at,
         me.master_expired_at,
         me.note,
+        (me.account_pin_ciphertext IS NOT NULL) AS "hasAccountPin",
         COUNT(p.id)::int AS "profileCount",
         COUNT(p.id) FILTER (
           WHERE (
@@ -764,26 +813,29 @@ admin.post("/packages", async (c) => {
     name: string;
     service?: string;
     description?: string;
-    durationDays: number;
+    durationMinutes?: number;
+    durationDays?: number;
     priceAmount: number;
     currency?: string;
     status?: "active" | "inactive" | "archived";
   }>();
 
-  if (!body.slug || !body.name || !body.durationDays || body.priceAmount === undefined) {
-    return c.json({ message: "slug, name, durationDays, priceAmount required" }, 400);
+  const durationMinutes = packageDurationMinutes(body);
+  if (!body.slug || !body.name || !durationMinutes || body.priceAmount === undefined) {
+    return c.json({ message: "slug, name, ระยะเวลา (นาที 1-2,628,000), priceAmount required" }, 400);
   }
 
   const [pkg] = await sql`
     INSERT INTO packages (
-      slug, name, service, description, duration_days, price_amount, currency, status, updated_at
+      slug, name, service, description, duration_minutes, duration_days, price_amount, currency, status, updated_at
     )
     VALUES (
       ${body.slug},
       ${body.name},
       ${body.service ?? "netflix"},
       ${body.description ?? null},
-      ${body.durationDays},
+      ${durationMinutes},
+      ${Math.max(1, Math.ceil(durationMinutes / 1440))},
       ${body.priceAmount},
       ${body.currency ?? "THB"},
       ${body.status ?? "active"},
@@ -793,7 +845,7 @@ admin.post("/packages", async (c) => {
       name = EXCLUDED.name,
       service = EXCLUDED.service,
       description = EXCLUDED.description,
-      duration_days = EXCLUDED.duration_days,
+      duration_minutes = EXCLUDED.duration_minutes,
       price_amount = EXCLUDED.price_amount,
       currency = EXCLUDED.currency,
       status = EXCLUDED.status,
@@ -811,11 +863,17 @@ admin.patch("/packages/:id", async (c) => {
     name?: string;
     service?: string;
     description?: string | null;
+    durationMinutes?: number;
     durationDays?: number;
     priceAmount?: number;
     currency?: string;
     status?: "active" | "inactive" | "archived";
   }>();
+
+  const durationMinutes = packageDurationMinutes(body);
+  if ((body.durationMinutes !== undefined || body.durationDays !== undefined) && !durationMinutes) {
+    return c.json({ message: "ระยะเวลาต้องเป็นจำนวนเต็ม 1-2,628,000 นาที" }, 400);
+  }
 
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -823,7 +881,7 @@ admin.patch("/packages/:id", async (c) => {
   if (body.name !== undefined) addUpdate(sets, values, "name", body.name);
   if (body.service !== undefined) addUpdate(sets, values, "service", body.service);
   if (body.description !== undefined) addUpdate(sets, values, "description", body.description);
-  if (body.durationDays !== undefined) addUpdate(sets, values, "duration_days", body.durationDays);
+  if (durationMinutes) addUpdate(sets, values, "duration_minutes", durationMinutes);
   if (body.priceAmount !== undefined) addUpdate(sets, values, "price_amount", body.priceAmount);
   if (body.currency !== undefined) addUpdate(sets, values, "currency", body.currency);
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::package_status");
@@ -869,6 +927,7 @@ admin.post("/master-emails", async (c) => {
     masterExpiredAt: string;
     status?: "active" | "inactive" | "expired" | "suspended";
     maxProfiles?: number;
+    accountPin?: string | null;
     note?: string;
   }>();
 
@@ -886,12 +945,13 @@ admin.post("/master-emails", async (c) => {
 
   const [account] = await sql`
     INSERT INTO master_emails (
-      service, email, password_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
+      service, email, password_ciphertext, account_pin_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
     )
     VALUES (
       ${service},
       ${body.email},
       ${encryptSecret(body.password)},
+      ${body.accountPin ? encryptSecret(body.accountPin) : null},
       ${body.status ?? "active"},
       ${masterPurchasedAt(body.purchasedAt)},
       ${masterExpiredAt(body.masterExpiredAt)},
@@ -914,6 +974,7 @@ admin.patch("/master-emails/:id", async (c) => {
     masterExpiredAt?: string;
     status?: "active" | "inactive" | "expired" | "suspended";
     maxProfiles?: number;
+    accountPin?: string | null;
     note?: string | null;
   }>();
 
@@ -934,6 +995,8 @@ admin.patch("/master-emails/:id", async (c) => {
   }
   if (body.email !== undefined) addUpdate(sets, values, "email", body.email);
   if (body.password) addUpdate(sets, values, "password_ciphertext", encryptSecret(body.password));
+  if (body.accountPin) addUpdate(sets, values, "account_pin_ciphertext", encryptSecret(body.accountPin));
+  if (body.accountPin === null) addUpdate(sets, values, "account_pin_ciphertext", null);
   if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", masterPurchasedAt(body.purchasedAt));
   if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", masterExpiredAt(body.masterExpiredAt));
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::master_email_status");
@@ -1077,6 +1140,9 @@ admin.patch("/profiles/:id", async (c) => {
     pin?: string | null;
   }>();
 
+  const rentalError = await activeRentalStatusError(id, body.status);
+  if (rentalError) return c.json({ message: rentalError }, 400);
+
   const sets: string[] = [];
   const values: unknown[] = [];
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
@@ -1117,6 +1183,9 @@ admin.put("/profiles/:id", async (c) => {
     note?: string | null;
   }>();
 
+  const rentalError = await activeRentalStatusError(id, body.status);
+  if (rentalError) return c.json({ message: rentalError }, 400);
+
   const sets: string[] = [];
   const values: unknown[] = [];
   if (body.masterEmailId !== undefined) addUpdate(sets, values, "master_email_id", body.masterEmailId, "::uuid");
@@ -1153,8 +1222,19 @@ admin.put("/profiles/:id", async (c) => {
   return c.json(profile);
 });
 
+admin.post("/profiles/:id/expire", async (c) => {
+  const id = c.req.param("id");
+  const actor = await getAdminSession(c);
+  const ended = await expireProfileRentalNow(id, actor?.id ?? null);
+  if (ended === 0) return c.json({ message: "Slot นี้ไม่มีการเช่าที่ยังไม่หมดเวลา" }, 400);
+  return c.json({ ended, pinRotation: pinRotationEnabled() });
+});
+
 admin.delete("/profiles/:id", async (c) => {
   const id = c.req.param("id");
+  const rentalError = await activeRentalStatusError(id, "inactive");
+  if (rentalError) return c.json({ message: rentalError.replace("เปลี่ยนสถานะเป็น inactive ", "ลบ") }, 400);
+
   const [profile] = await sql`
     UPDATE profiles
     SET status = 'inactive', deleted_at = NOW(), updated_at = NOW()

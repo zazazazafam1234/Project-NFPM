@@ -482,6 +482,14 @@ export function Dashboard() {
                   tone={report.snapshot.mastersExpiringIn7d > 0 ? "warn" : "ok"}
                   hint="ต้องต่ออายุบัญชีแม่"
                 />
+                {report.snapshot.pinRotationFailed > 0 && (
+                  <SnapshotItem
+                    label="เปลี่ยน PIN อัตโนมัติไม่สำเร็จ"
+                    value={report.snapshot.pinRotationFailed}
+                    tone="bad"
+                    hint="Slot ถูกพักไว้ (reserved) รอแอดมินเปลี่ยน PIN เอง"
+                  />
+                )}
                 <SnapshotItem
                   label="รอชำระเงิน"
                   value={report.snapshot.pendingTopups}
