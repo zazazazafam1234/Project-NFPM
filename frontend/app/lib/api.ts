@@ -112,12 +112,6 @@ export type PurchaseSubscriptionResponse = {
   startedAt: string;
   expiresAt: string;
   points: number;
-  credentials: {
-    email: string;
-    password: string | null;
-    profileName: string;
-    pin: string | null;
-  };
 };
 
 export function purchaseSubscription(packageSlug: string) {

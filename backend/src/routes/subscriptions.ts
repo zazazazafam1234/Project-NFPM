@@ -248,7 +248,6 @@ subscriptions.post("/", async (c) => {
       startedAt: result.subscription.started_at,
       expiresAt: result.subscription.expires_at,
       points: result.points,
-      credentials,
     }, 201);
   } catch (err) {
     return c.json(

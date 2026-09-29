@@ -8,7 +8,6 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import {
   fetchStreamingRooms,
   purchaseProfileSubscription,
-  type PurchaseSubscriptionResponse,
   type StreamingPackage,
   type StreamingRoom,
   type StreamingRoomSlot,
@@ -25,8 +24,7 @@ export default function CheckoutPage() {
   const [packageId, setPackageId] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [purchaseResult, setPurchaseResult] =
-    useState<PurchaseSubscriptionResponse | null>(null);
+  const [purchased, setPurchased] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,12 +75,10 @@ export default function CheckoutPage() {
     }
     setIsSubmitting(true);
     setMessage("");
-    setPurchaseResult(null);
     try {
-      const result = await purchaseProfileSubscription(selectedSlot.id, selectedPackage.id);
+      await purchaseProfileSubscription(selectedSlot.id, selectedPackage.id);
       await refreshSession();
-      setPurchaseResult(result);
-      setMessage("เช่าสำเร็จ ระบบล็อก slot นี้และถอดรหัสข้อมูลเข้าชมให้แล้ว");
+      setPurchased(true);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "ไม่สามารถใช้ Point ได้",
@@ -169,25 +165,6 @@ export default function CheckoutPage() {
                 : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point"}
           </p>
           {message && <p className={styles.message}>{message}</p>}
-          {purchaseResult && (
-            <div className={styles.paymentDetail}>
-              <div className={styles.walletPlaceholder}>
-                OK
-              </div>
-              <div>
-                <h2>ข้อมูลเข้าชม</h2>
-                <p>
-                  Email: {purchaseResult.credentials.email}
-                  <br />
-                  Password: {purchaseResult.credentials.password ?? "-"}
-                  <br />
-                  Profile: {purchaseResult.credentials.profileName}
-                  <br />
-                  PIN: {purchaseResult.credentials.pin ?? "-"}
-                </p>
-              </div>
-            </div>
-          )}
           <Link className={styles.profileLink} href="/payment">
             เติม Point →
           </Link>
@@ -196,6 +173,7 @@ export default function CheckoutPage() {
             type="button"
             disabled={
               isSubmitting ||
+              purchased ||
               !selectedSlot ||
               !selectedPackage ||
               Boolean(user && !enoughPoints)
@@ -211,6 +189,34 @@ export default function CheckoutPage() {
           </button>
         </div>
       </section>
+      {purchased && (
+        <div className={styles.successBackdrop} role="presentation">
+          <div
+            className={styles.successModal}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="purchase-success-title"
+          >
+            <span className={styles.successIcon} aria-hidden="true">✓</span>
+            <h2 id="purchase-success-title">ซื้อสำเร็จ</h2>
+            <p>
+              ระบบส่งข้อมูลการเข้าใช้งานไปที่อีเมล
+              {user?.email ? <b> {user.email}</b> : null} แล้ว
+            </p>
+            <p className={styles.successHint}>
+              หากไม่พบในกล่องจดหมาย กรุณาตรวจสอบในโฟลเดอร์สแปม (Spam / จดหมายขยะ)
+            </p>
+            <button
+              className={styles.paidButton}
+              type="button"
+              autoFocus
+              onClick={() => router.push("/profile")}
+            >
+              ไปหน้าโปรไฟล์ <span>→</span>
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
