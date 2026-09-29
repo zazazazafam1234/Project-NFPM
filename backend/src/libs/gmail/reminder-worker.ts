@@ -15,7 +15,7 @@ const WINDOWS: ReminderWindow[] = [
   { eventType: "reminder_3h_sent",  label: "3 ชั่วโมง", fromHours: 2.5, toHours: 3.5  },
 ];
 
-function buildReminderHtml({
+function buildReminderText({
   profileName,
   email,
   pin,
@@ -33,73 +33,18 @@ function buildReminderHtml({
     timeStyle: "short",
     timeZone: "Asia/Bangkok",
   });
-  const pinRow = pin
-    ? `<p style="margin:0 0 4px;color:#666;font-size:11px;text-transform:uppercase;letter-spacing:1px;">PIN โปรไฟล์</p>
-       <p style="margin:0;color:#fff;font-size:22px;font-weight:700;font-family:monospace;letter-spacing:4px;background:#111;padding:8px 14px;border-radius:6px;border:1px solid #333;display:inline-block;">${escapeHtml(pin)}</p>`
-    : "";
-  return `<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>แพ็กเกจใกล้หมดอายุ</title>
-</head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:system-ui,-apple-system,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:40px 0;">
-    <tr>
-      <td align="center">
-        <table width="560" cellpadding="0" cellspacing="0" style="background:#151515;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
-          <tr>
-            <td style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);padding:32px 40px;text-align:center;">
-              <h1 style="margin:0;color:#fff;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                แพ็กเกจของคุณจะหมดอายุใน ${label}
-              </h1>
-              <p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">
-                หมดอายุ: ${expireStr}
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:36px 40px;">
-              <p style="margin:0 0 24px;color:#aaa;font-size:15px;line-height:1.6;">
-                ต่ออายุแพ็กเกจเพื่อรับชมต่อเนื่องได้เลยครับ ข้อมูลจอของคุณด้านล่าง
-              </p>
-              <table width="100%" cellpadding="0" cellspacing="0" style="background:#1e1e1e;border-radius:12px;border:1px solid #2d2d2d;">
-                <tr>
-                  <td style="padding:24px 28px;">
-                    <p style="margin:0 0 4px;color:#666;font-size:11px;text-transform:uppercase;letter-spacing:1px;">EMAIL บัญชีหลัก</p>
-                    <p style="margin:0 0 20px;color:#fff;font-size:17px;font-weight:600;word-break:break-all;">${escapeHtml(email)}</p>
-                    <hr style="border:none;border-top:1px solid #2d2d2d;margin:4px 0 20px;"/>
-                    <p style="margin:0 0 4px;color:#666;font-size:11px;text-transform:uppercase;letter-spacing:1px;">หมายเลขจอ / โปรไฟล์</p>
-                    <p style="margin:0 0 ${pin ? "20px" : "0"};color:#f59e0b;font-size:22px;font-weight:700;">${escapeHtml(profileName)}</p>
-                    ${pinRow}
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:28px 0 0;color:#555;font-size:13px;line-height:1.7;">
-                หากพบปัญหาในการต่ออายุ กรุณาติดต่อแอดมินครับ
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 40px;border-top:1px solid #222;text-align:center;">
-              <p style="margin:0;color:#444;font-size:12px;">อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return [
+    `แพ็กเกจของคุณจะหมดอายุใน ${label}`,
+    `หมดอายุ: ${expireStr}`,
+    "",
+    `Email บัญชีหลัก: ${email}`,
+    `โปรไฟล์: ${profileName}`,
+    ...(pin ? [`PIN: ${pin}`] : []),
+    "",
+    "หากต้องการใช้งานต่อ กรุณาต่ออายุก่อนหมดเวลา หากพบปัญหากรุณาติดต่อแอดมิน",
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
 }
 
 async function processWindow(window: ReminderWindow) {
@@ -153,7 +98,7 @@ async function processWindow(window: ReminderWindow) {
           profileName: row.profile_name,
           pin,
         },
-        htmlOverride: buildReminderHtml({
+        bodyOverride: buildReminderText({
           profileName: row.profile_name,
           email: row.master_email,
           pin,
