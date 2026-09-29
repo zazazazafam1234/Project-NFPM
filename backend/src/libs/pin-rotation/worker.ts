@@ -6,8 +6,8 @@ import { sendPlainEmail } from "../gmail/mailsender";
 /**
  * When a rental ends, the profile's lock PIN is changed through the Python
  * pin-service (see /pin-service) so the previous customer loses access, then the
- * slot goes back on sale and the customer is emailed. Off unless PIN_SERVICE_URL
- * and PIN_SERVICE_KEY are set.
+ * slot goes back on sale and the customer is emailed. Without PIN_SERVICE_URL and
+ * PIN_SERVICE_KEY it only expires the rental, releases the slot and emails.
  */
 
 const CHECK_INTERVAL_MS = 60 * 1000;
@@ -173,9 +173,28 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
   await sendExpiredEmail(rental, { pinChanged: true });
 }
 
-async function checkExpiredRentals(serviceUrl: string, serviceKey: string) {
+// Ends a rental without a PIN change: rental expired, slot back on sale, customer emailed.
+async function releaseWithoutRotation(rental: ExpiredRental) {
+  await expireRentals(rental.profile_id);
+  await sql`
+    UPDATE profiles p
+    SET status = 'available', profile_expires_at = me.master_expired_at, updated_at = NOW()
+    FROM master_emails me
+    WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
+  `;
+  await sendExpiredEmail(rental, { pinChanged: false });
+  console.log(`[pin-rotation] released without PIN change profile=${rental.profile_name} sub=${rental.subscription_id}`);
+}
+
+async function checkExpiredRentals(service: { url: string; key: string } | null) {
   const rentals = await findExpiredRentals();
   if (rentals.length === 0) return;
+
+  // Without the pin-service there is nothing to wait for: notify and release.
+  if (!service) {
+    for (const rental of rentals) await releaseWithoutRotation(rental);
+    return;
+  }
 
   // Hold every ended slot first so it cannot be sold while its PIN is still the old one.
   const heldIds = rentals.filter((rental) => !rental.profile_deleted).map((rental) => rental.profile_id);
@@ -188,12 +207,11 @@ async function checkExpiredRentals(serviceUrl: string, serviceKey: string) {
 
   for (const rental of rentals) {
     if (rental.profile_deleted) {
-      await expireRentals(rental.profile_id);
-      await sendExpiredEmail(rental, { pinChanged: false });
+      await releaseWithoutRotation(rental);
       continue;
     }
     if (rental.failures >= MAX_ROTATION_ATTEMPTS) continue; // left reserved for an admin
-    await rotate(rental, serviceUrl, serviceKey);
+    await rotate(rental, service.url, service.key);
   }
 }
 
@@ -233,31 +251,19 @@ export async function expireProfileRentalNow(profileId: string, actorUserId: str
   });
   if (ended === 0 || pinRotationEnabled()) return ended;
 
-  for (const rental of await findExpiredRentals(profileId)) {
-    await expireRentals(rental.profile_id);
-    await sql`
-      UPDATE profiles p
-      SET status = 'available', profile_expires_at = me.master_expired_at, updated_at = NOW()
-      FROM master_emails me
-      WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
-    `;
-    await sendExpiredEmail(rental, { pinChanged: false });
-  }
+  for (const rental of await findExpiredRentals(profileId)) await releaseWithoutRotation(rental);
   return ended;
 }
 
 export function startPinRotationWorker() {
   const serviceUrl = process.env.PIN_SERVICE_URL;
   const serviceKey = process.env.PIN_SERVICE_KEY;
-  if (!serviceUrl || !serviceKey) {
-    console.log("[pin-rotation] disabled (set PIN_SERVICE_URL and PIN_SERVICE_KEY to enable)");
-    return;
-  }
+  const service = serviceUrl && serviceKey ? { url: serviceUrl, key: serviceKey } : null;
 
   const tick = () => {
     if (running) return;
     running = true;
-    checkExpiredRentals(serviceUrl, serviceKey)
+    checkExpiredRentals(service)
       .catch((err) => console.error("[pin-rotation] check failed", err instanceof Error ? err.message : err))
       .finally(() => {
         running = false;
@@ -265,5 +271,9 @@ export function startPinRotationWorker() {
   };
   tick();
   setInterval(tick, CHECK_INTERVAL_MS);
-  console.log(`[pin-rotation] started (interval=${CHECK_INTERVAL_MS / 1000}s url=${serviceUrl})`);
+  console.log(
+    service
+      ? `[pin-rotation] started (interval=${CHECK_INTERVAL_MS / 1000}s url=${service.url})`
+      : "[pin-rotation] started in notify-only mode: expiry emails, no PIN change (set PIN_SERVICE_URL and PIN_SERVICE_KEY to rotate PINs)",
+  );
 }
