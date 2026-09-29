@@ -13,6 +13,32 @@ function nullableDate(value: string | null | undefined) {
   return value;
 }
 
+function bangkokDateOnlyToUtcIso(value: string, mode: "start" | "end") {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return value;
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = mode === "end" ? 23 : 0;
+  const minute = mode === "end" ? 59 : 0;
+  const second = mode === "end" ? 59 : 0;
+  const millisecond = mode === "end" ? 999 : 0;
+
+  // Bangkok is UTC+7. Convert the local wall-clock date to UTC before storing.
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second, millisecond)).toISOString();
+}
+
+function masterPurchasedAt(value: string | undefined) {
+  if (!value) return new Date().toISOString();
+  return bangkokDateOnlyToUtcIso(value, "start");
+}
+
+function masterExpiredAt(value: string) {
+  return bangkokDateOnlyToUtcIso(value, "end");
+}
+
 function addUpdate(
   sets: string[],
   values: unknown[],
@@ -718,7 +744,7 @@ admin.post("/automation/profiles", async (c) => {
         ${item.profileName},
         ${item.pin ? encryptSecret(item.pin) : null},
         ${item.status ?? "available"},
-        ${item.profileExpiresAt ?? null},
+        ${item.profileExpiresAt ? bangkokDateOnlyToUtcIso(item.profileExpiresAt, "end") : null},
         ${item.note ?? "Created by NetflixProfileCreator"}
       )
       RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
@@ -864,8 +890,8 @@ admin.post("/master-emails", async (c) => {
       ${body.email},
       ${encryptSecret(body.password)},
       ${body.status ?? "active"},
-      ${body.purchasedAt ?? new Date().toISOString()},
-      ${body.masterExpiredAt},
+      ${masterPurchasedAt(body.purchasedAt)},
+      ${masterExpiredAt(body.masterExpiredAt)},
       ${maxProfiles},
       ${body.note ?? null}
     )
@@ -905,8 +931,8 @@ admin.patch("/master-emails/:id", async (c) => {
   }
   if (body.email !== undefined) addUpdate(sets, values, "email", body.email);
   if (body.password) addUpdate(sets, values, "password_ciphertext", encryptSecret(body.password));
-  if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", body.purchasedAt);
-  if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", body.masterExpiredAt);
+  if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", masterPurchasedAt(body.purchasedAt));
+  if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", masterExpiredAt(body.masterExpiredAt));
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::master_email_status");
   if (body.maxProfiles !== undefined) addUpdate(sets, values, "max_profiles", Number(body.maxProfiles));
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
@@ -1003,7 +1029,7 @@ admin.post("/profiles", async (c) => {
           ${body.profileName},
           ${body.pin ? encryptSecret(body.pin) : null},
           ${body.status ?? "available"},
-          ${body.profileExpiresAt ?? null},
+          ${body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : null},
           ${body.note ?? null}
         )
         RETURNING id, master_email_id, profile_name, status, profile_expires_at, note
@@ -1030,7 +1056,12 @@ admin.patch("/profiles/:id", async (c) => {
   const values: unknown[] = [];
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
   if (body.profileExpiresAt !== undefined) {
-    addUpdate(sets, values, "profile_expires_at", nullableDate(body.profileExpiresAt));
+    addUpdate(
+      sets,
+      values,
+      "profile_expires_at",
+      body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : nullableDate(body.profileExpiresAt),
+    );
   }
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
   if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));
@@ -1069,7 +1100,14 @@ admin.put("/profiles/:id", async (c) => {
   if (body.masterEmailId !== undefined) addUpdate(sets, values, "master_email_id", body.masterEmailId, "::uuid");
   if (body.profileName !== undefined) addUpdate(sets, values, "profile_name", body.profileName);
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::profile_status");
-  if (body.profileExpiresAt !== undefined) addUpdate(sets, values, "profile_expires_at", nullableDate(body.profileExpiresAt));
+  if (body.profileExpiresAt !== undefined) {
+    addUpdate(
+      sets,
+      values,
+      "profile_expires_at",
+      body.profileExpiresAt ? bangkokDateOnlyToUtcIso(body.profileExpiresAt, "end") : nullableDate(body.profileExpiresAt),
+    );
+  }
   if (body.note !== undefined) addUpdate(sets, values, "note", body.note);
   if (body.pin) addUpdate(sets, values, "profile_pin_ciphertext", encryptSecret(body.pin));
 

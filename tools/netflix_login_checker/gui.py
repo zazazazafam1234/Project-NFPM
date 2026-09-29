@@ -94,10 +94,19 @@ class ProfileWorker(QThread):
     def run(self) -> None:
         debug = lambda message: self.log.emit(message)
         backend_client = None
-        if self.api_url and self.admin_key and self.master_email_id:
+        master_email_id = self.master_email_id
+        if self.api_url and self.admin_key:
             backend_client = BackendApiClient(base_url=self.api_url, admin_key=self.admin_key)
 
         try:
+            if backend_client and not master_email_id:
+                self.log.emit(f"backend_resolve_master_email email={self.email}")
+                master_email_id = backend_client.find_master_email_id(email=self.email, service="netflix")
+                if master_email_id:
+                    self.log.emit(f"backend_master_email_resolved id={master_email_id}")
+                else:
+                    self.log.emit("backend_master_email_not_found profiles_will_not_be_saved")
+
             if self.clear_session_before_start:
                 removed = clear_profile_session(self.email)
                 self.log.emit(f"clear_session_before_start removed={removed}")
@@ -138,8 +147,11 @@ class ProfileWorker(QThread):
                 )
                 self.profile_result.emit(index, result)
                 if result.success and backend_client and result.profile_name:
+                    if not master_email_id:
+                        self.log.emit(f"backend_profile_save_skipped index={index} reason=master_email_not_found")
+                        continue
                     saved = backend_client.save_profiles(
-                        master_email_id=self.master_email_id or "",
+                        master_email_id=master_email_id,
                         profiles=[
                             {
                                 "profileName": result.profile_name,
@@ -169,7 +181,7 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.setWindowTitle("Netflix Profile Creator")
         self.resize(780, 720)
 
-        self.api_url_input = QLineEdit("http://localhost:4000/api")
+        self.api_url_input = QLineEdit("https://apifastmovie.sysbright.dev/api")
         self.admin_key_input = QLineEdit()
         self.admin_key_input.setEchoMode(QLineEdit.Password)
         self.master_email_input = QComboBox()
@@ -321,6 +333,8 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.master_email_input.addItem("ใช้ข้อมูลที่กรอกเอง", None)
         for account in accounts:
             label = f"{account.email} · {account.package_name or account.service} · {account.profile_count} profiles"
+            if not account.password:
+                label += " · ใส่ password เอง"
             self.master_email_input.addItem(label, account)
         self.master_email_input.blockSignals(False)
         self.load_master_button.setEnabled(True)
@@ -336,7 +350,8 @@ class NetflixProfileCreatorWindow(QMainWindow):
         if not isinstance(account, MasterEmailAccount):
             return
         self.email_input.setText(account.email)
-        self.password_input.setText(account.password)
+        if account.password:
+            self.password_input.setText(account.password)
 
     def clear_browser_cache(self) -> None:
         removed = clear_playwright_cache_dirs()

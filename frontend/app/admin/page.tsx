@@ -55,12 +55,8 @@ function dateInputValue(value: string | null | undefined) {
 }
 
 function dateOnlyToIso(value: string, mode: "start" | "end") {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return new Date(value).toISOString();
-  const date = mode === "end"
-    ? new Date(year, month - 1, day, 23, 59, 59, 999)
-    : new Date(year, month - 1, day, 0, 0, 0, 0);
-  return date.toISOString();
+  void mode;
+  return value;
 }
 
 function formatDateTime(value: string | null | undefined) {
