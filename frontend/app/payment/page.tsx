@@ -6,7 +6,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { apiFetch, fetchTopupSettings } from "../lib/api";
+import {
+  apiFetch,
+  checkStreamerCode,
+  describeReward,
+  fetchTopupPromotions,
+  fetchTopupSettings,
+  formatDiscount,
+  rewardCentsFor,
+  type StreamerCodeInfo,
+  type TopupPromotion,
+} from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
 
@@ -29,6 +39,12 @@ type TopUpResponse = {
   expiresAt: string;
   paidAt: string | null;
   qrImage: string | null;
+  discountCents?: number;
+  chargeAmount?: number;
+  promotionName?: string | null;
+  promotionRewardCents?: number;
+  streamerName?: string | null;
+  streamerRewardCents?: number;
 };
 
 function formatBaht(value: number) {
@@ -73,7 +89,14 @@ async function renderQrPng(topUp: TopUpResponse): Promise<Blob> {
   ctx.font = `500 26px ${font}`;
   ctx.fillStyle = "#4d4659";
   ctx.fillText("กรุณาโอนยอดนี้ให้ตรงทุกสตางค์", width / 2, 768);
-  ctx.fillText(`เติม ${topUp.points.toLocaleString()} Point · หมดอายุ ${formatDateTime(topUp.expiresAt)}`, width / 2, 812);
+  const discount = topUp.discountCents ? ` (ลดแล้ว ฿${formatBaht(topUp.discountCents / 100)})` : "";
+  ctx.fillText(`เติม ${topUp.points.toLocaleString()} Point${discount} · หมดอายุ ${formatDateTime(topUp.expiresAt)}`, width / 2, 812);
+  ctx.fillStyle = "#6a44e0";
+  ctx.fillText(
+    `เศษ .${String(topUp.refDecimal).padStart(2, "0")} บาท สะสมเป็นเงินส่วนลดใช้ครั้งถัดไป`,
+    width / 2,
+    856,
+  );
 
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("png_failed"))), "image/png"),
@@ -90,6 +113,38 @@ export default function TopUpPage() {
   const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
   const [minTopupPoints, setMinTopupPoints] = useState(DEFAULT_MIN_TOPUP_POINTS);
   const [isSavingQr, setIsSavingQr] = useState(false);
+  const [promotions, setPromotions] = useState<TopupPromotion[]>([]);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeInfo, setCodeInfo] = useState<StreamerCodeInfo | null>(null);
+  const [codeError, setCodeError] = useState("");
+  const [isCheckingCode, setIsCheckingCode] = useState(false);
+
+  useEffect(() => {
+    fetchTopupPromotions()
+      .then((data) => setPromotions(data.promotions))
+      .catch(() => undefined);
+    // Streamer links arrive as /payment?code=XXXX
+    const fromLink = new URLSearchParams(window.location.search).get("code");
+    if (fromLink) queueMicrotask(() => setCodeInput(fromLink.toUpperCase()));
+  }, []);
+
+  async function applyCode(code = codeInput) {
+    if (!code.trim()) return;
+    if (!user) {
+      setCodeError("กรุณาเข้าสู่ระบบก่อนใช้โค้ด");
+      return;
+    }
+    setIsCheckingCode(true);
+    setCodeError("");
+    try {
+      setCodeInfo(await checkStreamerCode(code));
+    } catch (err) {
+      setCodeInfo(null);
+      setCodeError(err instanceof Error ? err.message : "ใช้โค้ดไม่ได้");
+    } finally {
+      setIsCheckingCode(false);
+    }
+  }
 
   async function saveQrCode(topUp: TopUpResponse) {
     if (!topUp.qrImage) return;
@@ -124,6 +179,15 @@ export default function TopUpPage() {
   const topUpPoints = Number(pointsInput);
   const isValidTopUp = Number.isInteger(topUpPoints) && topUpPoints >= minTopupPoints;
   const selectedSuggestion = topUps.find((item) => item.points === topUpPoints);
+  const baseCents = isValidTopUp ? topUpPoints * 100 : 0;
+  const bestPromotion = promotions
+    .filter((promotion) => baseCents >= promotion.minAmountCents)
+    .map((promotion) => ({ promotion, cents: rewardCentsFor(promotion, baseCents) }))
+    .sort((a, b) => b.cents - a.cents)[0];
+  const preDiscountCents = Math.min(
+    (bestPromotion?.cents ?? 0) + (codeInfo ? rewardCentsFor(codeInfo, baseCents) : 0),
+    Math.max(baseCents - 100, 0),
+  );
 
   useEffect(() => {
     fetchTopupSettings()
@@ -174,6 +238,7 @@ export default function TopUpPage() {
           points: topUpPoints,
           amount: topUpPoints,
           paymentMethod: method,
+          code: codeInfo?.code ?? null,
         }),
       });
       setPendingTopUp(topUp);
@@ -244,6 +309,73 @@ export default function TopUpPage() {
             </div>
             <small>ขั้นต่ำ {minTopupPoints} บาท · 1 บาท = 1 Point</small>
           </label>
+          {promotions.length > 0 && (
+            <div className={styles.promoList}>
+              <p className={styles.label}>โปรเติมเงิน · ลดยอดโอนทันที</p>
+              {promotions.map((promotion) => (
+                <span
+                  className={bestPromotion?.promotion.id === promotion.id ? styles.promoActive : ""}
+                  key={promotion.id}
+                >
+                  เติมครบ ฿{(promotion.minAmountCents / 100).toLocaleString("th-TH")} → {describeReward(promotion)}
+                </span>
+              ))}
+              {bestPromotion && (
+                <small>
+                  ยอดนี้ลด {formatDiscount(bestPromotion.cents)} จากโปร “{bestPromotion.promotion.name}”
+                </small>
+              )}
+            </div>
+          )}
+          <div className={styles.codeBox}>
+            <span>โค้ดส่วนลดจากสตรีมเมอร์ (ใช้ได้ครั้งแรกของบัญชีใหม่)</span>
+            <div>
+              <input
+                autoCapitalize="characters"
+                placeholder="เช่น STREAMER1234"
+                value={codeInput}
+                onChange={(event) => {
+                  setCodeInput(event.target.value.toUpperCase());
+                  setCodeInfo(null);
+                  setCodeError("");
+                }}
+              />
+              <button
+                disabled={!codeInput.trim() || isCheckingCode}
+                onClick={() => void applyCode()}
+                type="button"
+              >
+                {isCheckingCode ? "กำลังตรวจ…" : "ใช้โค้ด"}
+              </button>
+            </div>
+            {codeInfo && (
+              <small className={styles.codeOk}>
+                ✓ โค้ดของ {codeInfo.streamerName} · {describeReward(codeInfo)}
+                {baseCents > 0 ? ` = ลดยอดโอน ${formatDiscount(rewardCentsFor(codeInfo, baseCents))}` : ""}
+              </small>
+            )}
+            {codeError && <small className={styles.codeError}>✕ {codeError}</small>}
+          </div>
+          {baseCents > 0 && preDiscountCents > 0 && (
+            <div className={styles.discountSummary}>
+              <span>เติม {topUpPoints.toLocaleString()} Point</span>
+              <b>฿{formatBaht(topUpPoints)}</b>
+              {bestPromotion && (
+                <>
+                  <span>ส่วนลดโปร “{bestPromotion.promotion.name}”</span>
+                  <b>-{formatDiscount(bestPromotion.cents)}</b>
+                </>
+              )}
+              {codeInfo && (
+                <>
+                  <span>ส่วนลดโค้ด {codeInfo.streamerName}</span>
+                  <b>-{formatDiscount(rewardCentsFor(codeInfo, baseCents))}</b>
+                </>
+              )}
+              <span>ยอดที่ต้องจ่าย (+ เศษสตางค์ตอนสร้าง QR)</span>
+              <strong>฿{formatBaht((baseCents - preDiscountCents) / 100)}</strong>
+            </div>
+          )}
           <p className={styles.label}>ราคาแนะนำ</p>
           <div className={styles.topUpGrid} role="group" aria-label="จำนวน Point">
             {topUps.filter((item) => item.points >= minTopupPoints).map((item) => (
@@ -332,9 +464,32 @@ export default function TopUpPage() {
                   <span>ยอดที่ต้องโอนให้ตรง</span>
                   <strong>{formatBaht(pendingTopUp.payableAmount)} บาท</strong>
                   <small>
-                    ยอดหลัก {formatBaht(pendingTopUp.baseAmount)} + ref .
-                    {String(pendingTopUp.refDecimal).padStart(2, "0")}
+                    {(pendingTopUp.discountCents ?? 0) > 0
+                      ? `ราคา ${formatBaht(pendingTopUp.baseAmount)} − ส่วนลด ${formatBaht((pendingTopUp.discountCents ?? 0) / 100)} = ${formatBaht(pendingTopUp.chargeAmount ?? pendingTopUp.baseAmount)}`
+                      : `ยอดหลัก ${formatBaht(pendingTopUp.baseAmount)}`}{" "}
+                    + ref .{String(pendingTopUp.refDecimal).padStart(2, "0")}
                   </small>
+                  {(pendingTopUp.discountCents ?? 0) > 0 && (
+                    <p className={styles.discountNote}>
+                      🎁 ลดแล้ว <b>{formatDiscount(pendingTopUp.discountCents)}</b> · ได้ครบ{" "}
+                      <b>{pendingTopUp.points.toLocaleString()} Point</b>
+                      {(pendingTopUp.promotionRewardCents ?? 0) > 0 && (
+                        <>
+                          <br />· โปร “{pendingTopUp.promotionName}” -{formatDiscount(pendingTopUp.promotionRewardCents)}
+                        </>
+                      )}
+                      {(pendingTopUp.streamerRewardCents ?? 0) > 0 && (
+                        <>
+                          <br />· โค้ด {pendingTopUp.streamerName} -{formatDiscount(pendingTopUp.streamerRewardCents)}
+                        </>
+                      )}
+                    </p>
+                  )}
+                  <p className={styles.discountNote}>
+                    💡 เศษ <b>.{String(pendingTopUp.refDecimal).padStart(2, "0")} บาท</b> จะถูกสะสมเป็น
+                    <b> เงินส่วนลด</b> ใช้ลดราคาตอนซื้อแพ็กเกจครั้งถัดไป
+                    {user ? <span> · สะสมแล้ว {formatDiscount(user.discountCents)}</span> : null}
+                  </p>
                   <em>
                     บัญชีรับเงิน {pendingTopUp.paymentAccountName ?? "PromptPay"} · หมดอายุ{" "}
                     {formatDateTime(pendingTopUp.expiresAt)}

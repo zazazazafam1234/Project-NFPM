@@ -87,6 +87,7 @@ auth.get("/session", async (c) => {
       email: user.email,
       image: user.image,
       points: user.points,
+      discountCents: user.discount_cents,
       role: user.role,
       status: user.status,
     },

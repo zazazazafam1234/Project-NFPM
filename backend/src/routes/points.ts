@@ -1,5 +1,7 @@
 import { Hono, type Context } from "hono";
 import { getSessionUserId } from "../session";
+import sql from "../db";
+import { checkStreamerCode } from "../rewards";
 import { getMinTopupPoints } from "../settings";
 import { createPromptPayTopUp, getTopUpForUser } from "../topups";
 
@@ -13,10 +15,11 @@ export async function createTopUp(c: Context) {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
 
-  const { points, paymentMethod } = await c.req.json<{
+  const { points, paymentMethod, code } = await c.req.json<{
     points: number;
     amount: number;
     paymentMethod: string;
+    code?: string | null;
   }>();
 
   if (!points || points <= 0) {
@@ -27,7 +30,7 @@ export async function createTopUp(c: Context) {
   }
 
   try {
-    const topUp = await createPromptPayTopUp({ userId, points });
+    const topUp = await createPromptPayTopUp({ userId, points, code });
     return c.json(topUp, 201);
   } catch (err) {
     return c.json(
@@ -39,6 +42,33 @@ export async function createTopUp(c: Context) {
 
 points.post("/top-ups", createTopUp);
 points.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
+
+// Active "เติมครบ ... ได้ส่วนลด ..." promotions shown on the top-up page.
+points.get("/promotions", async (c) => {
+  const promotions = await sql`
+    SELECT id, name, min_amount_cents AS "minAmountCents", reward_type AS "rewardType",
+      reward_value::float AS "rewardValue", max_reward_cents AS "maxRewardCents"
+    FROM topup_promotions
+    WHERE status = 'active' AND deleted_at IS NULL
+    ORDER BY min_amount_cents
+  `;
+  return c.json({ promotions });
+});
+
+// Checks a streamer code before the customer creates the QR.
+points.get("/codes/:code", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+  const check = await checkStreamerCode(sql, c.req.param("code"), userId);
+  if (!check.ok) return c.json({ message: check.message }, 400);
+  return c.json({
+    streamerName: check.streamer.name,
+    code: check.streamer.code,
+    rewardType: check.streamer.reward_type,
+    rewardValue: Number(check.streamer.reward_value),
+    maxRewardCents: check.streamer.max_reward_cents,
+  });
+});
 points.get("/top-ups/:id", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);

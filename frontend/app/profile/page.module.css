@@ -418,3 +418,12 @@
   align-items: center;
   gap: 10px;
 }
+
+.wallet .discountBalance {
+  margin: 8px 0 0;
+  color: var(--c-bcb3c7ff);
+  font-size: 12px;
+}
+.wallet .discountBalance b {
+  color: var(--c-d8bcffff, #d8bcff);
+}

@@ -758,3 +758,124 @@
   cursor: wait;
   opacity: 0.6;
 }
+
+.discountNote {
+  margin: 6px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--c-b49aff44);
+  border-radius: 10px;
+  color: var(--c-d7cbefff);
+  background: var(--c-7953ed25);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.discountNote b {
+  color: var(--c-f7f4ffff);
+}
+.discountNote span {
+  color: var(--c-aaa2b4ff);
+}
+
+.discountSummary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--c-ffffff12);
+  border-radius: 12px;
+  font-size: 12px;
+}
+.discountSummary span {
+  color: var(--c-aaa2b4ff);
+}
+.discountSummary b,
+.discountSummary strong {
+  color: var(--c-f7f4ffff);
+  text-align: right;
+}
+.discountSummary strong {
+  font-size: 15px;
+}
+
+.promoList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+.promoList .label {
+  flex-basis: 100%;
+  margin-bottom: 2px;
+}
+.promoList span {
+  padding: 6px 10px;
+  border: 1px solid var(--c-ffffff16);
+  border-radius: 999px;
+  color: var(--c-cfc7daff);
+  font-size: 11px;
+  font-weight: 700;
+}
+.promoList .promoActive {
+  border-color: var(--c-a783ffff);
+  color: var(--c-f7f4ffff);
+  background: var(--c-7953ed25);
+}
+.promoList small {
+  flex-basis: 100%;
+  color: var(--c-c7b7ffff);
+  font-size: 11px;
+}
+.codeBox {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px dashed var(--c-ffffff1d);
+  border-radius: 14px;
+}
+.codeBox span {
+  color: var(--c-cfc7daff);
+  font-size: 11px;
+  font-weight: 800;
+}
+.codeBox div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.codeBox input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 10px;
+  outline: 0;
+  color: var(--c-f7f4ffff);
+  background: var(--c-191622ff);
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.codeBox button {
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--c-8b62ffff), var(--c-6841edff));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.codeBox button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.codeOk {
+  color: var(--c-75d79dff, #75d79d);
+  font-size: 11.5px;
+}
+.codeError {
+  color: var(--c-ff7a85ff, #ff7a85);
+  font-size: 11.5px;
+}

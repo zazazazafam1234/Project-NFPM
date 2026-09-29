@@ -7,6 +7,8 @@ import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import {
   fetchStreamingRooms,
+  discountPointsFor,
+  formatDiscount,
   purchaseProfileSubscription,
   type StreamingPackage,
   type StreamingRoom,
@@ -61,9 +63,9 @@ export default function CheckoutPage() {
     () => availablePackages.find((pkg) => pkg.id === packageId) ?? availablePackages[0] ?? null,
     [availablePackages, packageId],
   );
-  const enoughPoints = Boolean(
-    user && selectedPackage && user.points >= selectedPackage.priceAmount,
-  );
+  const discountPoints = selectedPackage ? discountPointsFor(user?.discountCents, selectedPackage.priceAmount) : 0;
+  const finalPrice = selectedPackage ? selectedPackage.priceAmount - discountPoints : 0;
+  const enoughPoints = Boolean(user && selectedPackage && user.points >= finalPrice);
 
   async function purchase() {
     if (!user) {
@@ -156,12 +158,22 @@ export default function CheckoutPage() {
           )}
 
           <div className={styles.divider} />
+          {user && selectedPackage && (user.discountCents ?? 0) > 0 && (
+            <div className={styles.discountSummary}>
+              <span>ราคาโปร</span>
+              <b>{selectedPackage.priceAmount.toLocaleString()} Point</b>
+              <span>ส่วนลดสะสม (มี {formatDiscount(user.discountCents)})</span>
+              <b>{discountPoints > 0 ? `-${discountPoints.toLocaleString()} Point` : "ยังไม่ครบ ฿1"}</b>
+              <span>จ่ายจริง</span>
+              <strong>{finalPrice.toLocaleString()} Point</strong>
+            </div>
+          )}
           <p className={styles.afterPay}>
             {!selectedPackage
               ? "เลือก slot ที่พร้อมใช้งานก่อน"
               : user
                 ? enoughPoints
-                  ? `คุณจะเหลือ ${(user.points - selectedPackage.priceAmount).toLocaleString()} Point หลังเลือกโปรนี้`
+                  ? `คุณจะเหลือ ${(user.points - finalPrice).toLocaleString()} Point หลังเลือกโปรนี้`
                   : "Point ไม่เพียงพอ กรุณาเติม Point ก่อน"
                 : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point"}
           </p>

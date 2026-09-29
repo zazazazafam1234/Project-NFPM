@@ -115,7 +115,7 @@ reports.get("/", async (c) => {
     AND ${sql(column)} < (${to}::timestamp AT TIME ZONE 'Asia/Bangkok')
   `;
 
-  const [topPackages, topPages, recentPurchases, recentTopups, [snapshot]] = await Promise.all([
+  const [topPackages, topPages, recentPurchases, recentTopups, [snapshot], streamerStats] = await Promise.all([
     sql`
       SELECT pkg.name, pkg.service, COUNT(*)::int AS count, COALESCE(SUM(s.price_paid), 0)::int AS points
       FROM subscriptions s
@@ -187,6 +187,26 @@ reports.get("/", async (c) => {
         (SELECT COUNT(*) FROM "User")::int AS "totalUsers",
         (SELECT COALESCE(SUM(points), 0) FROM "User")::int AS "outstandingPoints"
     `,
+    // Customers each streamer's code brought in, and what they spent, within the period.
+    sql`
+      SELECT
+        s.id, s.name, s.code,
+        (SELECT COUNT(*) FROM streamer_redemptions r
+          WHERE r.streamer_id = s.id AND r.status = 'redeemed' AND ${inPeriod("r.redeemed_at")})::int AS "newCustomers",
+        (SELECT COUNT(*) FROM streamer_redemptions r
+          WHERE r.streamer_id = s.id AND r.status = 'redeemed')::int AS "totalCustomers",
+        s.max_uses AS "maxUses",
+        (SELECT COALESCE(SUM(COALESCE(t.matched_amount_cents, t.payable_amount_cents)), 0)
+          FROM point_topups t JOIN "User" u ON u.id = t.user_id
+          WHERE u.referred_streamer_id = s.id AND t.status = 'paid' AND ${inPeriod("t.paid_at")})::bigint AS "topupCents",
+        (SELECT COUNT(*) FROM subscriptions sub JOIN "User" u ON u.id = sub.user_id
+          WHERE u.referred_streamer_id = s.id AND ${inPeriod("sub.created_at")})::int AS "purchases",
+        (SELECT COALESCE(SUM(sub.price_paid), 0) FROM subscriptions sub JOIN "User" u ON u.id = sub.user_id
+          WHERE u.referred_streamer_id = s.id AND ${inPeriod("sub.created_at")})::int AS "pointsSpent"
+      FROM streamers s
+      WHERE s.deleted_at IS NULL
+      ORDER BY s.created_at
+    `,
   ]);
 
   return c.json({
@@ -203,6 +223,7 @@ reports.get("/", async (c) => {
     recentPurchases,
     recentTopups,
     snapshot,
+    streamers: streamerStats.map((row) => ({ ...row, topupCents: Number(row.topupCents) })),
   });
 });
 

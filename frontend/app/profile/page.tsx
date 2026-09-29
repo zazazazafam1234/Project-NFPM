@@ -12,6 +12,7 @@ import {
   type Order,
   type Subscription,
   type Transaction,
+  formatDiscount,
 } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -101,8 +102,11 @@ export default function ProfilePage() {
           <span className={styles.coin}>✦</span>
           <strong>{user.points.toLocaleString()}</strong>
           <small>POINTS AVAILABLE</small>
+          <p className={styles.discountBalance}>
+            เงินส่วนลดสะสม <b>{formatDiscount(user.discountCents)}</b>
+          </p>
           <div className={styles.walletRule} />
-          <p>ใช้ Point เพื่อเลือกซื้อโปรได้ทันทีในหน้าชำระเงิน</p>
+          <p>ใช้ Point เพื่อเลือกซื้อโปรได้ทันทีในหน้าชำระเงิน · เงินส่วนลดครบ ฿1 ใช้ลดราคาให้อัตโนมัติ</p>
           <Link href="/payment">
             เติม Point <b>→</b>
           </Link>
