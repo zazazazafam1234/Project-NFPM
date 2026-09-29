@@ -67,6 +67,7 @@ export default function TopUpPage() {
             await refreshSession();
             setMessage("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
             window.alert("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
+            router.push("/profile");
           }
           if (topUp.status === "expired") {
             window.clearInterval(interval);
