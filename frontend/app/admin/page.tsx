@@ -32,6 +32,7 @@ import {
 import { useSession } from "../providers";
 import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
+import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
 import styles from "./page.module.css";
 
 const menu = [
@@ -41,6 +42,8 @@ const menu = [
   ["accounts", "ห้อง / Email แม่", "◎"],
   ["profiles", "Slot / โปรไฟล์", "◉"],
   ["users", "ผู้ใช้", "◍"],
+  ["topupPromotions", "โปรเติมเงิน", "⬆"],
+  ["streamers", "Streamer / โค้ด", "★"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
 ] as const;
 
@@ -264,6 +267,8 @@ export default function AdminPage() {
         {section === "users" && (
           <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
         )}
+        {section === "topupPromotions" && <TopupPromotionsPanel onDone={handleDone} />}
+        {section === "streamers" && <StreamersPanel onDone={handleDone} />}
         {section === "settings" && inventory && (
           <Settings inventory={inventory} onDone={handleDone} />
         )}

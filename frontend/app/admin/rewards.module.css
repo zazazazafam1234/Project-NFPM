@@ -1,0 +1,96 @@
+.inlineForm {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed var(--c-ffffff1d);
+  border-radius: 14px;
+}
+.streamerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.streamerCard {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--c-ffffff14);
+  border-radius: 14px;
+  background: var(--c-0f0e15ff);
+  font-size: 12px;
+}
+.streamerCard header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.streamerCard header div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.streamerCard header b {
+  font-size: 15px;
+}
+.streamerCard header a,
+.streamerCard header small {
+  overflow: hidden;
+  color: var(--c-aa8effff);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.streamerCard em {
+  font-style: normal;
+  font-size: 11px;
+}
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.codeRow code {
+  padding: 6px 10px;
+  border: 1px solid var(--c-a783ffff);
+  border-radius: 8px;
+  color: var(--c-f7f4ffff);
+  background: var(--c-7953ed25);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.codeRow button,
+.streamerCard footer button {
+  padding: 6px 9px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 7px;
+  color: var(--c-bca8e9ff);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.rewardLine {
+  margin: 0;
+  color: var(--c-c7b7ffff);
+  font-weight: 700;
+}
+.streamerCard dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+}
+.streamerCard dt {
+  color: var(--c-948c9dff);
+  font-size: 10.5px;
+}
+.streamerCard dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+.streamerCard footer {
+  display: flex;
+  gap: 7px;
+}

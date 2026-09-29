@@ -4,9 +4,20 @@ export type User = {
   email: string;
   image?: string;
   points: number;
+  /** Discount wallet in satang, spent as whole baht off package prices. */
+  discountCents?: number;
   role: "user" | "admin";
   status?: "active" | "suspended";
 };
+
+/** Whole baht of the discount wallet that come off a price (1 baht = 1 Point). */
+export function discountPointsFor(discountCents: number | undefined, price: number) {
+  return Math.min(Math.floor((discountCents ?? 0) / 100), price);
+}
+
+export function formatDiscount(discountCents: number | undefined) {
+  return `฿${((discountCents ?? 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export type SessionResponse = { user: User | null };
 
@@ -114,6 +125,8 @@ export type PurchaseSubscriptionResponse = {
   startedAt: string;
   expiresAt: string;
   points: number;
+  pricePaid?: number;
+  discountPoints?: number;
 };
 
 export function purchaseSubscription(packageSlug: string) {
@@ -534,6 +547,17 @@ export type AdminReport = {
     userName: string;
     userEmail: string;
   }>;
+  streamers: Array<{
+    id: string;
+    name: string;
+    code: string;
+    newCustomers: number;
+    totalCustomers: number;
+    maxUses: number | null;
+    topupCents: number;
+    purchases: number;
+    pointsSpent: number;
+  }>;
   snapshot: {
     activeSubscriptions: number;
     expiringIn24h: number;
@@ -574,4 +598,110 @@ export function updateAdminSettings(body: { minTopupPoints: number }) {
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+export type RewardType = "fixed" | "percent";
+
+export type TopupPromotion = {
+  id: string;
+  name: string;
+  minAmountCents: number;
+  rewardType: RewardType;
+  rewardValue: number;
+  maxRewardCents: number | null;
+  status?: "active" | "inactive";
+  timesUsed?: number;
+  rewardGivenCents?: number;
+};
+
+export type StreamerCodeInfo = {
+  streamerName: string;
+  code: string;
+  rewardType: RewardType;
+  rewardValue: number;
+  maxRewardCents: number | null;
+};
+
+/** Discount (satang) a reward rule gives for a top-up of baseCents; mirrors the backend. */
+export function rewardCentsFor(
+  rule: { rewardType: RewardType; rewardValue: number; maxRewardCents: number | null },
+  baseCents: number,
+) {
+  const raw = rule.rewardType === "fixed" ? Math.round(rule.rewardValue * 100) : Math.floor((baseCents * rule.rewardValue) / 100);
+  return rule.maxRewardCents ? Math.min(raw, rule.maxRewardCents) : raw;
+}
+
+export function describeReward(rule: { rewardType: RewardType; rewardValue: number; maxRewardCents: number | null }) {
+  if (rule.rewardType === "fixed") return `ส่วนลด ฿${rule.rewardValue.toLocaleString("th-TH")}`;
+  const cap = rule.maxRewardCents ? ` (สูงสุด ฿${(rule.maxRewardCents / 100).toLocaleString("th-TH")})` : "";
+  return `ส่วนลด ${rule.rewardValue.toLocaleString("th-TH")}%${cap}`;
+}
+
+export function fetchTopupPromotions() {
+  return apiFetch<{ promotions: TopupPromotion[] }>("/points/promotions");
+}
+
+export function checkStreamerCode(code: string) {
+  return apiFetch<StreamerCodeInfo>(`/points/codes/${encodeURIComponent(code.trim())}`);
+}
+
+export type RewardInput = {
+  rewardType: RewardType;
+  rewardValue: number;
+  maxReward: number | null; // baht, percent only
+  status: "active" | "inactive";
+};
+
+export type AdminStreamer = {
+  id: string;
+  name: string;
+  link: string | null;
+  code: string;
+  rewardType: RewardType;
+  rewardValue: number;
+  maxRewardCents: number | null;
+  maxUses: number | null;
+  status: "active" | "inactive";
+  redeemed: number;
+  pending: number;
+  rewardGivenCents: number;
+  customers: number;
+  topups: number;
+  topupCents: number;
+  purchases: number;
+  pointsSpent: number;
+  referralLink: string;
+};
+
+export function fetchAdminTopupPromotions() {
+  return apiFetch<{ promotions: TopupPromotion[] }>("/admin/topup-promotions");
+}
+
+export function saveAdminTopupPromotion(id: string | null, body: RewardInput & { name: string; minAmount: number }) {
+  return apiFetch(id ? `/admin/topup-promotions/${id}` : "/admin/topup-promotions", {
+    method: id ? "PATCH" : "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAdminTopupPromotion(id: string) {
+  return apiFetch(`/admin/topup-promotions/${id}`, { method: "DELETE" });
+}
+
+export function fetchAdminStreamers() {
+  return apiFetch<{ streamers: AdminStreamer[] }>("/admin/streamers");
+}
+
+export function saveAdminStreamer(
+  id: string | null,
+  body: RewardInput & { name: string; link: string | null; code?: string; maxUses: number | null; regenerateCode?: boolean },
+) {
+  return apiFetch(id ? `/admin/streamers/${id}` : "/admin/streamers", {
+    method: id ? "PATCH" : "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAdminStreamer(id: string) {
+  return apiFetch(`/admin/streamers/${id}`, { method: "DELETE" });
 }

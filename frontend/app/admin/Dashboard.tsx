@@ -383,6 +383,49 @@ export function Dashboard() {
           </div>
 
           <section className={styles.card}>
+            <h3>ลูกค้าจากสตรีมเมอร์</h3>
+            {report.streamers.length === 0 ? (
+              <p className={styles.empty}>ยังไม่มีสตรีมเมอร์ · เพิ่มได้ที่เมนู Streamer / โค้ด</p>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>สตรีมเมอร์</th>
+                      <th>ลูกค้าใหม่ช่วงนี้</th>
+                      <th>ลูกค้าทั้งหมด</th>
+                      <th>ยอดเติมช่วงนี้</th>
+                      <th>ซื้อแพ็กเกจช่วงนี้</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...report.streamers]
+                      .sort((a, b) => b.topupCents - a.topupCents || b.newCustomers - a.newCustomers)
+                      .map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <b>{row.name}</b>
+                            <small>{row.code}</small>
+                          </td>
+                          <td>{formatNumber(row.newCustomers)}</td>
+                          <td>
+                            {formatNumber(row.totalCustomers)}
+                            {row.maxUses ? ` / ${formatNumber(row.maxUses)}` : ""}
+                          </td>
+                          <td>{formatBaht(row.topupCents)}</td>
+                          <td>
+                            {formatNumber(row.purchases)} ครั้ง
+                            <small>{formatNumber(row.pointsSpent)} Point</small>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className={styles.card}>
             <h3>รายการซื้อ ({formatNumber(t.purchases)})</h3>
             {report.recentPurchases.length === 0 ? (
               <p className={styles.empty}>ยังไม่มีการซื้อในช่วงนี้</p>

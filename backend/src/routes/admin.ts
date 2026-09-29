@@ -3,6 +3,7 @@ import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 import reports from "./reports";
+import adminRewards from "./admin-rewards";
 import { expireProfileRentalNow, pinRotationEnabled } from "../libs/pin-rotation/worker";
 import { getMinTopupPoints, MAX_TOPUP_POINTS, setMinTopupPoints } from "../settings";
 
@@ -10,6 +11,7 @@ const admin = new Hono();
 
 admin.use("*", requireAdmin);
 admin.route("/reports", reports);
+admin.route("/", adminRewards);
 
 admin.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
 

@@ -13,6 +13,28 @@ type PurchaseBody = {
   paymentMethod?: string;
 };
 
+// Whole baht in the discount wallet come off the price (1 baht = 1 point), capped at the price.
+function discountPointsFor(discountCents: number, price: number) {
+  return Math.min(Math.floor(Number(discountCents) / 100), Number(price));
+}
+
+async function spendDiscount(
+  db: typeof sql,
+  { userId, points, subscriptionId, reason }: { userId: string; points: number; subscriptionId: string; reason: string },
+) {
+  if (points <= 0) return;
+  const [user] = await db`
+    UPDATE "User"
+    SET discount_cents = discount_cents - ${points * 100}, "updatedAt" = NOW()
+    WHERE id = ${userId}
+    RETURNING discount_cents
+  `;
+  await db`
+    INSERT INTO discount_ledger (user_id, amount_cents, balance_cents, kind, reason, subscription_id)
+    VALUES (${userId}, ${-points * 100}, ${user.discount_cents}, 'purchase', ${reason}, ${subscriptionId})
+  `;
+}
+
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
@@ -102,14 +124,16 @@ subscriptions.post("/", async (c) => {
       const expiresAt = addMinutes(now, pkg.duration_minutes);
 
       const [user] = await sql`
-        SELECT id, email, points, status
+        SELECT id, email, points, discount_cents, status
         FROM "User"
         WHERE id = ${userId}
           AND status = 'active'
         FOR UPDATE
       `;
       if (!user) throw new Error("ไม่พบบัญชีผู้ใช้");
-      if (user.points < pkg.price_amount) throw new Error("Point ไม่เพียงพอ");
+      const discountPoints = discountPointsFor(user.discount_cents, pkg.price_amount);
+      const pricePaid = Number(pkg.price_amount) - discountPoints;
+      if (user.points < pricePaid) throw new Error("Point ไม่เพียงพอ");
 
       const [profile] = profileId
         ? await sql`
@@ -179,7 +203,7 @@ subscriptions.post("/", async (c) => {
 
       const [updatedUser] = await sql`
         UPDATE "User"
-        SET points = points - ${pkg.price_amount}, "updatedAt" = NOW()
+        SET points = points - ${pricePaid}, "updatedAt" = NOW()
         WHERE id = ${userId}
         RETURNING points
       `;
@@ -192,14 +216,20 @@ subscriptions.post("/", async (c) => {
 
       const [subscription] = await sql`
         INSERT INTO subscriptions (
-          user_id, profile_id, package_id, status, payment_method, price_paid, started_at, expires_at
+          user_id, profile_id, package_id, status, payment_method, price_paid, started_at, expires_at, metadata
         )
         VALUES (
-          ${userId}, ${profile.id}, ${pkg.id}, 'active', ${paymentMethod}, ${pkg.price_amount},
-          ${now.toISOString()}, ${expiresAt.toISOString()}
+          ${userId}, ${profile.id}, ${pkg.id}, 'active', ${paymentMethod}, ${pricePaid},
+          ${now.toISOString()}, ${expiresAt.toISOString()}, ${sql.json({ discountPoints })}
         )
         RETURNING id, started_at, expires_at, status
       `;
+      await spendDiscount(sql, {
+        userId,
+        points: discountPoints,
+        subscriptionId: subscription.id,
+        reason: `ใช้ส่วนลดซื้อ${pkg.name}`,
+      });
 
       await sql`
         INSERT INTO "Transaction" (id, "userId", type, amount, description, "createdAt")
@@ -207,8 +237,8 @@ subscriptions.post("/", async (c) => {
           ${crypto.randomUUID()},
           ${userId},
           'debit',
-          ${pkg.price_amount},
-          ${`เช่า${pkg.name} — ${profile.profile_name}`},
+          ${pricePaid},
+          ${`เช่า${pkg.name} — ${profile.profile_name}${discountPoints ? ` (ส่วนลด ${discountPoints} Point)` : ""}`},
           NOW()
         )
       `;
@@ -224,6 +254,8 @@ subscriptions.post("/", async (c) => {
         profile,
         userEmail: user.email,
         points: updatedUser.points,
+        pricePaid,
+        discountPoints,
       };
     });
 
@@ -253,6 +285,8 @@ subscriptions.post("/", async (c) => {
       startedAt: result.subscription.started_at,
       expiresAt: result.subscription.expires_at,
       points: result.points,
+      pricePaid: result.pricePaid,
+      discountPoints: result.discountPoints,
     }, 201);
   } catch (err) {
     return c.json(
@@ -307,11 +341,13 @@ subscriptions.post("/:id/renew", async (c) => {
         FOR UPDATE
       `;
       if (!user) throw new Error("ไม่พบบัญชีผู้ใช้");
-      if (user.points < current.price_amount) throw new Error("Point ไม่เพียงพอ");
+      const discountPoints = discountPointsFor(user.discount_cents, current.price_amount);
+      const pricePaid = Number(current.price_amount) - discountPoints;
+      if (user.points < pricePaid) throw new Error("Point ไม่เพียงพอ");
 
       const [updatedUser] = await sql`
         UPDATE "User"
-        SET points = points - ${current.price_amount}, "updatedAt" = NOW()
+        SET points = points - ${pricePaid}, "updatedAt" = NOW()
         WHERE id = ${userId}
         RETURNING points
       `;
@@ -319,14 +355,21 @@ subscriptions.post("/:id/renew", async (c) => {
       const [renewal] = await sql`
         INSERT INTO subscriptions (
           user_id, profile_id, package_id, parent_subscription_id, status,
-          payment_method, price_paid, started_at, expires_at
+          payment_method, price_paid, started_at, expires_at, metadata
         )
         VALUES (
           ${userId}, ${current.profile_id}, ${current.package_id}, ${current.id},
-          'active', 'points', ${current.price_amount}, ${baseDate.toISOString()}, ${nextExpiresAt.toISOString()}
+          'active', 'points', ${pricePaid}, ${baseDate.toISOString()}, ${nextExpiresAt.toISOString()},
+          ${sql.json({ discountPoints })}
         )
         RETURNING id, started_at, expires_at, status
       `;
+      await spendDiscount(sql, {
+        userId,
+        points: discountPoints,
+        subscriptionId: renewal.id,
+        reason: `ใช้ส่วนลดต่ออายุ${current.package_name}`,
+      });
 
       await sql`
         UPDATE profiles
@@ -340,8 +383,8 @@ subscriptions.post("/:id/renew", async (c) => {
           ${crypto.randomUUID()},
           ${userId},
           'debit',
-          ${current.price_amount},
-          ${`ต่ออายุ${current.package_name}`},
+          ${pricePaid},
+          ${`ต่ออายุ${current.package_name}${discountPoints ? ` (ส่วนลด ${discountPoints} Point)` : ""}`},
           NOW()
         )
       `;

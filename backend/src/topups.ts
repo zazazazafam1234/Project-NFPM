@@ -3,6 +3,7 @@ import sql from "./db";
 import { decryptSecret } from "./crypto";
 import { buildPromptPayPayload } from "./promptpay";
 import { getMinTopupPoints, MAX_TOPUP_POINTS } from "./settings";
+import { bestTopupPromotion, checkStreamerCode, creditDiscount, rewardCents, voidUnpaidRedemptions } from "./rewards";
 
 const DEFAULT_EXPIRES_MINUTES = 15;
 
@@ -73,8 +74,28 @@ function publicTopUp(row: Record<string, any>, qrImage?: string | null) {
     paidAt: row.paid_at,
     qrPayload: row.qr_payload,
     qrImage: qrImage ?? null,
+    // Discount-wallet rewards this top-up earns once paid (satang).
+    promotionName: row.promotion_name ?? null,
+    promotionRewardCents: Number(row.promotion_reward_cents ?? 0),
+    streamerName: row.streamer_name ?? null,
+    streamerRewardCents: Number(row.streamer_reward_cents ?? 0),
   };
 }
+
+// point_topups joined with what the frontend shows about it.
+const topupViewColumns = () => sql`
+  pt.*,
+  pa.name AS payment_account_name,
+  promo.name AS promotion_name,
+  st.name AS streamer_name,
+  sr.reward_cents AS streamer_reward_cents
+`;
+const topupViewJoins = () => sql`
+  LEFT JOIN payment_accounts pa ON pa.id = pt.payment_account_id
+  LEFT JOIN topup_promotions promo ON promo.id = pt.promotion_id
+  LEFT JOIN streamer_redemptions sr ON sr.topup_id = pt.id AND sr.status <> 'void'
+  LEFT JOIN streamers st ON st.id = sr.streamer_id
+`;
 
 export type ActivePaymentAccount = {
   id: string;
@@ -125,6 +146,7 @@ async function expireOldTopUps(db = sql) {
     WHERE status = 'pending'
       AND expires_at < NOW()
   `;
+  await voidUnpaidRedemptions(db);
 }
 
 async function nextAvailableRefDecimal(baseAmountCents: number, paymentAccountId: string | null, db = sql) {
@@ -187,9 +209,11 @@ async function getDefaultPaymentAccount(db = sql) {
 export async function createPromptPayTopUp({
   userId,
   points,
+  code,
 }: {
   userId: string;
   points: number;
+  code?: string | null;
 }) {
   if (!Number.isInteger(points) || points <= 0 || points > MAX_TOPUP_POINTS) {
     throw new Error("จำนวน Point ไม่ถูกต้อง");
@@ -211,6 +235,9 @@ export async function createPromptPayTopUp({
     `;
     if (!user) throw new Error("บัญชีนี้ไม่พร้อมใช้งาน");
 
+    const codeCheck = code?.trim() ? await checkStreamerCode(db, code, userId) : null;
+    if (codeCheck && !codeCheck.ok) throw new Error(codeCheck.message);
+
     const paymentAccount = await getDefaultPaymentAccount(db);
     if (!paymentAccount) {
       throw new Error("ยังไม่ได้ตั้งค่าบัญชี PromptPay ในหน้า Admin");
@@ -223,18 +250,33 @@ export async function createPromptPayTopUp({
     const qrPayload = buildPromptPayPayload(paymentAccount.promptPayId, payableAmount);
     const expiresAt = getExpiresAt(paymentAccount.topupExpiresMinutes);
 
-    const [topUp] = await db`
+    // Rewards are fixed when the QR is created, so the customer gets what was shown.
+    const promotion = await bestTopupPromotion(db, baseAmountCents);
+    const [inserted] = await db`
       INSERT INTO point_topups (
         user_id, payment_account_id, points, payment_method, status, base_amount_cents,
-        payable_amount_cents, ref_decimal, qr_payload, expires_at
+        payable_amount_cents, ref_decimal, qr_payload, expires_at, promotion_id, promotion_reward_cents
       )
       VALUES (
         ${userId}, ${paymentAccount.id}, ${points}, 'promptpay', 'pending', ${baseAmountCents},
-        ${payableAmountCents}, ${refDecimal}, ${qrPayload}, ${expiresAt.toISOString()}
+        ${payableAmountCents}, ${refDecimal}, ${qrPayload}, ${expiresAt.toISOString()},
+        ${promotion?.id ?? null}, ${promotion?.rewardCents ?? 0}
       )
-      RETURNING *, ${paymentAccount.name} AS payment_account_name
+      RETURNING id
     `;
+    if (codeCheck?.ok) {
+      await db`
+        INSERT INTO streamer_redemptions (streamer_id, user_id, topup_id, status, reward_cents)
+        VALUES (
+          ${codeCheck.streamer.id}, ${userId}, ${inserted.id}, 'pending',
+          ${rewardCents(codeCheck.streamer, baseAmountCents)}
+        )
+      `;
+    }
 
+    const [topUp] = await db`
+      SELECT ${topupViewColumns()} FROM point_topups pt ${topupViewJoins()} WHERE pt.id = ${inserted.id}
+    `;
     return topUp;
   });
 
@@ -251,9 +293,9 @@ export async function createPromptPayTopUp({
 export async function getTopUpForUser(id: string, userId: string) {
   await expireOldTopUps();
   const [topUp] = await sql`
-    SELECT pt.*, pa.name AS payment_account_name
+    SELECT ${topupViewColumns()}
     FROM point_topups pt
-    LEFT JOIN payment_accounts pa ON pa.id = pt.payment_account_id
+    ${topupViewJoins()}
     WHERE pt.id = ${id}::uuid
       AND pt.user_id = ${userId}
     LIMIT 1
@@ -391,6 +433,46 @@ export async function confirmTopUpByAmount({
       RETURNING points
     `;
     if (!updatedUser) throw new Error("ไม่พบผู้ใช้ที่พร้อมเติม Point");
+
+    // Points cover the base amount; everything else goes to the discount wallet.
+    const satang = Number(topUp.ref_decimal);
+    await creditDiscount(db, {
+      userId: topUp.user_id,
+      cents: satang,
+      kind: "satang",
+      reason: `เศษสตางค์จากการเติม Point (.${String(satang).padStart(2, "0")})`,
+      topupId: topUp.id,
+    });
+    if (topUp.promotion_id && Number(topUp.promotion_reward_cents) > 0) {
+      const [promotion] = await db`SELECT name FROM topup_promotions WHERE id = ${topUp.promotion_id}`;
+      await creditDiscount(db, {
+        userId: topUp.user_id,
+        cents: Number(topUp.promotion_reward_cents),
+        kind: "topup_promotion",
+        reason: `โปรเติมเงิน: ${promotion?.name ?? "-"}`,
+        topupId: topUp.id,
+      });
+    }
+    const [redemption] = await db`
+      UPDATE streamer_redemptions r
+      SET status = 'redeemed', redeemed_at = NOW()
+      FROM streamers s
+      WHERE r.topup_id = ${topUp.id} AND r.status = 'pending' AND s.id = r.streamer_id
+      RETURNING r.streamer_id, r.reward_cents, s.name
+    `;
+    if (redemption) {
+      await db`
+        UPDATE "User" SET referred_streamer_id = ${redemption.streamer_id}
+        WHERE id = ${topUp.user_id} AND referred_streamer_id IS NULL
+      `;
+      await creditDiscount(db, {
+        userId: topUp.user_id,
+        cents: Number(redemption.reward_cents),
+        kind: "streamer_code",
+        reason: `โค้ดสตรีมเมอร์ ${redemption.name}`,
+        topupId: topUp.id,
+      });
+    }
 
     const [paid] = await db`
       UPDATE point_topups

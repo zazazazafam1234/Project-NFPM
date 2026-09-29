@@ -356,6 +356,90 @@ await sql`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
+// Discount wallet ("เงินส่วนลด"), kept apart from points: the satang reference
+// customers add to each PromptPay top-up is credited here instead of being lost.
+await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0`;
+await sql`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_discount_cents_non_negative') THEN
+      ALTER TABLE "User" ADD CONSTRAINT user_discount_cents_non_negative CHECK (discount_cents >= 0);
+    END IF;
+  END $$;
+`;
+await sql`
+  CREATE TABLE IF NOT EXISTS discount_ledger (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id          TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    amount_cents     INTEGER NOT NULL CHECK (amount_cents <> 0),
+    balance_cents    INTEGER NOT NULL CHECK (balance_cents >= 0),
+    kind             TEXT NOT NULL DEFAULT 'satang'
+                     CHECK (kind IN ('satang', 'topup_promotion', 'streamer_code', 'purchase', 'admin')),
+    reason           TEXT NOT NULL,
+    topup_id         UUID REFERENCES point_topups(id) ON DELETE SET NULL,
+    subscription_id  UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`CREATE INDEX IF NOT EXISTS discount_ledger_user_idx ON discount_ledger (user_id, created_at DESC)`;
+await sql`DROP INDEX IF EXISTS discount_ledger_topup_unique`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS discount_ledger_topup_kind_unique ON discount_ledger (topup_id, kind) WHERE topup_id IS NOT NULL`;
+
+// "เติมครบ X ได้ส่วนลด Y บาท/%": rewards go to the discount wallet when a top-up is paid.
+await sql`
+  CREATE TABLE IF NOT EXISTS topup_promotions (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name               TEXT NOT NULL,
+    min_amount_cents   INTEGER NOT NULL CHECK (min_amount_cents > 0),
+    reward_type        TEXT NOT NULL CHECK (reward_type IN ('fixed', 'percent')),
+    reward_value       NUMERIC(10, 2) NOT NULL CHECK (reward_value > 0),
+    max_reward_cents   INTEGER CHECK (max_reward_cents IS NULL OR max_reward_cents > 0),
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ
+  )
+`;
+
+// Streamer referral codes: one use per customer, on their first top-up, up to max_uses customers.
+await sql`
+  CREATE TABLE IF NOT EXISTS streamers (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name               TEXT NOT NULL,
+    link               TEXT,
+    code               TEXT NOT NULL,
+    reward_type        TEXT NOT NULL CHECK (reward_type IN ('fixed', 'percent')),
+    reward_value       NUMERIC(10, 2) NOT NULL CHECK (reward_value > 0),
+    max_reward_cents   INTEGER CHECK (max_reward_cents IS NULL OR max_reward_cents > 0),
+    max_uses           INTEGER CHECK (max_uses IS NULL OR max_uses > 0),
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ
+  )
+`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS streamers_code_unique ON streamers (UPPER(code)) WHERE deleted_at IS NULL`;
+await sql`
+  CREATE TABLE IF NOT EXISTS streamer_redemptions (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    streamer_id    UUID NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+    user_id        TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    topup_id       UUID REFERENCES point_topups(id) ON DELETE SET NULL,
+    status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'redeemed', 'void')),
+    reward_cents   INTEGER NOT NULL DEFAULT 0,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    redeemed_at    TIMESTAMPTZ
+  )
+`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS streamer_redemptions_user_unique
+  ON streamer_redemptions (user_id) WHERE status IN ('pending', 'redeemed')
+`;
+await sql`CREATE INDEX IF NOT EXISTS streamer_redemptions_streamer_idx ON streamer_redemptions (streamer_id, status)`;
+await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS referred_streamer_id UUID REFERENCES streamers(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_id UUID REFERENCES topup_promotions(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_reward_cents INTEGER NOT NULL DEFAULT 0`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS app_settings (
     key          TEXT PRIMARY KEY,
