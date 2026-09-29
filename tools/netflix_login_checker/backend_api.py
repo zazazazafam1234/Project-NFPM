@@ -18,6 +18,7 @@ class MasterEmailAccount:
     service: str = "netflix"
     profile_count: int = 0
     available_profiles: int = 0
+    max_profiles: int | None = None
 
 
 class BackendApiError(Exception):
@@ -50,6 +51,7 @@ class BackendApiClient:
                 service=item.get("service") or "netflix",
                 profile_count=int(item.get("profileCount") or 0),
                 available_profiles=int(item.get("availableProfiles") or 0),
+                max_profiles=int(item["maxProfiles"]) if item.get("maxProfiles") is not None else None,
             )
             for item in payload.get("masterEmails", [])
         ]
@@ -88,12 +90,16 @@ class BackendApiClient:
             )
         return accounts
 
-    def find_master_email_id(self, *, email: str, service: str = "netflix") -> str | None:
+    def find_master_email(self, *, email: str, service: str = "netflix") -> MasterEmailAccount | None:
         normalized_email = email.strip().lower()
         for account in self.fetch_master_emails(service=service, email=email.strip()):
             if account.email.strip().lower() == normalized_email:
-                return account.id
+                return account
         return None
+
+    def find_master_email_id(self, *, email: str, service: str = "netflix") -> str | None:
+        account = self.find_master_email(email=email, service=service)
+        return account.id if account else None
 
     def save_profiles(
         self,

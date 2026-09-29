@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 try:
-    from PySide6.QtCore import QThread, Signal
+    from PySide6.QtCore import QSettings, QThread, Signal
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import (
         QApplication,
@@ -33,7 +33,7 @@ else:
     PYSIDE_IMPORT_ERROR = None
 
 from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, login_netflix, resolve_profile_dir
-from .backend_api import BackendApiClient, MasterEmailAccount
+from .backend_api import BackendApiClient, BackendApiError, MasterEmailAccount
 from .post_login_workflow import WorkflowResult, run_post_login_workflow
 
 
@@ -58,6 +58,8 @@ class ProfileWorker(QThread):
     log = Signal(str)
     status = Signal(str)
     profile_result = Signal(int, object)
+    profile_saved = Signal(int, object)
+    master_resolved = Signal(str)
     failed = Signal(str)
     finished_ok = Signal()
 
@@ -99,13 +101,29 @@ class ProfileWorker(QThread):
             backend_client = BackendApiClient(base_url=self.api_url, admin_key=self.admin_key)
 
         try:
-            if backend_client and not master_email_id:
-                self.log.emit(f"backend_resolve_master_email email={self.email}")
-                master_email_id = backend_client.find_master_email_id(email=self.email, service="netflix")
-                if master_email_id:
-                    self.log.emit(f"backend_master_email_resolved id={master_email_id}")
-                else:
-                    self.log.emit("backend_master_email_not_found profiles_will_not_be_saved")
+            if not backend_client:
+                self.failed.emit("ต้องใส่ API URL และ Admin Key เพื่อบันทึกโปรไฟล์ลงระบบ")
+                return
+            self.log.emit(f"backend_resolve_master_email email={self.email}")
+            account = backend_client.find_master_email(email=self.email, service="netflix")
+            if not account or (master_email_id and account.id != master_email_id):
+                self.failed.emit(
+                    f"ไม่พบ Email แม่ {self.email} ในระบบ (หรือหมดอายุ/ปิดใช้งาน)\n"
+                    "กรุณาเพิ่มในหลังบ้านที่เมนู ห้อง / Email แม่ ก่อน แล้วค่อยสร้างโปรไฟล์"
+                )
+                return
+            master_email_id = account.id
+            self.log.emit(f"backend_master_email_resolved id={master_email_id}")
+            self.master_resolved.emit(master_email_id)
+            if account.max_profiles is not None:
+                room_left = account.max_profiles - account.profile_count
+                if self.count > room_left:
+                    self.failed.emit(
+                        f"Email แม่นี้มีโปรไฟล์ในระบบแล้ว {account.profile_count}/{account.max_profiles}\n"
+                        f"เพิ่มได้อีก {max(room_left, 0)} โปรไฟล์ แต่ตั้งไว้ {self.count} โปรไฟล์\n"
+                        "กรุณาลดจำนวน หรือเพิ่มจำนวนโปรไฟล์สูงสุดของห้องในหลังบ้านก่อน"
+                    )
+                    return
 
             if self.clear_session_before_start:
                 removed = clear_profile_session(self.email)
@@ -146,23 +164,13 @@ class ProfileWorker(QThread):
                     debug=debug,
                 )
                 self.profile_result.emit(index, result)
-                if result.success and backend_client and result.profile_name:
-                    if not master_email_id:
-                        self.log.emit(f"backend_profile_save_skipped index={index} reason=master_email_not_found")
-                        continue
-                    saved = backend_client.save_profiles(
-                        master_email_id=master_email_id,
-                        profiles=[
-                            {
-                                "profileName": result.profile_name,
-                                "pin": result.profile_pin,
-                                "status": "available",
-                                "note": "Created by NetflixProfileCreator",
-                            }
-                        ],
-                    )
-                    saved_id = saved[0].get("id") if saved else "-"
-                    self.log.emit(f"backend_profile_saved index={index} id={saved_id}")
+                if result.success and result.profile_name:
+                    outcome = save_profile_to_backend(backend_client, master_email_id, result)
+                    self.profile_saved.emit(index, outcome)
+                    if outcome["ok"]:
+                        self.log.emit(f"backend_profile_saved index={index} id={outcome['id']}")
+                    else:
+                        self.log.emit(f"backend_profile_save_failed index={index} error={outcome['error']}")
                 if not result.success:
                     self.log.emit(f"profile_{index}_failed reason={result.reason}")
                     break
@@ -172,17 +180,64 @@ class ProfileWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+def save_profile_to_backend(
+    client: BackendApiClient,
+    master_email_id: str,
+    result: WorkflowResult,
+) -> dict[str, object]:
+    """Saves one created profile; returns {ok, id, error} instead of raising."""
+    try:
+        saved = client.save_profiles(
+            master_email_id=master_email_id,
+            profiles=[
+                {
+                    "profileName": result.profile_name,
+                    "pin": result.profile_pin,
+                    "status": "available",
+                    "note": "Created by NetflixProfileCreator",
+                }
+            ],
+        )
+    except BackendApiError as exc:
+        return {"ok": False, "id": None, "error": str(exc)}
+    if not saved:
+        return {"ok": False, "id": None, "error": "backend ไม่ได้ส่งข้อมูลโปรไฟล์กลับมา"}
+    return {"ok": True, "id": saved[0].get("id"), "error": None}
+
+
+class ProfileSaveRetry(QThread):
+    done = Signal(int, object)
+
+    def __init__(self, *, index: int, client: BackendApiClient, master_email_id: str, result: WorkflowResult) -> None:
+        super().__init__()
+        self.index = index
+        self.client = client
+        self.master_email_id = master_email_id
+        self.result = result
+
+    def run(self) -> None:
+        self.done.emit(self.index, save_profile_to_backend(self.client, self.master_email_id, self.result))
+
+
 class NetflixProfileCreatorWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.worker: ProfileWorker | None = None
         self.loader: MasterEmailLoader | None = None
         self.master_accounts: list[MasterEmailAccount] = []
+        self.settings = QSettings("FastMovie", "NetflixProfileCreator")
+        self.save_labels: dict[int, QLabel] = {}
+        self.retry_buttons: dict[int, QPushButton] = {}
+        self.run_results: dict[int, WorkflowResult] = {}
+        self.retry_threads: list[ProfileSaveRetry] = []
+        self.run_backend: tuple[str, str, str | None] | None = None
         self.setWindowTitle("Netflix Profile Creator")
         self.resize(780, 720)
 
-        self.api_url_input = QLineEdit("https://apifastmovie.sysbright.dev/api")
-        self.admin_key_input = QLineEdit()
+        self.api_url_input = QLineEdit(
+            str(self.settings.value("api_url", "https://apifastmovie.sysbright.dev/api"))
+        )
+        self.admin_key_input = QLineEdit(str(self.settings.value("admin_key", "")))
         self.admin_key_input.setEchoMode(QLineEdit.Password)
         self.master_email_input = QComboBox()
         self.master_email_input.addItem("ใช้ข้อมูลที่กรอกเอง", None)
@@ -401,6 +456,18 @@ class NetflixProfileCreatorWindow(QMainWindow):
         if not email or not password:
             QMessageBox.critical(self, "ข้อมูลไม่ครบ", "กรุณาใส่ Email และ Password")
             return
+        api_url = self.api_url_input.text().strip()
+        admin_key = self.admin_key_input.text().strip()
+        if not api_url or not admin_key:
+            QMessageBox.critical(
+                self,
+                "ข้อมูลไม่ครบ",
+                "กรุณาใส่ API URL และ Admin Key เพื่อบันทึกโปรไฟล์ลงฐานข้อมูลของระบบ",
+            )
+            return
+        self.settings.setValue("api_url", api_url)
+        self.settings.setValue("admin_key", admin_key)
+        self.run_backend = (api_url, admin_key, master_email_id)
         if proxy_server == "":
             QMessageBox.critical(self, "Proxy ไม่ถูกต้อง", "ถ้าใช้ proxy ต้องใส่ IP/Host และ Port ให้ครบ")
             return
@@ -420,13 +487,15 @@ class NetflixProfileCreatorWindow(QMainWindow):
             proxy_server=proxy_server,
             clear_session_before_start=self.clear_session_before_start_input.isChecked(),
             allow_manual_login=self.manual_login_input.isChecked(),
-            api_url=self.api_url_input.text().strip() or None,
-            admin_key=self.admin_key_input.text().strip() or None,
+            api_url=api_url,
+            admin_key=admin_key,
             master_email_id=master_email_id,
         )
         self.worker.log.connect(self._log)
         self.worker.status.connect(self._set_status)
         self.worker.profile_result.connect(self._add_profile_card)
+        self.worker.profile_saved.connect(self._profile_saved)
+        self.worker.master_resolved.connect(self._master_resolved)
         self.worker.failed.connect(self._failed)
         self.worker.finished_ok.connect(self._finished)
         self.worker.start()
@@ -475,11 +544,68 @@ class NetflixProfileCreatorWindow(QMainWindow):
             row.addWidget(QLabel(str(value)), stretch=1)
             layout.addLayout(row)
 
+        buttons = QHBoxLayout()
         copy_button = QPushButton("Copy")
         copy_button.clicked.connect(lambda _checked=False, r=result: self._copy_result(r))
-        layout.addWidget(copy_button)
+        buttons.addWidget(copy_button)
+        if result.success and result.profile_name:
+            self.run_results[index] = result
+            save_label = QLabel("กำลังบันทึกลงระบบ…")
+            self.save_labels[index] = save_label
+            layout.addWidget(save_label)
+            retry_button = QPushButton("บันทึกอีกครั้ง")
+            retry_button.setVisible(False)
+            retry_button.clicked.connect(lambda _checked=False, i=index: self._retry_save(i))
+            self.retry_buttons[index] = retry_button
+            buttons.addWidget(retry_button)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
 
         self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
+
+    def _master_resolved(self, master_email_id: str) -> None:
+        if self.run_backend:
+            api_url, admin_key, _ = self.run_backend
+            self.run_backend = (api_url, admin_key, master_email_id)
+
+    def _profile_saved(self, index: int, outcome: dict[str, object]) -> None:
+        label = self.save_labels.get(index)
+        retry_button = self.retry_buttons.get(index)
+        if outcome.get("ok"):
+            if label:
+                label.setText("✓ บันทึกลงระบบแล้ว")
+                label.setStyleSheet("color: #1d8a4f; font-weight: 600;")
+            if retry_button:
+                retry_button.setVisible(False)
+            return
+        if label:
+            label.setText(f"✕ บันทึกลงระบบไม่สำเร็จ: {outcome.get('error')}")
+            label.setStyleSheet("color: #c62f3d; font-weight: 600;")
+            label.setWordWrap(True)
+        if retry_button:
+            retry_button.setEnabled(True)
+            retry_button.setVisible(True)
+
+    def _retry_save(self, index: int) -> None:
+        result = self.run_results.get(index)
+        if not result or not self.run_backend:
+            return
+        api_url, admin_key, master_email_id = self.run_backend
+        client = BackendApiClient(base_url=api_url, admin_key=admin_key)
+        if not master_email_id:
+            master_email_id = client.find_master_email_id(email=self._current_email(), service="netflix")
+            if not master_email_id:
+                self._profile_saved(index, {"ok": False, "error": "ไม่พบ Email แม่ในระบบ"})
+                return
+        if index in self.retry_buttons:
+            self.retry_buttons[index].setEnabled(False)
+        if index in self.save_labels:
+            self.save_labels[index].setText("กำลังบันทึกลงระบบ…")
+        thread = ProfileSaveRetry(index=index, client=client, master_email_id=master_email_id, result=result)
+        thread.done.connect(self._profile_saved)
+        thread.done.connect(lambda _i, _o, t=thread: self.retry_threads.remove(t))
+        self.retry_threads.append(thread)
+        thread.start()
 
     def _copy_result(self, result: WorkflowResult) -> None:
         text = (
@@ -542,6 +668,9 @@ class NetflixProfileCreatorWindow(QMainWindow):
         self.use_proxy_input.setChecked(True)
 
     def _clear_cards(self) -> None:
+        self.save_labels.clear()
+        self.retry_buttons.clear()
+        self.run_results.clear()
         while self.cards_layout.count() > 1:
             item = self.cards_layout.takeAt(0)
             widget = item.widget()

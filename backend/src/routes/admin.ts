@@ -634,6 +634,7 @@ admin.get("/automation/master-emails", async (c) => {
       me.status,
       me.master_expired_at,
       me.note,
+      me.max_profiles AS "maxProfiles",
       COUNT(p.id)::int AS "profileCount",
       COUNT(p.id) FILTER (
         WHERE p.deleted_at IS NULL
@@ -678,6 +679,7 @@ admin.get("/automation/master-emails", async (c) => {
         masterExpiredAt: account.master_expired_at,
         note: account.note,
         profileCount: account.profileCount,
+        maxProfiles: account.maxProfiles,
         availableProfiles: account.availableProfiles,
       });
     } catch (error) {

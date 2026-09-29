@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import asdict
 from datetime import datetime
 from uuid import uuid4
 
 from flask import Flask, jsonify, request
 
+from .backend_api import BackendApiClient, BackendApiError
 from .core import DEFAULT_PROFILES_DIR, DEFAULT_SESSION_URL, check_netflix_session, login_netflix
 from .post_login_workflow import run_post_login_workflow
 
@@ -173,6 +175,31 @@ def create_app() -> Flask:
                 400,
             )
 
+        # Created profiles are saved to the Fast Movie backend when it is configured
+        # (request fields or FASTMOVIE_API_URL / FASTMOVIE_ADMIN_KEY env vars).
+        api_url = _clean_credential(data.get("api_url") or os.environ.get("FASTMOVIE_API_URL"))
+        admin_key = _clean_credential(data.get("admin_key") or os.environ.get("FASTMOVIE_ADMIN_KEY"))
+        backend_client = BackendApiClient(base_url=api_url, admin_key=admin_key) if api_url and admin_key else None
+        master_email_id = _clean_credential(data.get("master_email_id")) or None
+        if backend_client and not master_email_id:
+            try:
+                master_email_id = backend_client.find_master_email_id(email=email, service="netflix")
+            except BackendApiError as exc:
+                return _json_response(
+                    {"success": False, "phase": "backend", "reason": f"backend_error: {exc}", "url": ""},
+                    502,
+                )
+            if not master_email_id:
+                return _json_response(
+                    {
+                        "success": False,
+                        "phase": "backend",
+                        "reason": "master_email_not_found: add this email in the admin before creating profiles",
+                        "url": "",
+                    },
+                    400,
+                )
+
         debug = (lambda message: _server_debug(request_id, message)) if debug_enabled else None
         login_result = login_netflix(
             email,
@@ -220,6 +247,24 @@ def create_app() -> Flask:
             debug=debug,
         )
         http_status = 200 if workflow_result.success else _status_for_failure(workflow_result.reason)
+        backend_result = None
+        if backend_client and master_email_id and workflow_result.success and workflow_result.profile_name:
+            try:
+                saved = backend_client.save_profiles(
+                    master_email_id=master_email_id,
+                    profiles=[
+                        {
+                            "profileName": workflow_result.profile_name,
+                            "pin": workflow_result.profile_pin,
+                            "status": "available",
+                            "note": "Created by NetflixProfileCreator",
+                        }
+                    ],
+                )
+                backend_result = {"saved": bool(saved), "id": saved[0].get("id") if saved else None, "error": None}
+            except BackendApiError as exc:
+                backend_result = {"saved": False, "id": None, "error": str(exc)}
+            _server_debug(request_id, f"doit_backend_save {backend_result}")
         _server_debug(
             request_id,
             f"doit_finished status={http_status} success={workflow_result.success} "
@@ -230,6 +275,7 @@ def create_app() -> Flask:
                 **asdict(workflow_result),
                 "phase": "workflow",
                 "login": asdict(login_result),
+                "backend": backend_result,
             },
             http_status,
         )
