@@ -153,8 +153,7 @@ catalog.get("/streaming-rooms", async (c) => {
     profilesByRoom.set(profile.master_email_id, list);
   }
 
-  return c.json(
-    rooms.map((room, index) => {
+  const realRooms = rooms.map((room) => {
       const roomPackages = packagesByService.get(room.service) ?? [];
       const slots = (profilesByRoom.get(room.id) ?? []).map((profile) => {
         const isExpiredRental =
@@ -193,7 +192,7 @@ catalog.get("/streaming-rooms", async (c) => {
 
       return {
         id: room.id,
-        name: `${room.service.toUpperCase()} ห้อง ${index + 1}`,
+        name: "",
         label: room.note || `หมดอายุ ${new Date(room.master_expired_at).toLocaleDateString("th-TH")}`,
         service: room.service,
         status: room.status,
@@ -205,7 +204,47 @@ catalog.get("/streaming-rooms", async (c) => {
         occupiedSlots,
         slots,
       };
-    }),
+    });
+
+  // Decoy rooms look like full real rooms; they are merged by expiry and named together.
+  const decoyRows = await sql`
+    SELECT r.id, r.service, r.expires_at,
+      COALESCE(json_agg(json_build_object('id', s.id, 'name', s.name) ORDER BY s.position)
+        FILTER (WHERE s.id IS NOT NULL), '[]') AS slots
+    FROM decoy_rooms r
+    LEFT JOIN decoy_slots s ON s.room_id = r.id
+    WHERE (${service ?? null}::text IS NULL OR r.service = ${service ?? null})
+    GROUP BY r.id
+  `;
+  const decoyRooms = decoyRows.map((room) => {
+    const slots = (room.slots as Array<{ id: string; name: string }>).map((slot) => ({
+      id: slot.id,
+      name: slot.name,
+      status: "rented",
+      profileExpiresAt: null,
+      isAvailable: false,
+      availablePackages: [],
+    }));
+    return {
+      id: room.id,
+      name: "",
+      label: `หมดอายุ ${new Date(room.expires_at).toLocaleDateString("th-TH")}`,
+      service: room.service,
+      status: "active",
+      masterExpiredAt: room.expires_at,
+      capacity: slots.length,
+      profileCount: slots.length,
+      availableSlots: 0,
+      occupiedSlots: slots.length,
+      slots,
+    };
+  });
+
+  const allRooms = [...realRooms, ...decoyRooms].sort(
+    (a, b) => new Date(a.masterExpiredAt).getTime() - new Date(b.masterExpiredAt).getTime(),
+  );
+  return c.json(
+    allRooms.map((room, index) => ({ ...room, name: `${room.service.toUpperCase()} ห้อง ${index + 1}` })),
   );
 });
 

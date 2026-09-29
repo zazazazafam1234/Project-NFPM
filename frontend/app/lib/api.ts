@@ -705,3 +705,24 @@ export function saveAdminStreamer(
 export function deleteAdminStreamer(id: string) {
   return apiFetch(`/admin/streamers/${id}`, { method: "DELETE" });
 }
+
+export type DecoyRoom = { id: string; service: string; expiresAt: string; createdAt: string; slots: string[] };
+
+export function fetchDecoyRooms() {
+  return apiFetch<{ rooms: DecoyRoom[] }>("/admin/decoys");
+}
+
+export function generateDecoyRooms(body: { rooms: number; slotsPerRoom: number; service: string; replace: boolean }) {
+  return apiFetch<{ rooms: number; slots: number }>("/admin/decoys/generate", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteDecoyRoom(id: string) {
+  return apiFetch(`/admin/decoys/${id}`, { method: "DELETE" });
+}
+
+export function deleteAllDecoyRooms() {
+  return apiFetch<{ removed: number }>("/admin/decoys", { method: "DELETE" });
+}

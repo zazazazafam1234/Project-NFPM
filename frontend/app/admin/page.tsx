@@ -32,6 +32,7 @@ import {
 import { useSession } from "../providers";
 import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
+import { DecoyRoomsPanel } from "./Decoys";
 import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
 import styles from "./page.module.css";
 
@@ -44,6 +45,7 @@ const menu = [
   ["users", "ผู้ใช้", "◍"],
   ["topupPromotions", "โปรเติมเงิน", "⬆"],
   ["streamers", "Streamer / โค้ด", "★"],
+  ["decoys", "ห้องหลอก", "◌"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
 ] as const;
 
@@ -269,6 +271,12 @@ export default function AdminPage() {
         )}
         {section === "topupPromotions" && <TopupPromotionsPanel onDone={handleDone} />}
         {section === "streamers" && <StreamersPanel onDone={handleDone} />}
+        {section === "decoys" && (
+          <DecoyRoomsPanel
+            services={[...new Set((inventory?.masterEmails ?? []).map((account) => account.service))]}
+            onDone={handleDone}
+          />
+        )}
         {section === "settings" && inventory && (
           <Settings inventory={inventory} onDone={handleDone} />
         )}

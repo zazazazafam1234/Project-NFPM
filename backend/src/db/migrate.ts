@@ -440,6 +440,25 @@ await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS referred_streamer_id UUID 
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_id UUID REFERENCES topup_promotions(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_reward_cents INTEGER NOT NULL DEFAULT 0`;
 
+// Decoy rooms: display-only full rooms for the storefront. Kept apart from
+// master_emails/profiles so they never touch real accounts, stock or sales.
+await sql`
+  CREATE TABLE IF NOT EXISTS decoy_rooms (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service      TEXT NOT NULL DEFAULT 'netflix',
+    expires_at   TIMESTAMPTZ NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE TABLE IF NOT EXISTS decoy_slots (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id      UUID NOT NULL REFERENCES decoy_rooms(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    position     INTEGER NOT NULL DEFAULT 0
+  )
+`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS app_settings (
     key          TEXT PRIMARY KEY,

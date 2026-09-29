@@ -94,3 +94,11 @@
   display: flex;
   gap: 7px;
 }
+.checkRow {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.checkRow input {
+  width: auto !important;
+}
