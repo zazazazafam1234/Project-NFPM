@@ -107,8 +107,12 @@ async function sendExpiredEmail(rental: ExpiredRental, { pinChanged }: { pinChan
   try {
     await sendPlainEmail({ to: rental.user_email, subject: `แพ็กเกจจอ ${rental.profile_name} หมดอายุแล้ว`, text });
     await logEvent(rental.subscription_id, "expiry_email_sent", `Expiry email sent to ${rental.user_email}`);
+    console.log(`[pin-rotation] 📧 ส่งเมลแจ้งหมดอายุแล้ว profile=${rental.profile_name} to=${rental.user_email}`);
   } catch (err) {
-    console.error(`[pin-rotation] expiry email failed sub=${rental.subscription_id}`, err instanceof Error ? err.message : err);
+    console.error(
+      `[pin-rotation] ❌ ส่งเมลแจ้งหมดอายุไม่สำเร็จ profile=${rental.profile_name} to=${rental.user_email}`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -122,6 +126,9 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
   `;
 
   const attempt = rental.failures + 1;
+  console.log(
+    `[pin-rotation] ⏳ เริ่มเปลี่ยน PIN profile=${rental.profile_name} master=${rental.master_email} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS}`,
+  );
   try {
     const response = await fetch(`${serviceUrl.replace(/\/+$/, "")}/rotate-pin`, {
       method: "POST",
@@ -144,7 +151,11 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
       "pin_rotation_failed",
       `Attempt ${attempt}/${MAX_ROTATION_ATTEMPTS}: ${reason}`.slice(0, 500),
     );
-    console.error(`[pin-rotation] failed sub=${rental.subscription_id} attempt=${attempt} reason=${reason}`);
+    console.error(
+      attempt >= MAX_ROTATION_ATTEMPTS
+        ? `[pin-rotation] ❌ เปลี่ยน PIN ไม่สำเร็จ profile=${rental.profile_name} ครบ ${MAX_ROTATION_ATTEMPTS} ครั้งแล้ว หยุดลอง (Slot ค้าง reserved รอแอดมิน) reason=${reason}`
+        : `[pin-rotation] ❌ เปลี่ยน PIN ไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
+    );
     return;
   }
 
@@ -169,7 +180,7 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
       VALUES (${rental.subscription_id}, NULL, 'pin_rotated', ${`Profile ${rental.profile_name} PIN rotated`})
     `;
   });
-  console.log(`[pin-rotation] rotated profile=${rental.profile_name} sub=${rental.subscription_id}`);
+  console.log(`[pin-rotation] ✅ เปลี่ยน PIN สำเร็จ profile=${rental.profile_name} ปล่อย Slot กลับมาขายแล้ว`);
   await sendExpiredEmail(rental, { pinChanged: true });
 }
 
@@ -183,7 +194,7 @@ async function releaseWithoutRotation(rental: ExpiredRental) {
     WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
   `;
   await sendExpiredEmail(rental, { pinChanged: false });
-  console.log(`[pin-rotation] released without PIN change profile=${rental.profile_name} sub=${rental.subscription_id}`);
+  console.log(`[pin-rotation] ✅ ปิดการเช่าแล้ว (ไม่ได้เปลี่ยน PIN) profile=${rental.profile_name} ปล่อย Slot กลับมาขายแล้ว`);
 }
 
 async function checkExpiredRentals(service: { url: string; key: string } | null) {
@@ -264,7 +275,7 @@ export function startPinRotationWorker() {
     if (running) return;
     running = true;
     checkExpiredRentals(service)
-      .catch((err) => console.error("[pin-rotation] check failed", err instanceof Error ? err.message : err))
+      .catch((err) => console.error("[pin-rotation] ❌ ตรวจการเช่าที่หมดเวลาไม่สำเร็จ", err instanceof Error ? err.message : err))
       .finally(() => {
         running = false;
       });
