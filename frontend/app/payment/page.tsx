@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { apiFetch } from "../lib/api";
+import { apiFetch, fetchTopupSettings } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
 
@@ -15,7 +15,7 @@ const topUps = [
   { points: 150, price: 150, label: "คุ้มค่า" },
   { points: 350, price: 350, label: "ยอดนิยม" },
 ];
-const MIN_TOPUP_POINTS = 10;
+const DEFAULT_MIN_TOPUP_POINTS = 10;
 
 type TopUpResponse = {
   id: string;
@@ -53,9 +53,16 @@ export default function TopUpPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
+  const [minTopupPoints, setMinTopupPoints] = useState(DEFAULT_MIN_TOPUP_POINTS);
   const topUpPoints = Number(pointsInput);
-  const isValidTopUp = Number.isInteger(topUpPoints) && topUpPoints >= MIN_TOPUP_POINTS;
+  const isValidTopUp = Number.isInteger(topUpPoints) && topUpPoints >= minTopupPoints;
   const selectedSuggestion = topUps.find((item) => item.points === topUpPoints);
+
+  useEffect(() => {
+    fetchTopupSettings()
+      .then((settings) => setMinTopupPoints(settings.minTopupPoints))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!pendingTopUp || pendingTopUp.status !== "pending") return;
@@ -87,7 +94,7 @@ export default function TopUpPage() {
       return;
     }
     if (!isValidTopUp) {
-      setMessage(`ยอดเติมขั้นต่ำ ${MIN_TOPUP_POINTS} บาท และต้องเป็นเลขจำนวนเต็ม`);
+      setMessage(`ยอดเติมขั้นต่ำ ${minTopupPoints} บาท และต้องเป็นเลขจำนวนเต็ม`);
       return;
     }
     setIsSubmitting(true);
@@ -156,7 +163,7 @@ export default function TopUpPage() {
             <div>
               <input
                 inputMode="numeric"
-                min={MIN_TOPUP_POINTS}
+                min={minTopupPoints}
                 pattern="[0-9]*"
                 value={pointsInput}
                 onChange={(event) => {
@@ -168,11 +175,11 @@ export default function TopUpPage() {
               />
               <b>บาท</b>
             </div>
-            <small>ขั้นต่ำ {MIN_TOPUP_POINTS} บาท · 1 บาท = 1 Point</small>
+            <small>ขั้นต่ำ {minTopupPoints} บาท · 1 บาท = 1 Point</small>
           </label>
           <p className={styles.label}>ราคาแนะนำ</p>
           <div className={styles.topUpGrid} role="group" aria-label="จำนวน Point">
-            {topUps.map((item) => (
+            {topUps.filter((item) => item.points >= minTopupPoints).map((item) => (
               <button
                 className={selectedSuggestion?.points === item.points ? styles.activePackage : ""}
                 key={item.points}

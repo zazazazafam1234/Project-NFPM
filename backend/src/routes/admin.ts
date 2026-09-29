@@ -3,11 +3,26 @@ import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 import reports from "./reports";
+import { getMinTopupPoints, MAX_TOPUP_POINTS, setMinTopupPoints } from "../settings";
 
 const admin = new Hono();
 
 admin.use("*", requireAdmin);
 admin.route("/reports", reports);
+
+admin.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
+
+admin.patch("/settings", async (c) => {
+  const body = await c.req.json<{ minTopupPoints?: number }>();
+  if (body.minTopupPoints !== undefined) {
+    const value = Number(body.minTopupPoints);
+    if (!Number.isInteger(value) || value < 1 || value > MAX_TOPUP_POINTS) {
+      return c.json({ message: `ยอดเติมขั้นต่ำต้องเป็นจำนวนเต็ม 1-${MAX_TOPUP_POINTS.toLocaleString()} บาท` }, 400);
+    }
+    await setMinTopupPoints(value);
+  }
+  return c.json({ minTopupPoints: await getMinTopupPoints() });
+});
 
 function bangkokDateOnlyToUtcIso(value: string, mode: "start" | "end") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());

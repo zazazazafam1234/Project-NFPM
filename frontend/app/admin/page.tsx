@@ -12,6 +12,7 @@ import {
   deletePaymentAccount,
   deleteProfile,
   fetchAdminInventory,
+  fetchAdminSettings,
   saveAdminPackage,
   saveMasterEmail,
   savePaymentAccount,
@@ -19,6 +20,7 @@ import {
   setDefaultPaymentAccount,
   suspendAdminUser,
   updateAdminPackage,
+  updateAdminSettings,
   updateAdminUser,
   updateMasterEmail,
   updatePaymentAccount,
@@ -1792,6 +1794,64 @@ function blankPaymentAccountForm(): PaymentAccountForm {
   };
 }
 
+function TopupSettingsPanel({ onDone }: { onDone: (message: string) => void }) {
+  const [minTopupPoints, setMinTopupPoints] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    fetchAdminSettings()
+      .then((settings) => {
+        setMinTopupPoints(settings.minTopupPoints);
+        setDraft(String(settings.minTopupPoints));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const value = Number(draft);
+  const canSave = Number.isInteger(value) && value >= 1 && value !== minTopupPoints;
+
+  async function save() {
+    let saved = minTopupPoints;
+    const ok = await runEdit(
+      async () => {
+        saved = (await updateAdminSettings({ minTopupPoints: value })).minTopupPoints;
+      },
+      `ตั้งยอดเติมขั้นต่ำเป็น ${value} บาท สำเร็จ`,
+      onDone,
+    );
+    if (ok) setMinTopupPoints(saved);
+  }
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <p className={styles.eyebrow}>TOP-UP</p>
+          <h2>ตั้งค่าการเติม Point</h2>
+          <p className={styles.muted}>
+            ยอดเติมขั้นต่ำที่ลูกค้าสร้างรายการได้ (1 บาท = 1 Point)
+            {minTopupPoints !== null ? ` · ตอนนี้ ${minTopupPoints} บาท` : ""}
+          </p>
+        </div>
+        <div className={styles.panelTools}>
+          <input
+            aria-label="ยอดเติมขั้นต่ำ (บาท)"
+            className={styles.search}
+            inputMode="numeric"
+            min={1}
+            type="number"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button className={styles.primary} disabled={!canSave} onClick={() => void save()} type="button">
+            บันทึก
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Settings({
   inventory,
   onDone,
@@ -1904,6 +1964,7 @@ function Settings({
 
   return (
     <>
+      <TopupSettingsPanel onDone={onDone} />
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>

@@ -546,3 +546,18 @@ export function trackPageView(body: { visitorId: string; path: string; referrer?
     body: JSON.stringify(body),
   }).catch(() => undefined);
 }
+
+export function fetchTopupSettings() {
+  return apiFetch<{ minTopupPoints: number }>("/points/settings");
+}
+
+export function fetchAdminSettings() {
+  return apiFetch<{ minTopupPoints: number }>("/admin/settings");
+}
+
+export function updateAdminSettings(body: { minTopupPoints: number }) {
+  return apiFetch<{ minTopupPoints: number }>("/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}

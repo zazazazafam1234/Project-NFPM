@@ -355,6 +355,19 @@ await sql`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `;
+await sql`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key          TEXT PRIMARY KEY,
+    value        JSONB NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  INSERT INTO app_settings (key, value)
+  VALUES ('min_topup_points', '10'::jsonb)
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // Repair: a profile with a running rental is always "rented".
 await sql`
   UPDATE profiles p

@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { getSessionUserId } from "../session";
+import { getMinTopupPoints } from "../settings";
 import { createPromptPayTopUp, getTopUpForUser } from "../topups";
 
 const points = new Hono();
@@ -37,6 +38,7 @@ export async function createTopUp(c: Context) {
 }
 
 points.post("/top-ups", createTopUp);
+points.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
 points.get("/top-ups/:id", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
