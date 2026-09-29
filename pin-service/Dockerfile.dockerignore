@@ -1,0 +1,6 @@
+# Build context is the repository root; send only what the image needs.
+*
+!pin-service/
+!tools/netflix_login_checker/
+**/__pycache__
+pin-service/*.log
