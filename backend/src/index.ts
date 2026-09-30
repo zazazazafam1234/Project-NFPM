@@ -9,6 +9,7 @@ import points from "./routes/points";
 import profile from "./routes/profile";
 import subscriptions from "./routes/subscriptions";
 import track from "./routes/track";
+import lineBot from "./routes/line-bot";
 import { startReminderWorker } from "./libs/gmail/reminder-worker";
 import { startPinRotationWorker } from "./libs/pin-rotation/worker";
 
@@ -35,6 +36,7 @@ api.route("/points", points);
 api.route("/profile", profile);
 api.route("/subscriptions", subscriptions);
 api.route("/track", track);
+api.route("/line-bot", lineBot);
 
 app.route("/api", api);
 

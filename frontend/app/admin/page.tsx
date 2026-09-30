@@ -33,6 +33,7 @@ import { useSession } from "../providers";
 import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
 import { Dashboard } from "./Dashboard";
 import { DecoyRoomsPanel } from "./Decoys";
+import { LineBotPanel } from "./LineBot";
 import { PendingTopupsPanel } from "./PendingTopups";
 import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
 import styles from "./page.module.css";
@@ -281,6 +282,7 @@ export default function AdminPage() {
             onDone={handleDone}
           />
         )}
+        {section === "settings" && <LineBotPanel onDone={handleDone} />}
         {section === "settings" && inventory && (
           <Settings inventory={inventory} onDone={handleDone} />
         )}

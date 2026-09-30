@@ -464,6 +464,16 @@ await sql`
   )
 `;
 
+// LINE groups the admin alert bot has been invited to.
+await sql`
+  CREATE TABLE IF NOT EXISTS line_bot_groups (
+    group_id    TEXT PRIMARY KEY,
+    name        TEXT,
+    joined_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    left_at     TIMESTAMPTZ
+  )
+`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS app_settings (
     key          TEXT PRIMARY KEY,

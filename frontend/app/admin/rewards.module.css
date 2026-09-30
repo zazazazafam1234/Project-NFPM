@@ -102,3 +102,23 @@
 .checkRow input {
   width: auto !important;
 }
+.steps {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding-left: 20px;
+  color: var(--c-9c94a7ff);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.steps a {
+  color: var(--c-aa8effff);
+}
+.steps code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--c-eee9f5ff);
+  background: var(--c-0f0e15ff);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}

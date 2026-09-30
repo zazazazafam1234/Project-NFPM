@@ -3,6 +3,7 @@ import sql from "./db";
 import { decryptSecret } from "./crypto";
 import { buildPromptPayPayload } from "./promptpay";
 import { getMinTopupPoints, MAX_TOPUP_POINTS } from "./settings";
+import { notifyTopUpCheck } from "./libs/line-bot";
 import { bestTopupPromotion, checkStreamerCode, creditDiscount, rewardCents, voidUnpaidRedemptions } from "./rewards";
 
 const DEFAULT_EXPIRES_MINUTES = 15;
@@ -373,7 +374,10 @@ export async function requestTopUpCheck(id: string, userId: string) {
         OR check_requested_at <= NOW() - make_interval(secs => ${CHECK_REQUEST_COOLDOWN_SECONDS}))
     RETURNING id
   `;
-  if (row) return { ok: true as const };
+  if (row) {
+    void notifyTopUpCheck(row.id);
+    return { ok: true as const };
+  }
   const [current] = await sql`
     SELECT status, expires_at < NOW() AS expired FROM point_topups WHERE id = ${id}::uuid AND user_id = ${userId}
   `;

@@ -790,3 +790,28 @@ export function fetchPendingTopups() {
 export function cancelTopup(id: string) {
   return apiFetch(`/admin/topups/${id}/cancel`, { method: "POST" });
 }
+
+export type LineBotStatus = {
+  configured: boolean;
+  source: "admin" | "env" | null;
+  hasSecret: boolean;
+  hasToken: boolean;
+  webhookUrl: string;
+  groups: Array<{ groupId: string; name: string | null; joinedAt: string }>;
+};
+
+export function fetchLineBot() {
+  return apiFetch<LineBotStatus>("/admin/line-bot");
+}
+
+export function saveLineBot(body: { secret?: string; token?: string }) {
+  return apiFetch("/admin/line-bot", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function testLineBot() {
+  return apiFetch<{ sent: number; failed: number }>("/admin/line-bot/test", { method: "POST" });
+}
+
+export function removeLineBotGroup(groupId: string) {
+  return apiFetch(`/admin/line-bot/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" });
+}
