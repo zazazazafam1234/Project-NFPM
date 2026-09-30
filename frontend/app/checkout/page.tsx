@@ -17,6 +17,7 @@ import {
 import { useSession } from "../providers";
 import { formatDuration } from "../lib/duration";
 import { publicProfileLabel } from "../lib/slots";
+import { SupportLink } from "../components/SupportLink";
 import styles from "../payment/page.module.css";
 
 export default function CheckoutPage() {
@@ -206,6 +207,9 @@ export default function CheckoutPage() {
                 : "เข้าสู่ระบบเพื่อดำเนินการ"}{" "}
             <span>→</span>
           </button>
+          <div className={styles.supportRow}>
+            <SupportLink />
+          </div>
         </div>
       </section>
       {purchased && (

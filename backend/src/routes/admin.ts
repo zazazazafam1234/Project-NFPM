@@ -132,14 +132,131 @@ function publicPaymentAccount(row: Record<string, any>) {
   };
 }
 
+const DEFAULT_ADMIN_PAGE_SIZE = 30;
+const MAX_ADMIN_PAGE_SIZE = 100;
+
+function pageNumber(value: string | undefined, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function pageSize(value: string | undefined, fallback = DEFAULT_ADMIN_PAGE_SIZE) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, MAX_ADMIN_PAGE_SIZE);
+}
+
+function pageMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+function statusCounts(rows: Array<{ status?: string; role?: string; count: number | string }>) {
+  const counts: Record<string, number> = { all: 0 };
+  for (const row of rows) {
+    const count = Number(row.count);
+    if (row.status) counts[row.status] = count;
+    if (row.role === "admin") counts.admin = (counts.admin ?? 0) + count;
+    counts.all += count;
+  }
+  return counts;
+}
+
 admin.get("/inventory", async (c) => {
+  const query = c.req.query();
+  const profilesPage = pageNumber(query.profilesPage);
+  const profilesLimit = pageSize(query.profilesLimit);
+  const profilesOffset = (profilesPage - 1) * profilesLimit;
+  const profilesSearch = (query.profilesSearch ?? "").trim();
+  const profilesStatus = (query.profilesStatus ?? "all").trim();
+  const profilesSearchLike = `%${profilesSearch}%`;
+  const profilesBaseFilter = sql`
+    p.deleted_at IS NULL
+    ${profilesSearch
+      ? sql`
+        AND (
+          p.profile_name ILIKE ${profilesSearchLike}
+          OR me.email ILIKE ${profilesSearchLike}
+          OR me.service ILIKE ${profilesSearchLike}
+          OR p.status ILIKE ${profilesSearchLike}
+          OR COALESCE(p.note, '') ILIKE ${profilesSearchLike}
+        )
+      `
+      : sql``}
+  `;
+  const profilesFilter = sql`
+    ${profilesBaseFilter}
+    ${profilesStatus !== "all" ? sql`AND p.status = ${profilesStatus}` : sql``}
+  `;
+
+  const usersPage = pageNumber(query.usersPage);
+  const usersLimit = pageSize(query.usersLimit);
+  const usersOffset = (usersPage - 1) * usersLimit;
+  const usersSearch = (query.usersSearch ?? "").trim();
+  const usersStatus = (query.usersStatus ?? "all").trim();
+  const usersSearchLike = `%${usersSearch}%`;
+  const usersBaseFilter = sql`
+    TRUE
+    ${usersSearch
+      ? sql`
+        AND (
+          u.name ILIKE ${usersSearchLike}
+          OR u.email ILIKE ${usersSearchLike}
+          OR u.role ILIKE ${usersSearchLike}
+          OR u.status ILIKE ${usersSearchLike}
+        )
+      `
+      : sql``}
+  `;
+  const usersFilter = sql`
+    ${usersBaseFilter}
+    ${usersStatus === "admin"
+      ? sql`AND u.role = 'admin'`
+      : usersStatus !== "all"
+        ? sql`AND u.status = ${usersStatus}`
+        : sql``}
+  `;
+
+  const transfersPage = pageNumber(query.transfersPage);
+  const transfersLimit = pageSize(query.transfersLimit);
+  const transfersOffset = (transfersPage - 1) * transfersLimit;
+  const transfersSearch = (query.transfersSearch ?? "").trim();
+  const transfersSearchLike = `%${transfersSearch}%`;
+  const transfersFilter = sql`
+    TRUE
+    ${transfersSearch
+      ? sql`
+        AND (
+          COALESCE(pa.name, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.line_revision::text, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.sender_name, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.destination_account, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.from_account, '') ILIKE ${transfersSearchLike}
+          OR lte.status ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.match_reason, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(u.email, '') ILIKE ${transfersSearchLike}
+          OR COALESCE(lte.occurred_raw, '') ILIKE ${transfersSearchLike}
+        )
+      `
+      : sql``}
+  `;
+
   const [
     packages,
     masterEmails,
     profiles,
+    profilesTotal,
+    profileStatusRows,
     users,
+    usersTotal,
+    userStatusRows,
     paymentAccounts,
     lineTransferEvents,
+    lineTransferTotal,
     metrics,
   ] = await Promise.all([
     sql`
@@ -219,9 +336,23 @@ admin.get("/inventory", async (c) => {
         NULL::text AS "packageSlug"
       FROM profiles p
       JOIN master_emails me ON me.id = p.master_email_id
-      WHERE p.deleted_at IS NULL
+      WHERE ${profilesFilter}
       ORDER BY p.created_at DESC
-      LIMIT 150
+      LIMIT ${profilesLimit}
+      OFFSET ${profilesOffset}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS total
+      FROM profiles p
+      JOIN master_emails me ON me.id = p.master_email_id
+      WHERE ${profilesFilter}
+    `,
+    sql`
+      SELECT p.status, COUNT(*)::int AS count
+      FROM profiles p
+      JOIN master_emails me ON me.id = p.master_email_id
+      WHERE ${profilesBaseFilter}
+      GROUP BY p.status
     `,
     sql`
       SELECT
@@ -240,9 +371,22 @@ admin.get("/inventory", async (c) => {
       FROM "User" u
       LEFT JOIN subscriptions s ON s.user_id = u.id
       LEFT JOIN "Transaction" t ON t."userId" = u.id
+      WHERE ${usersFilter}
       GROUP BY u.id
       ORDER BY u."createdAt" DESC
-      LIMIT 200
+      LIMIT ${usersLimit}
+      OFFSET ${usersOffset}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS total
+      FROM "User" u
+      WHERE ${usersFilter}
+    `,
+    sql`
+      SELECT u.status, u.role, COUNT(*)::int AS count
+      FROM "User" u
+      WHERE ${usersBaseFilter}
+      GROUP BY u.status, u.role
     `,
     sql`
       SELECT *
@@ -275,8 +419,18 @@ admin.get("/inventory", async (c) => {
       LEFT JOIN payment_accounts pa ON pa.id = lte.payment_account_id
       LEFT JOIN point_topups pt ON pt.id = lte.matched_topup_id
       LEFT JOIN "User" u ON u.id = pt.user_id
+      WHERE ${transfersFilter}
       ORDER BY lte.created_at DESC
-      LIMIT 200
+      LIMIT ${transfersLimit}
+      OFFSET ${transfersOffset}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS total
+      FROM line_transfer_events lte
+      LEFT JOIN payment_accounts pa ON pa.id = lte.payment_account_id
+      LEFT JOIN point_topups pt ON pt.id = lte.matched_topup_id
+      LEFT JOIN "User" u ON u.id = pt.user_id
+      WHERE ${transfersFilter}
     `,
     sql`
       SELECT
@@ -312,6 +466,15 @@ admin.get("/inventory", async (c) => {
     paymentAccounts: paymentAccounts.map(publicPaymentAccount),
     lineTransferEvents,
     metrics: metrics[0],
+    pagination: {
+      profiles: pageMeta(profilesPage, profilesLimit, Number(profilesTotal[0]?.total ?? 0)),
+      users: pageMeta(usersPage, usersLimit, Number(usersTotal[0]?.total ?? 0)),
+      lineTransferEvents: pageMeta(transfersPage, transfersLimit, Number(lineTransferTotal[0]?.total ?? 0)),
+    },
+    counts: {
+      profiles: statusCounts(profileStatusRows),
+      users: statusCounts(userStatusRows),
+    },
   });
 });
 

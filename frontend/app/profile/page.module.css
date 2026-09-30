@@ -536,3 +536,8 @@
   cursor: wait;
   opacity: 0.6;
 }
+
+.walletSupport {
+  align-self: flex-start;
+  margin-top: 10px;
+}

@@ -20,6 +20,7 @@ import {
   renewSubscription,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { SupportLink } from "../components/SupportLink";
 import styles from "./page.module.css";
 
 type Tab = "orders" | "topups" | "transactions";
@@ -206,6 +207,7 @@ export default function ProfilePage() {
           <Link href="/payment">
             เติม Point <b>ไปหน้าเติมเงิน</b>
           </Link>
+          <SupportLink className={styles.walletSupport} />
         </div>
 
         <section className={styles.history}>

@@ -9,6 +9,7 @@
   content: "";
   position: fixed;
   z-index: 0;
+  pointer-events: none;
   top: -350px;
   right: -150px;
   width: 700px;
@@ -36,7 +37,7 @@
 .content {
   position: relative;
   z-index: 1;
-  max-width: 1050px;
+  width: min(100%, 1280px);
   margin: auto;
 }
 .header {
@@ -79,10 +80,11 @@
 }
 .content {
   display: grid;
-  grid-template-columns: 0.82fr 1fr;
-  gap: 78px;
-  align-items: center;
-  min-height: calc(100vh - 152px);
+  grid-template-columns: minmax(320px, 0.82fr) minmax(520px, 1fr);
+  gap: clamp(36px, 6vw, 78px);
+  align-items: start;
+  min-height: calc(100vh - 132px);
+  padding: clamp(34px, 7vh, 74px) 0 34px;
   animation: topup-reveal 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .content > *,
@@ -142,6 +144,7 @@
 }
 .paymentCard {
   min-width: 0;
+  width: 100%;
   padding: 25px;
   border: 1px solid var(--c-ffffff1c);
   border-radius: 23px;
@@ -386,10 +389,10 @@
 }
 .paymentDetail {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: minmax(132px, 170px) minmax(0, 1fr);
   min-width: 0;
-  gap: 25px;
-  align-items: center;
+  gap: clamp(18px, 3vw, 25px);
+  align-items: start;
   margin: 26px 0;
   padding: 14px;
   border: 1px solid var(--c-ffffff12);
@@ -413,6 +416,8 @@
 .qrImageBox {
   display: grid;
   place-items: center;
+  width: 100%;
+  max-width: 170px;
   aspect-ratio: 1;
   border: 1px solid var(--c-ffffff35);
   border-radius: 15px;
@@ -466,7 +471,7 @@
 }
 .paymentRef strong {
   color: var(--c-f7f4ffff);
-  font-size: clamp(24px, 4vw, 34px);
+  font-size: clamp(24px, 3.2vw, 34px);
   letter-spacing: 0;
   line-height: 1.05;
 }
@@ -588,11 +593,25 @@
   }
 }
 
+@keyframes gentle-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  42% {
+    transform: translateY(-3px);
+  }
+  58% {
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .content,
   .paymentCard,
   .topUpGrid button,
   .methods button,
+  .paidCheck button,
   .paidButton {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
@@ -600,6 +619,21 @@
   }
   .paymentResult {
     animation-duration: 0.01ms;
+  }
+}
+@media (max-width: 960px) {
+  .content {
+    grid-template-columns: 1fr;
+    gap: 34px;
+    min-height: auto;
+    padding-top: 32px;
+  }
+  .intro {
+    max-width: 680px;
+  }
+  .paymentCard {
+    max-width: 760px;
+    margin: 0 auto;
   }
 }
 @media (max-width: 720px) {
@@ -619,7 +653,7 @@
     grid-template-columns: 1fr;
     gap: 36px;
     min-height: auto;
-    padding: 70px 0 20px;
+    padding: 28px 0 20px;
   }
   .paymentDetail {
     grid-template-columns: 110px 1fr;
@@ -908,8 +942,10 @@
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
+  animation: gentle-bounce 1.9s ease-in-out infinite;
 }
 .paidCheck button:disabled {
+  animation: none;
   cursor: wait;
   opacity: 0.65;
 }
@@ -962,5 +998,32 @@
 @media (prefers-reduced-motion: reduce) {
   .countdownProgress {
     transition: none;
+  }
+}
+
+.supportRow {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+.paidCheck > a {
+  justify-self: center;
+}
+
+@media (max-width: 560px) {
+  .paymentDetail {
+    grid-template-columns: 1fr;
+  }
+  .qrColumn {
+    width: min(100%, 220px);
+  }
+  .qrImageBox {
+    max-width: 220px;
+  }
+  .saveQrButton {
+    width: 100%;
+  }
+  .paymentResult h2 {
+    padding-right: 0;
   }
 }

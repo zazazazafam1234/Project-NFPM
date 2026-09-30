@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import {
@@ -27,7 +27,9 @@ import {
   updatePaymentAccount,
   updateProfile,
   updateProfileStatus,
+  type AdminInventoryQuery,
   type AdminInventory,
+  type PageMeta,
 } from "../lib/api";
 import { useSession } from "../providers";
 import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type DurationUnit } from "../lib/duration";
@@ -54,6 +56,17 @@ const menu = [
 ] as const;
 
 type Section = (typeof menu)[number][0];
+
+const defaultInventoryQuery: AdminInventoryQuery = {
+  profilesPage: 1,
+  profilesSearch: "",
+  profilesStatus: "all",
+  usersPage: 1,
+  usersSearch: "",
+  usersStatus: "all",
+  transfersPage: 1,
+  transfersSearch: "",
+};
 
 const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
   .toISOString()
@@ -119,14 +132,15 @@ export default function AdminPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [inventory, setInventory] = useState<AdminInventory | null>(null);
+  const [inventoryQuery, setInventoryQuery] = useState<AdminInventoryQuery>(defaultInventoryQuery);
   const [isLoading, setIsLoading] = useState(false);
   const currentTitle = menu.find(([key]) => key === section)?.[1] ?? "ภาพรวม";
 
-  async function loadInventory() {
+  async function loadInventory(query = inventoryQuery) {
     setIsLoading(true);
     setError("");
     try {
-      const data = await fetchAdminInventory();
+      const data = await fetchAdminInventory(query);
       setInventory(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "โหลดข้อมูล Admin ไม่สำเร็จ");
@@ -138,9 +152,9 @@ export default function AdminPage() {
   useEffect(() => {
     if (user?.role !== "admin") return;
     queueMicrotask(() => {
-      void loadInventory();
+      void loadInventory(inventoryQuery);
     });
-  }, [user]);
+  }, [user, inventoryQuery]);
 
   function handleDone(message: string) {
     setNotice(message);
@@ -268,12 +282,23 @@ export default function AdminPage() {
           <AccountsPanel inventory={inventory} onDone={handleDone} />
         )}
         {section === "profiles" && (
-          <ProfilesPanel inventory={inventory} onDone={handleDone} />
+          <ProfilesPanel
+            inventory={inventory}
+            query={inventoryQuery}
+            setQuery={setInventoryQuery}
+            onDone={handleDone}
+          />
         )}
         {section === "users" && (
           <>
             <PendingTopupsPanel onDone={handleDone} />
-            <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
+            <UsersPanel
+              inventory={inventory}
+              currentUserId={user.id}
+              query={inventoryQuery}
+              setQuery={setInventoryQuery}
+              onDone={handleDone}
+            />
           </>
         )}
         {section === "payments" && <PaymentSupportPanel onDone={handleDone} />}
@@ -287,7 +312,12 @@ export default function AdminPage() {
         )}
         {section === "settings" && <LineBotPanel onDone={handleDone} />}
         {section === "settings" && inventory && (
-          <Settings inventory={inventory} onDone={handleDone} />
+          <Settings
+            inventory={inventory}
+            query={inventoryQuery}
+            setQuery={setInventoryQuery}
+            onDone={handleDone}
+          />
         )}
       </section>
     </main>
@@ -405,6 +435,43 @@ function Metric({
       <strong>{value}</strong>
       <small>{detail}</small>
     </article>
+  );
+}
+
+function PaginationControls({
+  meta,
+  onPageChange,
+}: {
+  meta?: PageMeta;
+  onPageChange: (page: number) => void;
+}) {
+  if (!meta) return null;
+  const from = meta.total === 0 ? 0 : (meta.page - 1) * meta.limit + 1;
+  const to = Math.min(meta.page * meta.limit, meta.total);
+
+  return (
+    <div className={styles.pagination}>
+      <span>
+        {from.toLocaleString()}-{to.toLocaleString()} จาก {meta.total.toLocaleString()} รายการ · หน้า{" "}
+        {meta.page.toLocaleString()} / {meta.totalPages.toLocaleString()}
+      </span>
+      <div>
+        <button
+          disabled={meta.page <= 1}
+          onClick={() => onPageChange(meta.page - 1)}
+          type="button"
+        >
+          ก่อนหน้า
+        </button>
+        <button
+          disabled={meta.page >= meta.totalPages}
+          onClick={() => onPageChange(meta.page + 1)}
+          type="button"
+        >
+          ถัดไป
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1235,9 +1302,13 @@ function AccountsPanel({
 
 function ProfilesPanel({
   inventory,
+  query,
+  setQuery,
   onDone,
 }: {
   inventory: AdminInventory | null;
+  query: AdminInventoryQuery;
+  setQuery: Dispatch<SetStateAction<AdminInventoryQuery>>;
   onDone: (message: string) => void;
 }) {
   const firstAccount = inventory?.masterEmails[0]?.id ?? "";
@@ -1254,11 +1325,11 @@ function ProfilesPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
   const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string } | null>(null);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
   const profiles = inventory?.profiles ?? [];
+  const profileCounts = inventory?.counts?.profiles ?? { all: 0 };
+  const profilePage = inventory?.pagination?.profiles;
   const statusTabs = [
     ["all", "ทั้งหมด"],
     ["available", "ว่าง"],
@@ -1267,27 +1338,6 @@ function ProfilesPanel({
     ["inactive", "ปิดใช้งาน"],
     ["expired", "หมดอายุ"],
   ] as const;
-  const visibleProfiles = profiles.filter((profile) => {
-    if (statusFilter !== "all" && profile.status !== statusFilter) return false;
-    const query = search.trim().toLowerCase();
-    if (!query) return true;
-    return [
-      profile.profile_name,
-      profile.masterEmail,
-      profile.packageName,
-      profile.packageSlug,
-      profile.service,
-      profile.status,
-      profile.note,
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
-  const countByStatus = profiles.reduce<Record<string, number>>((acc, profile) => {
-    acc.all = (acc.all ?? 0) + 1;
-    acc[profile.status] = (acc[profile.status] ?? 0) + 1;
-    return acc;
-  }, { all: 0 });
 
   function resetForm() {
     setEditingId(null);
@@ -1373,8 +1423,14 @@ function ProfilesPanel({
             <input
               className={styles.search}
               placeholder="ค้นหา slot"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={query.profilesSearch}
+              onChange={(event) =>
+                setQuery((current) => ({
+                  ...current,
+                  profilesSearch: event.target.value,
+                  profilesPage: 1,
+                }))
+              }
             />
             <button className={styles.primary} onClick={() => setIsAdding(true)} type="button">
               เพิ่ม
@@ -1384,18 +1440,24 @@ function ProfilesPanel({
         <div className={styles.categoryTabs}>
           {statusTabs.map(([key, label]) => (
             <button
-              className={statusFilter === key ? styles.categoryActive : ""}
+              className={query.profilesStatus === key ? styles.categoryActive : ""}
               key={key}
-              onClick={() => setStatusFilter(key)}
+              onClick={() =>
+                setQuery((current) => ({
+                  ...current,
+                  profilesStatus: key,
+                  profilesPage: 1,
+                }))
+              }
               type="button"
             >
               {label}
-              <span>{countByStatus[key] ?? 0}</span>
+              <span>{profileCounts[key] ?? 0}</span>
             </button>
           ))}
         </div>
         <div className={styles.table}>
-          {visibleProfiles.map((profile) => (
+          {profiles.map((profile) => (
             <motion.div key={profile.id} {...rowMotion}>
               <b>{profile.profile_name}</b>
               <span>{profile.masterEmail} · {profile.service} · {(() => {
@@ -1452,10 +1514,19 @@ function ProfilesPanel({
               </button>
             </motion.div>
           ))}
-          {visibleProfiles.length === 0 && (
+          {profiles.length === 0 && (
             <p className={styles.emptyInline}>ไม่พบ Slot ในหมวดหมู่/คำค้นนี้</p>
           )}
         </div>
+        <PaginationControls
+          meta={profilePage}
+          onPageChange={(page) =>
+            setQuery((current) => ({
+              ...current,
+              profilesPage: page,
+            }))
+          }
+        />
       </section>
     <AnimatePresence>
       {isAdding && (
@@ -1664,15 +1735,19 @@ function ProfilesPanel({
 function UsersPanel({
   inventory,
   currentUserId,
+  query,
+  setQuery,
   onDone,
 }: {
   inventory: AdminInventory | null;
   currentUserId: string;
+  query: AdminInventoryQuery;
+  setQuery: Dispatch<SetStateAction<AdminInventoryQuery>>;
   onDone: (message: string) => void;
 }) {
   const users = inventory?.users ?? [];
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const userCounts = inventory?.counts?.users ?? { all: 0, admin: 0 };
+  const userPage = inventory?.pagination?.users;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [statusAction, setStatusAction] = useState<{
     id: string;
@@ -1691,23 +1766,6 @@ function UsersPanel({
     ["suspended", "ปิดบัญชี"],
     ["admin", "Admin"],
   ] as const;
-  const countByStatus = users.reduce<Record<string, number>>((acc, item) => {
-    acc.all = (acc.all ?? 0) + 1;
-    acc[item.status] = (acc[item.status] ?? 0) + 1;
-    if (item.role === "admin") acc.admin = (acc.admin ?? 0) + 1;
-    return acc;
-  }, { all: 0, admin: 0 });
-  const visibleUsers = users.filter((item) => {
-    if (statusFilter === "admin" && item.role !== "admin") return false;
-    if (statusFilter !== "all" && statusFilter !== "admin" && item.status !== statusFilter) {
-      return false;
-    }
-    const query = search.trim().toLowerCase();
-    if (!query) return true;
-    return [item.name, item.email, item.role, item.status]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
 
   async function submitEdit() {
     if (!editingId) return;
@@ -1742,25 +1800,37 @@ function UsersPanel({
           <input
             className={styles.search}
             placeholder="ค้นหาผู้ใช้"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={query.usersSearch}
+            onChange={(event) =>
+              setQuery((current) => ({
+                ...current,
+                usersSearch: event.target.value,
+                usersPage: 1,
+              }))
+            }
           />
         </div>
         <div className={styles.categoryTabs}>
           {statusTabs.map(([key, label]) => (
             <button
-              className={statusFilter === key ? styles.categoryActive : ""}
+              className={query.usersStatus === key ? styles.categoryActive : ""}
               key={key}
-              onClick={() => setStatusFilter(key)}
+              onClick={() =>
+                setQuery((current) => ({
+                  ...current,
+                  usersStatus: key,
+                  usersPage: 1,
+                }))
+              }
               type="button"
             >
               {label}
-              <span>{countByStatus[key] ?? 0}</span>
+              <span>{userCounts[key] ?? 0}</span>
             </button>
           ))}
         </div>
         <div className={styles.table}>
-          {visibleUsers.map((item) => (
+          {users.map((item) => (
             <motion.div key={item.id} {...rowMotion}>
               {item.image
                 ? <Image src={item.image} alt="" width={30} height={30} className={styles.userAvatar} />
@@ -1803,10 +1873,19 @@ function UsersPanel({
               </button>
             </motion.div>
           ))}
-          {visibleUsers.length === 0 && (
+          {users.length === 0 && (
             <p className={styles.emptyInline}>ไม่พบผู้ใช้ในหมวดหมู่/คำค้นนี้</p>
           )}
         </div>
+        <PaginationControls
+          meta={userPage}
+          onPageChange={(page) =>
+            setQuery((current) => ({
+              ...current,
+              usersPage: page,
+            }))
+          }
+        />
       </section>
       <AnimatePresence>
         {editingId && (
@@ -1972,19 +2051,23 @@ function TopupSettingsPanel({ onDone }: { onDone: (message: string) => void }) {
 
 function Settings({
   inventory,
+  query,
+  setQuery,
   onDone,
 }: {
   inventory: AdminInventory;
+  query: AdminInventoryQuery;
+  setQuery: Dispatch<SetStateAction<AdminInventoryQuery>>;
   onDone: (message: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [transferSearch, setTransferSearch] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminInventory["paymentAccounts"][number] | null>(null);
   const [form, setForm] = useState<PaymentAccountForm>(blankPaymentAccountForm);
   const accounts = inventory.paymentAccounts ?? [];
   const transferEvents = inventory.lineTransferEvents ?? [];
+  const transferPage = inventory.pagination.lineTransferEvents;
   const visibleAccounts = accounts.filter((account) => {
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -1994,23 +2077,6 @@ function Settings({
       account.status,
       account.note,
       account.isDefault ? "default" : "",
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
-  const visibleTransferEvents = transferEvents.filter((event) => {
-    const query = transferSearch.trim().toLowerCase();
-    if (!query) return true;
-    return [
-      event.paymentAccountName,
-      event.lineRevision,
-      event.senderName,
-      event.destinationAccount,
-      event.fromAccount,
-      event.status,
-      event.matchReason,
-      event.userEmail,
-      event.occurredRaw,
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
@@ -2345,12 +2411,18 @@ function Settings({
           <input
             className={styles.search}
             placeholder="ค้นหารายการโอน"
-            value={transferSearch}
-            onChange={(event) => setTransferSearch(event.target.value)}
+            value={query.transfersSearch}
+            onChange={(event) =>
+              setQuery((current) => ({
+                ...current,
+                transfersSearch: event.target.value,
+                transfersPage: 1,
+              }))
+            }
           />
         </div>
         <div className={styles.table}>
-          {visibleTransferEvents.map((event) => (
+          {transferEvents.map((event) => (
             <motion.div key={event.id} {...rowMotion}>
               <b>{formatBahtFromCents(event.incomingAmountCents)} บาท</b>
               <span>
@@ -2377,10 +2449,19 @@ function Settings({
               </span>
             </motion.div>
           ))}
-          {visibleTransferEvents.length === 0 && (
+          {transferEvents.length === 0 && (
             <p className={styles.emptyInline}>ยังไม่มีรายการเงินเข้า หรือไม่พบรายการที่ค้นหา</p>
           )}
         </div>
+        <PaginationControls
+          meta={transferPage}
+          onPageChange={(page) =>
+            setQuery((current) => ({
+              ...current,
+              transfersPage: page,
+            }))
+          }
+        />
       </section>
 
       <section className={styles.panel}>

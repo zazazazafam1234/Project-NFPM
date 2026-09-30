@@ -3,14 +3,14 @@
   min-height: 100svh;
   display: grid;
   place-items: center;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow-x: clip;
   padding: 24px;
   color: var(--c-f7f5ffff);
   background: var(--c-09080fff);
 }
 .glow {
   position: fixed;
+  pointer-events: none;
   width: 600px;
   height: 600px;
   border-radius: 50%;

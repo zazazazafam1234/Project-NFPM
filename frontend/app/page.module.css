@@ -1539,6 +1539,8 @@ a.slotChoice:hover {
 
 .scrollStage {
   height: 100dvh;
+  max-width: 100%;
+  overflow-x: clip;
   overflow-y: auto;
   scroll-behavior: smooth;
   scroll-snap-type: y mandatory;
@@ -1817,4 +1819,18 @@ a.slotChoice:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.faqSupport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+  color: var(--c-aaa7b9ff, #aaa7b9);
+  font-size: 13px;
+}
+.faqSupport p {
+  margin: 0;
 }

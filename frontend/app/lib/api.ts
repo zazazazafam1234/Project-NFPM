@@ -328,10 +328,46 @@ export type AdminInventory = {
     userEmail: string | null;
     createdAt: string;
   }>;
+  pagination: {
+    profiles: PageMeta;
+    users: PageMeta;
+    lineTransferEvents: PageMeta;
+  };
+  counts: {
+    profiles: Record<string, number>;
+    users: Record<string, number>;
+  };
 };
 
-export function fetchAdminInventory() {
-  return apiFetch<AdminInventory>("/admin/inventory");
+export type PageMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AdminInventoryQuery = {
+  profilesPage: number;
+  profilesSearch: string;
+  profilesStatus: string;
+  usersPage: number;
+  usersSearch: string;
+  usersStatus: string;
+  transfersPage: number;
+  transfersSearch: string;
+};
+
+export function fetchAdminInventory(query?: Partial<AdminInventoryQuery>) {
+  const params = new URLSearchParams();
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        params.set(key, String(value));
+      }
+    });
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return apiFetch<AdminInventory>(`/admin/inventory${suffix}`);
 }
 
 export function saveAdminPackage(body: {
