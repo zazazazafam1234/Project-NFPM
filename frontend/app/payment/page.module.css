@@ -918,3 +918,49 @@
   font-size: 11.5px;
   line-height: 1.6;
 }
+
+.paymentResult {
+  position: relative;
+}
+.paymentResult h2 {
+  padding-right: 60px;
+}
+.countdownRing {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+}
+.countdownRing svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.countdownTrack,
+.countdownProgress {
+  fill: none;
+  stroke-width: 4;
+}
+.countdownTrack {
+  stroke: var(--c-ffffff16);
+}
+.countdownProgress {
+  stroke: var(--c-a783ffff);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+.countdownRing span {
+  color: var(--c-f7f4ffff);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .countdownProgress {
+    transition: none;
+  }
+}

@@ -107,6 +107,34 @@ async function renderQrPng(topUp: TopUpResponse): Promise<Blob> {
   );
 }
 
+// Circular countdown in the QR card's corner until the "I paid" button appears.
+function CountdownRing({ seconds, total }: { seconds: number; total: number }) {
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const label = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <div
+      className={styles.countdownRing}
+      role="timer"
+      aria-label={`กำลังรอยืนยันการโอนอัตโนมัติ ถ้าโอนแล้วยังไม่เข้า กดแจ้งได้ใน ${label}`}
+      title="กำลังรอยืนยันการโอนอัตโนมัติ"
+    >
+      <svg viewBox="0 0 52 52" aria-hidden="true">
+        <circle className={styles.countdownTrack} cx="26" cy="26" r={radius} />
+        <circle
+          className={styles.countdownProgress}
+          cx="26"
+          cy="26"
+          r={radius}
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - seconds / total)}
+        />
+      </svg>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export default function TopUpPage() {
   const router = useRouter();
   const { user, refreshSession } = useSession();
@@ -458,6 +486,7 @@ export default function TopUpPage() {
           </div>
           {pendingTopUp?.qrImage && (
           <div className={`${styles.paymentDetail} ${styles.paymentResult}`}>
+            {isWaiting && secondsUntilCheck > 0 && <CountdownRing seconds={secondsUntilCheck} total={PAID_BUTTON_DELAY_MS / 1000} />}
             {pendingTopUp?.qrImage ? (
               <div className={styles.qrColumn}>
                 <div className={styles.qrImageBox}>
@@ -538,20 +567,11 @@ export default function TopUpPage() {
             </div>
           </div>
           )}
-          {isWaiting && (
+          {isWaiting && secondsUntilCheck === 0 && (
             <div className={styles.paidCheck}>
-              {secondsUntilCheck > 0 ? (
-                <p>
-                  ⏳ กำลังรอยืนยันการโอนอัตโนมัติ… ถ้าโอนแล้วยังไม่เข้า กดแจ้งได้ใน{" "}
-                  <b>
-                    {Math.floor(secondsUntilCheck / 60)}:{String(secondsUntilCheck % 60).padStart(2, "0")}
-                  </b>
-                </p>
-              ) : (
-                <button disabled={checkCooldown > 0} onClick={() => void reportPaid()} type="button">
-                  {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "ฉันจ่ายเงินแล้ว ยังไม่เข้า"}
-                </button>
-              )}
+              <button disabled={checkCooldown > 0} onClick={() => void reportPaid()} type="button">
+                {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "ฉันจ่ายเงินแล้ว ยังไม่เข้า"}
+              </button>
               {checkNote && <small>{checkNote}</small>}
             </div>
           )}
