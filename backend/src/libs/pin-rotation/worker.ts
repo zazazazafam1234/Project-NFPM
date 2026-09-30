@@ -4,12 +4,15 @@ import { decryptSecret, encryptSecret } from "../../crypto";
 import { sendPlainEmail } from "../gmail/mailsender";
 
 /**
- * When a rental ends, the profile's lock PIN is changed through the Python
- * pin-service (see /pin-service) so the previous customer loses access, then the
- * slot goes back on sale and the customer is emailed. Without PIN_SERVICE_URL and
- * PIN_SERVICE_KEY it only expires the rental, releases the slot and emails.
+ * When a rental ends the slot is held and the customer gets RENEW_GRACE_HOURS to
+ * renew with the same profile and PIN (emailed a renew link). After that — or right
+ * away when an admin ends the rental — the profile's lock PIN is changed through
+ * the Python pin-service (see /pin-service), the slot goes back on sale and the
+ * customer is emailed. Without PIN_SERVICE_URL and PIN_SERVICE_KEY the last step
+ * only expires the rental, releases the slot and emails.
  */
 
+export const RENEW_GRACE_HOURS = 12;
 const CHECK_INTERVAL_MS = 60 * 1000;
 export const MAX_ROTATION_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
@@ -30,7 +33,8 @@ type ExpiredRental = {
   failures: number;
 };
 
-// Latest ended rental per profile, skipping profiles that already have a follow-up rental.
+// Latest ended rental per profile whose renewal window is over (or that an admin
+// ended, or whose slot was deleted), skipping profiles with a follow-up rental.
 async function findExpiredRentals(profileId: string | null = null) {
   return sql<ExpiredRental[]>`
     SELECT DISTINCT ON (s.profile_id)
@@ -54,6 +58,15 @@ async function findExpiredRentals(profileId: string | null = null) {
     WHERE s.status = 'active'
       AND s.expires_at <= NOW()
       AND (${profileId}::uuid IS NULL OR s.profile_id = ${profileId}::uuid)
+      AND (
+        s.expires_at <= NOW() - make_interval(hours => ${RENEW_GRACE_HOURS})
+        OR p.deleted_at IS NOT NULL
+        OR me.deleted_at IS NOT NULL
+        OR EXISTS (
+          SELECT 1 FROM subscription_events se
+          WHERE se.subscription_id = s.id AND se.event_type = 'expired_by_admin'
+        )
+      )
       AND NOT EXISTS (
         SELECT 1 FROM subscriptions n
         WHERE n.profile_id = s.profile_id
@@ -62,6 +75,90 @@ async function findExpiredRentals(profileId: string | null = null) {
       )
     ORDER BY s.profile_id, s.expires_at DESC
   `;
+}
+
+type GraceRental = Pick<ExpiredRental, "subscription_id" | "profile_id" | "expires_at" | "user_email" | "package_name" | "profile_name">;
+
+// Rentals that just ended and have not been told about the renewal window yet.
+async function findRentalsEnteringGrace() {
+  return sql<GraceRental[]>`
+    SELECT DISTINCT ON (s.profile_id)
+      s.id AS subscription_id, s.profile_id, s.expires_at,
+      u.email AS user_email, pkg.name AS package_name, p.profile_name
+    FROM subscriptions s
+    JOIN "User" u ON u.id = s.user_id
+    JOIN packages pkg ON pkg.id = s.package_id
+    JOIN profiles p ON p.id = s.profile_id
+    JOIN master_emails me ON me.id = p.master_email_id
+    WHERE s.status = 'active'
+      AND s.expires_at <= NOW()
+      AND s.expires_at > NOW() - make_interval(hours => ${RENEW_GRACE_HOURS})
+      AND p.deleted_at IS NULL
+      AND me.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM subscription_events se
+        WHERE se.subscription_id = s.id AND se.event_type IN ('renewal_notice_sent', 'expired_by_admin')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM subscriptions n
+        WHERE n.profile_id = s.profile_id
+          AND n.status IN ('pending', 'active')
+          AND n.expires_at > NOW()
+      )
+    ORDER BY s.profile_id, s.expires_at DESC
+  `;
+}
+
+function formatBangkok(value: Date | string) {
+  return new Date(value).toLocaleString("th-TH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+// Holds the slot (no sale, PIN untouched) and emails a renew link.
+async function startRenewalWindow(rental: GraceRental) {
+  await sql`
+    UPDATE profiles SET status = 'reserved', updated_at = NOW()
+    WHERE id = ${rental.profile_id}::uuid AND status <> 'reserved'
+  `;
+  const deadline = new Date(new Date(rental.expires_at).getTime() + RENEW_GRACE_HOURS * 60 * 60 * 1000);
+  const site = (process.env.WEB_ORIGIN ?? "").replace(/\/+$/, "");
+  const text = [
+    "แพ็กเกจของคุณหมดอายุแล้ว",
+    "",
+    `แพ็กเกจ: ${rental.package_name}`,
+    `โปรไฟล์: ${rental.profile_name}`,
+    `หมดอายุเมื่อ: ${formatBangkok(rental.expires_at)} น.`,
+    "",
+    `คุณยังต่ออายุได้ภายใน ${RENEW_GRACE_HOURS} ชั่วโมง (ถึง ${formatBangkok(deadline)} น.)`,
+    "ต่ออายุแล้วใช้โปรไฟล์และ PIN เดิมได้ทันที",
+    ...(site ? ["", `ต่ออายุที่: ${site}/profile?renew=${rental.subscription_id}`] : []),
+    "",
+    "หากไม่ต่ออายุภายในเวลาที่กำหนด ระบบจะปิดการใช้งานโปรไฟล์นี้",
+    "",
+    "ขอบคุณที่ใช้บริการครับ",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  try {
+    await sendPlainEmail({
+      to: rental.user_email,
+      subject: `แพ็กเกจจอ ${rental.profile_name} หมดอายุแล้ว — ต่ออายุได้ภายใน ${RENEW_GRACE_HOURS} ชม.`,
+      text,
+    });
+    console.log(`[pin-rotation] 📧 ส่งเมลให้ต่ออายุภายใน ${RENEW_GRACE_HOURS} ชม. profile=${rental.profile_name} to=${rental.user_email}`);
+  } catch (err) {
+    console.error(
+      `[pin-rotation] ❌ ส่งเมลให้ต่ออายุไม่สำเร็จ profile=${rental.profile_name} to=${rental.user_email}`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+  // Logged even if the email failed so the customer is not emailed every minute.
+  await logEvent(rental.subscription_id, "renewal_notice_sent", `Renewal window until ${deadline.toISOString()}`);
 }
 
 async function logEvent(subscriptionId: string, eventType: string, message: string) {
@@ -198,6 +295,8 @@ async function releaseWithoutRotation(rental: ExpiredRental) {
 }
 
 async function checkExpiredRentals(service: { url: string; key: string } | null) {
+  for (const rental of await findRentalsEnteringGrace()) await startRenewalWindow(rental);
+
   const rentals = await findExpiredRentals();
   if (rentals.length === 0) return;
 
@@ -231,7 +330,7 @@ export function pinRotationEnabled() {
 }
 
 /**
- * Admin action: end the running rental on a profile now. With PIN rotation on, the
+ * Admin action: end the running rental on a profile now (no renewal window). With PIN rotation on, the
  * worker picks it up within a minute (new PIN, slot released, customer emailed);
  * otherwise the slot is released right away and the customer is emailed.
  * Returns how many rentals were ended.

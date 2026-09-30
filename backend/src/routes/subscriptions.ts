@@ -3,6 +3,7 @@ import sql from "../db";
 import { decryptSecret } from "../crypto";
 import { getSessionUserId } from "../session";
 import { sendSubscriptionEmail } from "../libs/gmail/mailsender";
+import { RENEW_GRACE_HOURS } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
 
@@ -39,6 +40,25 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
+// A rental can be renewed until RENEW_GRACE_HOURS after it ends, unless an admin
+// ended it, its PIN was already changed, or it was renewed already.
+// Expects aliases s (subscriptions), p (profiles), me (master_emails), pkg (packages).
+const renewable = () => sql`
+  s.status = 'active'
+  AND s.expires_at > NOW() - make_interval(hours => ${RENEW_GRACE_HOURS})
+  AND p.deleted_at IS NULL
+  AND me.deleted_at IS NULL
+  AND pkg.deleted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM subscriptions c
+    WHERE c.parent_subscription_id = s.id AND c.status IN ('pending', 'active')
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM subscription_events se
+    WHERE se.subscription_id = s.id AND se.event_type IN ('expired_by_admin', 'pin_rotated')
+  )
+`;
+
 subscriptions.get("/", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อนใช้งาน" }, 401);
@@ -57,7 +77,9 @@ subscriptions.get("/", async (c) => {
       pkg.duration_days AS "durationDays",
       pkg.duration_minutes AS "durationMinutes",
       p.profile_name AS "profileName",
-      me.email AS "masterEmail"
+      me.email AS "masterEmail",
+      pkg.price_amount AS "renewPrice",
+      (${renewable()}) AS "canRenew"
     FROM subscriptions s
     JOIN packages pkg ON pkg.id = s.package_id
     JOIN profiles p ON p.id = s.profile_id
@@ -82,6 +104,9 @@ subscriptions.get("/", async (c) => {
       durationMinutes: row.durationMinutes,
       profileName: row.profileName,
       masterEmail: row.masterEmail,
+      canRenew: row.canRenew,
+      renewPrice: row.renewPrice,
+      renewDeadline: new Date(new Date(row.expires_at).getTime() + RENEW_GRACE_HOURS * 60 * 60 * 1000),
     })),
   });
 });
@@ -318,11 +343,13 @@ subscriptions.post("/:id/renew", async (c) => {
         JOIN master_emails me ON me.id = p.master_email_id
         WHERE s.id = ${subscriptionId}::uuid
           AND s.user_id = ${userId}
-          AND s.status = 'active'
+          AND ${renewable()}
         FOR UPDATE OF s
       `;
 
-      if (!current) throw new Error("ไม่พบรายการเช่าที่ต่ออายุได้");
+      if (!current) {
+        throw new Error(`ต่ออายุรายการนี้ไม่ได้แล้ว (เลยกำหนด ${RENEW_GRACE_HOURS} ชม. หลังหมดอายุ หรือถูกปิด/ต่ออายุไปแล้ว)`);
+      }
 
       const baseDate = new Date(current.expires_at) > new Date()
         ? new Date(current.expires_at)
@@ -370,6 +397,11 @@ subscriptions.post("/:id/renew", async (c) => {
         subscriptionId: renewal.id,
         reason: `ใช้ส่วนลดต่ออายุ${current.package_name}`,
       });
+      // A rental renewed during its renewal window is closed; the renewal takes over.
+      await sql`
+        UPDATE subscriptions SET status = 'expired', updated_at = NOW()
+        WHERE id = ${current.id} AND expires_at <= NOW()
+      `;
 
       await sql`
         UPDATE profiles

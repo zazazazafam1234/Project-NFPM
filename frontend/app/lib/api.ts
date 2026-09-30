@@ -151,6 +151,30 @@ export type Transaction = {
   createdAt: string;
 };
 
+export type PointTopUp = {
+  id: string;
+  status: "pending" | "paid" | "expired" | "cancelled" | "failed";
+  points: number;
+  paymentMethod: string;
+  paymentAccountId: string | null;
+  paymentAccountName: string | null;
+  baseAmount: number;
+  payableAmount: number;
+  refDecimal: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+  qrPayload?: string | null;
+  qrImage?: string | null;
+  discountCents: number;
+  chargeAmount: number;
+  promotionName: string | null;
+  promotionRewardCents: number;
+  streamerName: string | null;
+  streamerRewardCents: number;
+};
+
 export type Order = {
   id: string;
   roomName: string;
@@ -166,6 +190,14 @@ export type Order = {
 
 export function fetchTransactions() {
   return apiFetch<{ transactions: Transaction[] }>("/profile/transactions");
+}
+
+export function fetchPointTopUps() {
+  return apiFetch<{ topUps: PointTopUp[] }>("/points/top-ups");
+}
+
+export function cancelPointTopUp(id: string) {
+  return apiFetch<PointTopUp>(`/points/top-ups/${id}/cancel`, { method: "POST" });
 }
 
 export function fetchOrders() {
@@ -186,10 +218,18 @@ export type Subscription = {
   durationMinutes: number;
   profileName: string;
   masterEmail: string;
+  /** Renewable until renewDeadline (12 h after expiry) with the same profile and PIN. */
+  canRenew?: boolean;
+  renewPrice?: number;
+  renewDeadline?: string;
 };
 
 export function fetchSubscriptions() {
   return apiFetch<{ subscriptions: Subscription[] }>("/subscriptions");
+}
+
+export function renewSubscription(subscriptionId: string) {
+  return apiFetch<PurchaseSubscriptionResponse>(`/subscriptions/${subscriptionId}/renew`, { method: "POST" });
 }
 
 export type AdminInventory = {

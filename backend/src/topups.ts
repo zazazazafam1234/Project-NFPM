@@ -70,6 +70,8 @@ function publicTopUp(row: Record<string, any>, qrImage?: string | null) {
     baseAmount: centsToAmount(Number(row.base_amount_cents)),
     payableAmount: centsToAmount(Number(row.payable_amount_cents)),
     refDecimal: Number(row.ref_decimal),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     expiresAt: row.expires_at,
     paidAt: row.paid_at,
     qrPayload: row.qr_payload,
@@ -308,6 +310,49 @@ export async function getTopUpForUser(id: string, userId: string) {
   `;
   if (!topUp) return null;
   return publicTopUp(topUp);
+}
+
+export async function listTopUpsForUser(userId: string) {
+  await expireOldTopUps();
+  const rows = await sql`
+    SELECT ${topupViewColumns()}
+    FROM point_topups pt
+    ${topupViewJoins()}
+    WHERE pt.user_id = ${userId}
+    ORDER BY pt.created_at DESC
+    LIMIT 50
+  `;
+
+  return rows.map((row) => publicTopUp(row));
+}
+
+export async function cancelTopUpForUser(id: string, userId: string) {
+  const topUp = await sql.begin(async (db) => {
+    await expireOldTopUps(db);
+    const [cancelled] = await db`
+      UPDATE point_topups
+      SET status = 'cancelled', note = 'Cancelled by customer', updated_at = NOW()
+      WHERE id = ${id}::uuid
+        AND user_id = ${userId}
+        AND status = 'pending'
+        AND expires_at > NOW()
+      RETURNING id
+    `;
+    if (!cancelled) return null;
+
+    await voidUnpaidRedemptions(db);
+
+    const [row] = await db`
+      SELECT ${topupViewColumns()}
+      FROM point_topups pt
+      ${topupViewJoins()}
+      WHERE pt.id = ${cancelled.id}
+      LIMIT 1
+    `;
+    return row ? publicTopUp(row) : null;
+  });
+
+  return topUp;
 }
 
 export async function recordLineTransferEvent({
