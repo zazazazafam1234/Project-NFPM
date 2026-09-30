@@ -9,6 +9,7 @@ export const SUPPORT_DISCORD_URL = "https://discord.gg/9guggS5EXD";
 export function SupportButton() {
   const pathname = usePathname();
   if (pathname?.startsWith("/admin")) return null;
+  if (["/", "/payment", "/checkout", "/profile"].includes(pathname ?? "")) return null;
   return (
     <a
       className={styles.button}

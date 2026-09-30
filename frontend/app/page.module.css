@@ -1538,25 +1538,17 @@ a.slotChoice:hover {
 }
 
 .scrollStage {
-  height: 100dvh;
+  min-height: 100dvh;
   max-width: 100%;
   overflow-x: clip;
-  overflow-y: auto;
   scroll-behavior: smooth;
-  scroll-snap-type: y mandatory;
   background: var(--c-09080fff);
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-.scrollStage > section,
-.scrollStage > footer {
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
-
 .scrollStage > section:not(.hero) {
-  min-height: 100dvh;
+  min-height: min(100dvh, 980px);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1666,7 +1658,6 @@ a.slotChoice:hover {
 
 @media (min-width: 721px) {
   .scrollStage > .hero {
-    height: 100dvh;
     min-height: 100dvh;
   }
 
@@ -1682,7 +1673,6 @@ a.slotChoice:hover {
   .scrollStage {
     height: auto;
     overflow: visible;
-    scroll-snap-type: none;
   }
   .scrollStage > section:not(.hero) {
     min-height: auto;
@@ -1692,12 +1682,12 @@ a.slotChoice:hover {
     height: auto;
     min-height: 100vh;
     min-height: 100svh;
-    min-height: 100lvh;
+    min-height: 100dvh;
   }
   .hero {
     min-height: 100vh;
     min-height: 100svh;
-    min-height: 100lvh;
+    min-height: 100dvh;
     padding: 15px 20px 42px;
   }
   .nav {
@@ -1800,7 +1790,7 @@ a.slotChoice:hover {
     left: 8px;
     width: auto;
     height: fit-content;
-    max-height: calc(100lvh - 16px);
+    max-height: calc(100dvh - 16px);
     margin: auto;
     border-radius: 18px;
   }
