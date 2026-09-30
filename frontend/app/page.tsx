@@ -23,13 +23,11 @@ function RevealSection({ children, className, id }: RevealSectionProps) {
     const section = sectionRef.current;
     if (!section) return;
 
-    const scrollRoot = section.closest<HTMLElement>("[data-scroll-stage]");
     const observer = new IntersectionObserver(
       ([entry]) => {
         setIsVisible(entry.isIntersecting || entry.intersectionRatio > 0);
       },
       {
-        root: scrollRoot,
         rootMargin: "0px 0px -1px 0px",
         threshold: 0,
       },
@@ -100,7 +98,7 @@ export default function Home() {
     let frameId = 0;
     const updateParallax = () => {
       frameId = 0;
-      const heroScroll = Math.min(stage.scrollTop, stage.clientHeight);
+      const heroScroll = Math.min(window.scrollY, window.innerHeight);
       stage.style.setProperty("--hero-parallax-y", `${heroScroll * -0.18}px`);
       stage.style.setProperty(
         "--hero-parallax-rotate",
@@ -113,29 +111,16 @@ export default function Home() {
     };
 
     updateParallax();
-    stage.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      stage.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll);
       if (frameId) window.cancelAnimationFrame(frameId);
     };
   }, []);
 
-  useEffect(() => {
-    if (!window.matchMedia("(max-width: 860px)").matches) return;
-
-    const resetToHero = () => {
-      window.scrollTo(0, 0);
-      stageRef.current?.scrollTo(0, 0);
-    };
-
-    resetToHero();
-    const frameId = window.requestAnimationFrame(resetToHero);
-    return () => window.cancelAnimationFrame(frameId);
-  }, []);
-
   return (
     <>
-      <main ref={stageRef} className={styles.scrollStage} data-scroll-stage>
+      <main ref={stageRef} className={styles.scrollStage}>
       <section className={styles.hero} id="home">
         <div className={styles.heroParallax} aria-hidden="true" />
         <nav className={styles.nav} aria-label="เมนูหลัก">

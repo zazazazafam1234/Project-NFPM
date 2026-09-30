@@ -51,7 +51,10 @@
 .sidebar {
   position: sticky;
   top: 0;
-  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   padding: 24px 14px;
@@ -265,7 +268,7 @@
 }
 .modalCard {
   width: min(560px, 100%);
-  max-height: min(760px, calc(100vh - 48px));
+  max-height: min(760px, calc(100dvh - 48px));
   overflow: auto;
   padding: 22px;
   border: 1px solid var(--c-ffffff1f);
@@ -761,6 +764,9 @@
   .sidebar {
     position: static;
     height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
     padding: 15px 20px;
     border-right: 0;
     border-bottom: 1px solid var(--c-ffffff12);

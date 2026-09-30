@@ -1,6 +1,7 @@
 .page,
 .loading {
   min-height: 100vh;
+  min-height: 100dvh;
   min-width: 0;
   padding: 20px clamp(20px, 5vw, 80px) 70px;
   color: var(--c-f7f5ffff);
@@ -254,20 +255,7 @@
   padding: 24px 0;
 }
 .listWrapper {
-  height: 320px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--c-7953edff) transparent;
-}
-.listWrapper::-webkit-scrollbar {
-  width: 4px;
-}
-.listWrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-.listWrapper::-webkit-scrollbar-thumb {
-  background: var(--c-7953edff);
-  border-radius: 4px;
+  min-height: 0;
 }
 .list {
   list-style: none;
