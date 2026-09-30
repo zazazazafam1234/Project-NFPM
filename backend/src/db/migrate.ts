@@ -444,6 +444,10 @@ await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS discount_cents INTEG
 // "ฉันจ่ายเงินแล้ว ยังไม่เข้า": makes the LINE worker reconnect often for a while.
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS check_requested_at TIMESTAMPTZ`;
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS check_request_count INTEGER NOT NULL DEFAULT 0`;
+// Who credited the top-up: the LINE worker or an admin (support page).
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS confirmed_via TEXT CHECK (confirmed_via IN ('line', 'admin'))`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS confirmed_by TEXT REFERENCES "User"(id) ON DELETE SET NULL`;
+await sql`UPDATE point_topups SET confirmed_via = 'line' WHERE status = 'paid' AND confirmed_via IS NULL`;
 
 // Decoy rooms: display-only full rooms for the storefront. Kept apart from
 // master_emails/profiles so they never touch real accounts, stock or sales.

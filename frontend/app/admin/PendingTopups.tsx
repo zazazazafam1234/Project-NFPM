@@ -63,6 +63,7 @@ export function PendingTopupsPanel({ onDone }: { onDone: (message: string) => vo
       <div className={styles.table}>
         {topups.map((topup) => (
           <div key={topup.id}>
+            <code>{topup.reference}</code>
             <b>{topup.userName}</b>
             {topup.checkRequestedAt && (
               <em className={styles.yellow}>

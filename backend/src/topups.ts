@@ -77,6 +77,7 @@ function publicTopUp(row: Record<string, any>, qrImage?: string | null) {
     paidAt: row.paid_at,
     qrPayload: row.qr_payload,
     qrImage: qrImage ?? null,
+    reference: topUpReference(row.id),
     createdAt: row.created_at,
     checkRequestedAt: row.check_requested_at ?? null,
     // Discounts already taken off the transfer (satang).
@@ -161,13 +162,19 @@ async function nextAvailableRefDecimal(chargeCents: number, paymentAccountId: st
   const rows = await db`
     SELECT ref_decimal
     FROM point_topups
-    WHERE status = 'pending'
+    WHERE status IN ('pending', 'paid')
       AND (
         (${paymentAccountId}::uuid IS NULL AND payment_account_id IS NULL)
         OR payment_account_id = ${paymentAccountId}::uuid
       )
       AND payable_amount_cents - ref_decimal = ${chargeCents}
-      AND expires_at >= NOW()
+      AND (
+        expires_at >= NOW()
+        -- Admin-confirmed without a LINE message yet: keep the amount reserved so a
+        -- late message can never be matched to someone else's QR.
+        OR (confirmed_via = 'admin' AND paid_at > NOW() - make_interval(hours => ${ADMIN_CONFIRM_LINK_HOURS})
+          AND NOT EXISTS (SELECT 1 FROM line_transfer_events e WHERE e.matched_topup_id = point_topups.id))
+      )
     ORDER BY ref_decimal
   `;
   const used = new Set(rows.map((row) => Number(row.ref_decimal)));
@@ -358,6 +365,11 @@ export async function cancelTopUpForUser(id: string, userId: string) {
   return topUp;
 }
 
+// Short code customers and admins quote for a top-up, e.g. "#CA39EBCA".
+export function topUpReference(id: string) {
+  return `#${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
 export const CHECK_REQUEST_COOLDOWN_SECONDS = 20;
 
 // Customer says they paid but the top-up is still pending: flag it so the LINE
@@ -478,6 +490,144 @@ export async function markLineTransferEventFailed(id: string, reason: string) {
   `;
 }
 
+export const ADMIN_CONFIRM_LINK_HOURS = 48;
+
+type Db = typeof sql;
+
+/**
+ * Credits a paid top-up exactly once. Callers must hold a FOR UPDATE lock on the
+ * point_topups row (and on the transfer event, if any) and have checked that the
+ * top-up is not already paid; both the LINE worker and admins go through here.
+ */
+async function applyTopUpPayment(
+  db: Db,
+  topUp: Record<string, any>,
+  {
+    amountCents,
+    lineMessage,
+    via,
+    adminUserId = null,
+    transferEventId = null,
+  }: {
+    amountCents: number;
+    lineMessage: unknown;
+    via: "line" | "admin";
+    adminUserId?: string | null;
+    transferEventId?: string | null;
+  },
+) {
+  const [updatedUser] = await db`
+    UPDATE "User"
+    SET points = points + ${topUp.points}, "updatedAt" = NOW()
+    WHERE id = ${topUp.user_id}
+      AND status = 'active'
+    RETURNING points
+  `;
+  if (!updatedUser) throw new Error("ไม่พบผู้ใช้ที่พร้อมเติม Point");
+
+  // Points cover the base amount; the satang go to the discount wallet.
+  const satang = Number(topUp.ref_decimal);
+  await creditDiscount(db, {
+    userId: topUp.user_id,
+    cents: satang,
+    kind: "satang",
+    reason: `เศษสตางค์จากการเติม Point (.${String(satang).padStart(2, "0")})`,
+    topupId: topUp.id,
+  });
+  // Promotion/code discounts were already taken off the transfer; the code
+  // redemption is confirmed here (also when an admin confirms an expired QR).
+  const [redemption] = await db`
+    UPDATE streamer_redemptions r
+    SET status = 'redeemed', redeemed_at = NOW()
+    FROM streamers s
+    WHERE r.topup_id = ${topUp.id} AND r.status IN ('pending', 'void') AND s.id = r.streamer_id
+      AND NOT EXISTS (
+        SELECT 1 FROM streamer_redemptions o
+        WHERE o.user_id = r.user_id AND o.id <> r.id AND o.status IN ('pending', 'redeemed')
+      )
+    RETURNING r.streamer_id
+  `;
+  if (redemption) {
+    await db`
+      UPDATE "User" SET referred_streamer_id = ${redemption.streamer_id}
+      WHERE id = ${topUp.user_id} AND referred_streamer_id IS NULL
+    `;
+  }
+
+  const [paid] = await db`
+    UPDATE point_topups
+    SET
+      status = 'paid',
+      paid_at = NOW(),
+      matched_amount_cents = ${amountCents},
+      line_message = ${JSON.stringify(lineMessage)},
+      confirmed_via = ${via},
+      confirmed_by = ${adminUserId},
+      updated_at = NOW()
+    WHERE id = ${topUp.id}
+    RETURNING *
+  `;
+
+  if (transferEventId) {
+    await db`
+      UPDATE line_transfer_events
+      SET status = 'matched', matched_topup_id = ${paid.id}, match_reason = ${via === "admin" ? "matched_by_admin" : null},
+          updated_at = NOW()
+      WHERE id = ${transferEventId}::uuid
+    `;
+  }
+
+  await db`
+    INSERT INTO "Transaction" (id, "userId", "topUpId", type, amount, description, "createdAt")
+    VALUES (
+      ${crypto.randomUUID()},
+      ${topUp.user_id},
+      ${topUp.id},
+      'topup',
+      ${topUp.points},
+      ${`เติม ${Number(topUp.points).toLocaleString()} Point — PromptPay ${centsToAmount(amountCents).toFixed(2)} บาท${
+        Number(topUp.discount_cents) > 0 ? ` (ส่วนลด ${centsToAmount(Number(topUp.discount_cents)).toFixed(2)} บาท)` : ""
+      }${via === "admin" ? " · ยืนยันโดยแอดมิน" : ""}`},
+      NOW()
+    )
+  `;
+
+  return { paid, userPoints: Number(updatedUser.points) };
+}
+
+// A LINE message for an amount an admin already confirmed by hand is attached to
+// that top-up instead of crediting anything again.
+async function linkToAdminConfirmed(
+  db: Db,
+  amountCents: number,
+  paymentAccountId: string | null | undefined,
+  lineTransferEventId: string | null | undefined,
+) {
+  const [confirmed] = await db`
+    SELECT t.id, t.user_id
+    FROM point_topups t
+    WHERE t.status = 'paid'
+      AND t.confirmed_via = 'admin'
+      AND t.paid_at > NOW() - make_interval(hours => ${ADMIN_CONFIRM_LINK_HOURS})
+      AND t.payable_amount_cents = ${amountCents}
+      AND (${paymentAccountId ?? null}::uuid IS NULL OR t.payment_account_id = ${paymentAccountId ?? null}::uuid)
+      AND NOT EXISTS (SELECT 1 FROM line_transfer_events e WHERE e.matched_topup_id = t.id)
+    ORDER BY t.paid_at ASC
+    LIMIT 1
+    FOR UPDATE OF t
+  `;
+  if (!confirmed) return null;
+  if (lineTransferEventId) {
+    await db`
+      UPDATE line_transfer_events
+      SET status = 'matched', matched_topup_id = ${confirmed.id}, match_reason = 'already_confirmed_by_admin',
+          updated_at = NOW()
+      WHERE id = ${lineTransferEventId}::uuid
+    `;
+  }
+  return confirmed;
+}
+
 export async function confirmTopUpByAmount({
   amountCents,
   lineMessage,
@@ -496,6 +646,20 @@ export async function confirmTopUpByAmount({
   return sql.begin(async (db) => {
     await expireOldTopUps(db);
 
+    // Lock the transfer first: an admin may be matching this same message.
+    if (lineTransferEventId) {
+      const [event] = await db`
+        SELECT status, matched_topup_id FROM line_transfer_events WHERE id = ${lineTransferEventId}::uuid FOR UPDATE
+      `;
+      if (event?.matched_topup_id || event?.status === "matched") {
+        return { matched: false, reason: "transfer_already_matched" };
+      }
+    }
+
+    const alreadyConfirmed = await linkToAdminConfirmed(db, amountCents, paymentAccountId, lineTransferEventId);
+    if (alreadyConfirmed) return { matched: false, reason: "already_confirmed_by_admin", topUpId: alreadyConfirmed.id };
+
+    // No SKIP LOCKED: if an admin is confirming this QR we wait, then see it as paid.
     const [topUp] = await db`
       SELECT *
       FROM point_topups
@@ -504,11 +668,16 @@ export async function confirmTopUpByAmount({
         AND payable_amount_cents = ${amountCents}
         AND (${paymentAccountId ?? null}::uuid IS NULL OR payment_account_id = ${paymentAccountId ?? null}::uuid)
       ORDER BY created_at ASC
-      FOR UPDATE SKIP LOCKED
+      FOR UPDATE
       LIMIT 1
     `;
 
     if (!topUp) {
+      // The admin confirmation we waited on has committed by now.
+      const confirmedMeanwhile = await linkToAdminConfirmed(db, amountCents, paymentAccountId, lineTransferEventId);
+      if (confirmedMeanwhile) {
+        return { matched: false, reason: "already_confirmed_by_admin", topUpId: confirmedMeanwhile.id };
+      }
       if (lineTransferEventId) {
         await db`
           UPDATE line_transfer_events
@@ -521,85 +690,73 @@ export async function confirmTopUpByAmount({
       return { matched: false, reason: "pending_topup_not_found" };
     }
 
-    const [updatedUser] = await db`
-      UPDATE "User"
-      SET points = points + ${topUp.points}, "updatedAt" = NOW()
-      WHERE id = ${topUp.user_id}
-        AND status = 'active'
-      RETURNING points
-    `;
-    if (!updatedUser) throw new Error("ไม่พบผู้ใช้ที่พร้อมเติม Point");
-
-    // Points cover the base amount; everything else goes to the discount wallet.
-    const satang = Number(topUp.ref_decimal);
-    await creditDiscount(db, {
-      userId: topUp.user_id,
-      cents: satang,
-      kind: "satang",
-      reason: `เศษสตางค์จากการเติม Point (.${String(satang).padStart(2, "0")})`,
-      topupId: topUp.id,
+    const { paid, userPoints } = await applyTopUpPayment(db, topUp, {
+      amountCents,
+      lineMessage,
+      via: "line",
+      transferEventId: lineTransferEventId,
     });
-    // Promotion/code discounts were already taken off the transfer; the code
-    // redemption is confirmed here and the customer is tied to the streamer.
-    const [redemption] = await db`
-      UPDATE streamer_redemptions r
-      SET status = 'redeemed', redeemed_at = NOW()
-      FROM streamers s
-      WHERE r.topup_id = ${topUp.id} AND r.status = 'pending' AND s.id = r.streamer_id
-      RETURNING r.streamer_id, r.reward_cents, s.name
-    `;
-    if (redemption) {
-      await db`
-        UPDATE "User" SET referred_streamer_id = ${redemption.streamer_id}
-        WHERE id = ${topUp.user_id} AND referred_streamer_id IS NULL
-      `;
-    }
-
-    const [paid] = await db`
-      UPDATE point_topups
-      SET
-        status = 'paid',
-        paid_at = NOW(),
-        matched_amount_cents = ${amountCents},
-        line_message = ${JSON.stringify(lineMessage)},
-        updated_at = NOW()
-      WHERE id = ${topUp.id}
-      RETURNING *
-    `;
-
-    if (lineTransferEventId) {
-      await db`
-        UPDATE line_transfer_events
-        SET status = 'matched',
-            matched_topup_id = ${paid.id},
-            match_reason = NULL,
-            updated_at = NOW()
-        WHERE id = ${lineTransferEventId}::uuid
-      `;
-    }
-
-    await db`
-      INSERT INTO "Transaction" (id, "userId", "topUpId", type, amount, description, "createdAt")
-      VALUES (
-        ${crypto.randomUUID()},
-        ${topUp.user_id},
-        ${topUp.id},
-        'topup',
-        ${topUp.points},
-        ${`เติม ${Number(topUp.points).toLocaleString()} Point — PromptPay ${centsToAmount(amountCents).toFixed(2)} บาท${
-          Number(topUp.discount_cents) > 0 ? ` (ส่วนลด ${centsToAmount(Number(topUp.discount_cents)).toFixed(2)} บาท)` : ""
-        }`},
-        NOW()
-      )
-    `;
-
     return {
       matched: true,
       topUpId: paid.id,
       userId: paid.user_id,
       points: Number(paid.points),
-      userPoints: Number(updatedUser.points),
+      userPoints,
       amount: centsToAmount(amountCents),
     };
+  });
+}
+
+/**
+ * Admin confirms a customer's top-up by hand (optionally against a LINE transfer
+ * that did not match automatically). Row locks on the top-up and the transfer make
+ * this and the LINE worker mutually exclusive, so points are credited once.
+ */
+export async function confirmTopUpByAdmin({
+  topUpId,
+  adminUserId,
+  transferEventId,
+}: {
+  topUpId: string;
+  adminUserId: string | null;
+  transferEventId?: string | null;
+}) {
+  return sql.begin(async (db) => {
+    let amountCents: number | null = null;
+    let lineMessage: unknown = { confirmedBy: "admin", adminUserId };
+    if (transferEventId) {
+      const [event] = await db`
+        SELECT id, status, matched_topup_id, incoming_amount_cents, raw_message
+        FROM line_transfer_events WHERE id = ${transferEventId}::uuid FOR UPDATE
+      `;
+      if (!event) throw new Error("ไม่พบรายการโอนนี้");
+      if (event.matched_topup_id || event.status === "matched") {
+        throw new Error("ยอดโอนนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว");
+      }
+      amountCents = Number(event.incoming_amount_cents);
+      lineMessage = { ...event.raw_message, confirmedBy: "admin", adminUserId };
+    }
+
+    const [topUp] = await db`SELECT * FROM point_topups WHERE id = ${topUpId}::uuid FOR UPDATE`;
+    if (!topUp) throw new Error("ไม่พบรายการเติมเงิน");
+    if (topUp.status === "paid") {
+      throw new Error(
+        `รายการนี้เติม Point แล้ว (${topUp.confirmed_via === "admin" ? "แอดมินยืนยัน" : "ยืนยันอัตโนมัติจาก LINE"}) ไม่เติมซ้ำ`,
+      );
+    }
+
+    const { paid, userPoints } = await applyTopUpPayment(db, topUp, {
+      amountCents: amountCents ?? Number(topUp.payable_amount_cents),
+      lineMessage,
+      via: "admin",
+      adminUserId,
+      transferEventId,
+    });
+    await db`
+      INSERT INTO admin_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+      VALUES (${adminUserId}, 'topup.confirmed', 'point_topup', ${paid.id},
+        ${sql.json({ userId: paid.user_id, points: Number(paid.points), transferEventId: transferEventId ?? null })})
+    `;
+    return { topUpId: paid.id, userId: paid.user_id, points: Number(paid.points), userPoints };
   });
 }

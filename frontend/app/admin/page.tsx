@@ -34,6 +34,7 @@ import { DURATION_UNITS, formatDuration, splitDuration, toMinutes, type Duration
 import { Dashboard } from "./Dashboard";
 import { DecoyRoomsPanel } from "./Decoys";
 import { LineBotPanel } from "./LineBot";
+import { PaymentSupportPanel } from "./PaymentSupport";
 import { PendingTopupsPanel } from "./PendingTopups";
 import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
 import styles from "./page.module.css";
@@ -44,6 +45,7 @@ const menu = [
   ["packages", "โปรโมชัน", "▦"],
   ["accounts", "ห้อง / Email แม่", "◎"],
   ["profiles", "Slot / โปรไฟล์", "◉"],
+  ["payments", "ตรวจสอบการชำระ", "฿"],
   ["users", "ผู้ใช้", "◍"],
   ["topupPromotions", "โปรเติมเงิน", "⬆"],
   ["streamers", "Streamer / โค้ด", "★"],
@@ -274,6 +276,7 @@ export default function AdminPage() {
             <UsersPanel inventory={inventory} currentUserId={user.id} onDone={handleDone} />
           </>
         )}
+        {section === "payments" && <PaymentSupportPanel onDone={handleDone} />}
         {section === "topupPromotions" && <TopupPromotionsPanel onDone={handleDone} />}
         {section === "streamers" && <StreamersPanel onDone={handleDone} />}
         {section === "decoys" && (

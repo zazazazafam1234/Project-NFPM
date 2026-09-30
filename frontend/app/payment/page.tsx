@@ -31,6 +31,7 @@ const CHECK_COOLDOWN_MS = 20 * 1000;
 
 type TopUpResponse = {
   id: string;
+  reference?: string;
   createdAt?: string;
   checkRequestedAt?: string | null;
   status: "pending" | "paid" | "expired" | "cancelled" | "failed";
@@ -553,6 +554,7 @@ export default function TopUpPage() {
                     {user ? <span> · สะสมแล้ว {formatDiscount(user.discountCents)}</span> : null}
                   </p>
                   <em>
+                    {pendingTopUp.reference ? <>รหัสรายการ <b>{pendingTopUp.reference}</b> · </> : null}
                     บัญชีรับเงิน {pendingTopUp.paymentAccountName ?? "PromptPay"} · หมดอายุ{" "}
                     {formatDateTime(pendingTopUp.expiresAt)}
                   </em>
