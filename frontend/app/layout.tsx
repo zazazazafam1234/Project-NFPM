@@ -3,6 +3,7 @@ import { Noto_Sans_Thai } from "next/font/google";
 import "./theme.css";
 import "./globals.css";
 import { PageTracker } from "./components/PageTracker";
+import { SupportButton } from "./components/SupportButton";
 import { SessionProvider } from "./providers";
 
 const notoSansThai = Noto_Sans_Thai({
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <SessionProvider>{children}</SessionProvider>
         <PageTracker />
+        <SupportButton />
       </body>
     </html>
   );
