@@ -158,6 +158,9 @@ export type PointTopUp = {
   paymentMethod: string;
   paymentAccountId: string | null;
   paymentAccountName: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeStatus?: string | null;
+  stripePromptPayHostedUrl?: string | null;
   baseAmount: number;
   payableAmount: number;
   refDecimal: number;

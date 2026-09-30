@@ -3,12 +3,21 @@ import { getSessionUserId } from "../session";
 import sql from "../db";
 import { checkStreamerCode } from "../rewards";
 import { getMinTopupPoints } from "../settings";
-import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser } from "../topups";
+import {
+  cancelTopUpForUser,
+  createPromptPayTopUp,
+  createStripePromptPayTopUp,
+  getTopUpForUser,
+  listTopUpsForUser,
+  syncStripeTopUpByPaymentIntent,
+  verifyStripeWebhookPayload,
+} from "../topups";
 
 const points = new Hono();
 
 const VALID_TOPUP_METHODS: Record<string, string> = {
   promptpay: "PromptPay",
+  stripe_promptpay: "Stripe PromptPay",
 };
 
 export async function createTopUp(c: Context) {
@@ -26,11 +35,13 @@ export async function createTopUp(c: Context) {
     return c.json({ message: "จำนวน Point ไม่ถูกต้อง" }, 400);
   }
   if (!VALID_TOPUP_METHODS[paymentMethod]) {
-    return c.json({ message: "ตอนนี้รองรับ PromptPay QR เท่านั้น" }, 400);
+    return c.json({ message: "ช่องทางชำระเงินไม่ถูกต้อง" }, 400);
   }
 
   try {
-    const topUp = await createPromptPayTopUp({ userId, points, code });
+    const topUp = paymentMethod === "stripe_promptpay"
+      ? await createStripePromptPayTopUp({ userId, points, code })
+      : await createPromptPayTopUp({ userId, points, code });
     return c.json(topUp, 201);
   } catch (err) {
     return c.json(
@@ -96,6 +107,29 @@ points.post("/top-ups/:id/cancel", async (c) => {
   }
 
   return c.json(topUp);
+});
+
+points.post("/stripe/webhook", async (c) => {
+  const payload = await c.req.text();
+  try {
+    const event = verifyStripeWebhookPayload(payload, c.req.header("stripe-signature") ?? null);
+    const intent = event.data?.object;
+    if (
+      typeof intent?.id === "string"
+      && [
+        "payment_intent.succeeded",
+        "payment_intent.payment_failed",
+        "payment_intent.canceled",
+        "payment_intent.processing",
+        "payment_intent.requires_action",
+      ].includes(event.type)
+    ) {
+      await syncStripeTopUpByPaymentIntent(intent.id);
+    }
+    return c.json({ received: true });
+  } catch (err) {
+    return c.json({ message: err instanceof Error ? err.message : "invalid_webhook" }, 400);
+  }
 });
 
 export default points;

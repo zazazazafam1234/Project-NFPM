@@ -322,6 +322,11 @@ await sql`
 `;
 
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS payment_account_id UUID REFERENCES payment_accounts(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS stripe_status TEXT`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS stripe_promptpay_hosted_url TEXT`;
+await sql`ALTER TABLE point_topups DROP CONSTRAINT IF EXISTS point_topups_ref_decimal_check`;
+await sql`ALTER TABLE point_topups ADD CONSTRAINT point_topups_ref_decimal_check CHECK (ref_decimal BETWEEN 0 AND 99)`;
 
 await sql`
   CREATE TABLE IF NOT EXISTS line_transfer_events (
@@ -521,8 +526,9 @@ await sql`DROP INDEX IF EXISTS point_topups_pending_account_amount_unique`;
 await sql`
   CREATE UNIQUE INDEX IF NOT EXISTS point_topups_pending_account_amount_unique
   ON point_topups (COALESCE(payment_account_id, '00000000-0000-0000-0000-000000000000'::uuid), payable_amount_cents)
-  WHERE status = 'pending'
+  WHERE status = 'pending' AND payment_method = 'promptpay'
 `;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS point_topups_stripe_intent_unique ON point_topups (stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL`;
 await sql`CREATE INDEX IF NOT EXISTS transaction_topup_idx ON "Transaction" ("topUpId") WHERE "topUpId" IS NOT NULL`;
 await sql`
   DO $$
