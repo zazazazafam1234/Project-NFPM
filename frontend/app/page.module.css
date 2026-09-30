@@ -1672,7 +1672,7 @@ a.slotChoice:hover {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .heroParallax {
     display: none;
   }
@@ -1690,12 +1690,27 @@ a.slotChoice:hover {
     padding: 15px 20px 42px;
   }
   .nav {
-    height: 54px;
-    padding-left: 11px;
+    min-height: 54px;
+    height: auto;
+    flex-wrap: wrap;
+    padding: 0 11px;
     border-radius: 15px;
   }
   .navLinks {
+    display: flex;
+    order: 3;
+    width: 100%;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 0 1px 10px;
+    scrollbar-width: none;
+  }
+  .navLinks::-webkit-scrollbar {
     display: none;
+  }
+  .navLinks a {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
   .mobileLogin {
     display: inline-flex;
@@ -1771,6 +1786,20 @@ a.slotChoice:hover {
   .footer {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+  .slotDialog {
+    width: calc(100% - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+  .slotDialogHeader {
+    padding: 18px 18px 15px;
+  }
+  .slotDialogBody {
+    padding: 14px 18px 20px;
+  }
+  .slotRoomPanel {
+    min-height: 244px;
   }
 }
 

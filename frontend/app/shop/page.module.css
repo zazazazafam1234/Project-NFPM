@@ -761,13 +761,28 @@
 @media (max-width: 720px) {
   .header {
     top: 15px;
-    height: 54px;
+    min-height: 54px;
+    height: auto;
+    flex-wrap: wrap;
     margin: 15px 20px 0;
-    padding-left: 11px;
+    padding: 0 11px;
     border-radius: 15px;
   }
   .navLinks {
+    display: flex;
+    order: 3;
+    width: 100%;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 0 1px 10px;
+    scrollbar-width: none;
+  }
+  .navLinks::-webkit-scrollbar {
     display: none;
+  }
+  .navLinks a {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
   .mobileLogin {
     display: inline-flex;
@@ -800,7 +815,7 @@
     gap: 5px;
   }
   .navLinks {
-    display: none;
+    display: flex;
   }
   .mobileLogin {
     display: inline-flex;

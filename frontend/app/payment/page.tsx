@@ -408,7 +408,7 @@ export default function TopUpPage() {
               }}
             >
               <span className={styles.promptpayIcon} aria-hidden="true">
-                <Image alt="" height={28} src="/promptpay-mark.svg" width={28} />
+                <Image alt="" height={28} src="/icon-thaiqr.png" width={28} />
               </span>
               <span>
                 PromptPay<small>สแกน QR Code</small>
