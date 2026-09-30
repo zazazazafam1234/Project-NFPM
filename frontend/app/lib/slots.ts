@@ -10,3 +10,7 @@ const SLOT_STATUS_LABELS: Record<string, string> = {
 export function unavailableSlotLabel(status: string) {
   return SLOT_STATUS_LABELS[status] ?? status;
 }
+
+export function publicProfileLabel(index: number) {
+  return `Profile ${index + 1}`;
+}
