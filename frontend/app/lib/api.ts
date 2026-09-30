@@ -151,6 +151,30 @@ export type Transaction = {
   createdAt: string;
 };
 
+export type PointTopUp = {
+  id: string;
+  status: "pending" | "paid" | "expired" | "cancelled" | "failed";
+  points: number;
+  paymentMethod: string;
+  paymentAccountId: string | null;
+  paymentAccountName: string | null;
+  baseAmount: number;
+  payableAmount: number;
+  refDecimal: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+  qrPayload?: string | null;
+  qrImage?: string | null;
+  discountCents: number;
+  chargeAmount: number;
+  promotionName: string | null;
+  promotionRewardCents: number;
+  streamerName: string | null;
+  streamerRewardCents: number;
+};
+
 export type Order = {
   id: string;
   roomName: string;
@@ -166,6 +190,14 @@ export type Order = {
 
 export function fetchTransactions() {
   return apiFetch<{ transactions: Transaction[] }>("/profile/transactions");
+}
+
+export function fetchPointTopUps() {
+  return apiFetch<{ topUps: PointTopUp[] }>("/points/top-ups");
+}
+
+export function cancelPointTopUp(id: string) {
+  return apiFetch<PointTopUp>(`/points/top-ups/${id}/cancel`, { method: "POST" });
 }
 
 export function fetchOrders() {

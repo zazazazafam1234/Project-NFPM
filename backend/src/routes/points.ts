@@ -3,7 +3,7 @@ import { getSessionUserId } from "../session";
 import sql from "../db";
 import { checkStreamerCode } from "../rewards";
 import { getMinTopupPoints } from "../settings";
-import { createPromptPayTopUp, getTopUpForUser } from "../topups";
+import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser } from "../topups";
 
 const points = new Hono();
 
@@ -42,6 +42,13 @@ export async function createTopUp(c: Context) {
 
 points.post("/top-ups", createTopUp);
 points.get("/settings", async (c) => c.json({ minTopupPoints: await getMinTopupPoints() }));
+points.get("/top-ups", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+
+  const topUps = await listTopUpsForUser(userId);
+  return c.json({ topUps });
+});
 
 // Active "เติมครบ ... ได้ส่วนลด ..." promotions shown on the top-up page.
 points.get("/promotions", async (c) => {
@@ -75,6 +82,18 @@ points.get("/top-ups/:id", async (c) => {
 
   const topUp = await getTopUpForUser(c.req.param("id"), userId);
   if (!topUp) return c.json({ message: "ไม่พบรายการเติมเงิน" }, 404);
+
+  return c.json(topUp);
+});
+
+points.post("/top-ups/:id/cancel", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+
+  const topUp = await cancelTopUpForUser(c.req.param("id"), userId);
+  if (!topUp) {
+    return c.json({ message: "รายการนี้ยกเลิกไม่ได้แล้ว หรือไม่ได้อยู่ในสถานะรอชำระ" }, 400);
+  }
 
   return c.json(topUp);
 });
