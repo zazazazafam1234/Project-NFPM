@@ -86,7 +86,10 @@ export default function Home() {
 
   useEffect(() => {
     const dialog = slotDialogRef.current;
-    if (activeRoom && dialog && !dialog.open) dialog.showModal();
+    if (activeRoom && dialog && !dialog.open) {
+      dialog.showModal();
+      window.requestAnimationFrame(() => dialog.scrollTo(0, 0));
+    }
   }, [activeRoom]);
 
   useEffect(() => {

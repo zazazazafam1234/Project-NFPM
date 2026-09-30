@@ -1688,10 +1688,14 @@ a.slotChoice:hover {
   }
   .scrollStage > .hero {
     height: auto;
-    min-height: 650px;
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100lvh;
   }
   .hero {
-    min-height: max(650px, 100dvh);
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100lvh;
     padding: 15px 20px 42px;
   }
   .nav {
@@ -1793,9 +1797,9 @@ a.slotChoice:hover {
     bottom: 8px;
     left: 8px;
     width: auto;
-    height: auto;
-    max-height: none;
-    margin: 0;
+    height: fit-content;
+    max-height: calc(100lvh - 16px);
+    margin: auto;
     border-radius: 18px;
   }
   .slotDialogHeader {
