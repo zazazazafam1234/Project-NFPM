@@ -18,6 +18,7 @@ import {
   type TopupPromotion,
 } from "../lib/api";
 import { useSession } from "../providers";
+import { SupportLink } from "../components/SupportLink";
 import styles from "./page.module.css";
 
 const topUps = [
@@ -31,6 +32,7 @@ const CHECK_COOLDOWN_MS = 20 * 1000;
 
 type TopUpResponse = {
   id: string;
+  reference?: string;
   createdAt?: string;
   checkRequestedAt?: string | null;
   status: "pending" | "paid" | "expired" | "cancelled" | "failed";
@@ -553,6 +555,7 @@ export default function TopUpPage() {
                     {user ? <span> · สะสมแล้ว {formatDiscount(user.discountCents)}</span> : null}
                   </p>
                   <em>
+                    {pendingTopUp.reference ? <>รหัสรายการ <b>{pendingTopUp.reference}</b> · </> : null}
                     บัญชีรับเงิน {pendingTopUp.paymentAccountName ?? "PromptPay"} · หมดอายุ{" "}
                     {formatDateTime(pendingTopUp.expiresAt)}
                   </em>
@@ -573,6 +576,7 @@ export default function TopUpPage() {
                 {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "ฉันจ่ายเงินแล้ว ยังไม่เข้า"}
               </button>
               {checkNote && <small>{checkNote}</small>}
+              <SupportLink label="ยังไม่เข้า? แจ้งทีมงานทาง Discord" />
             </div>
           )}
           {pendingTopUp?.qrImage && <div className={styles.divider} />}
@@ -594,6 +598,9 @@ export default function TopUpPage() {
                 : "เข้าสู่ระบบเพื่อเติม Point"}{" "}
             <span>→</span>
           </button>
+          <div className={styles.supportRow}>
+            <SupportLink />
+          </div>
         </div>
       </section>
     </main>

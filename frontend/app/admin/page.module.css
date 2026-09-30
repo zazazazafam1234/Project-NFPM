@@ -495,6 +495,38 @@
   gap: 7px;
   margin-top: 20px;
 }
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--c-ffffff14);
+}
+.pagination span {
+  color: var(--c-948c9dff);
+  font-size: 11px;
+}
+.pagination div {
+  display: flex;
+  gap: 8px;
+}
+.pagination button {
+  padding: 7px 11px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 8px;
+  color: var(--c-bca8e9ff);
+  background: var(--c-0f0e15ff);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .table > div span {
   margin-left: auto;
   color: var(--c-948c9dff);
@@ -799,6 +831,10 @@
   }
   .table > div em {
     overflow-wrap: anywhere;
+  }
+  .pagination {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

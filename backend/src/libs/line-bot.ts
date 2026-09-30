@@ -101,7 +101,7 @@ const bangkok = (value: Date | string) =>
 export async function notifyTopUpCheck(topUpId: string) {
   try {
     const [row] = await sql`
-      SELECT t.points, t.payable_amount_cents, t.discount_cents, t.created_at, t.expires_at, t.check_request_count,
+      SELECT t.id, t.points, t.payable_amount_cents, t.discount_cents, t.created_at, t.expires_at, t.check_request_count,
         u.name, u.email, pa.name AS account_name
       FROM point_topups t
       JOIN "User" u ON u.id = t.user_id
@@ -114,6 +114,7 @@ export async function notifyTopUpCheck(topUpId: string) {
     const text = [
       "🔔 ลูกค้าแจ้งว่าโอนแล้ว แต่ Point ยังไม่เข้า",
       "",
+      `รหัสรายการ: #${String(row.id).replace(/-/g, "").slice(0, 8).toUpperCase()}`,
       `ลูกค้า: ${row.name} (${row.email})`,
       `ยอดโอน: ฿${amount} · เติม ${Number(row.points).toLocaleString()} Point`,
       `บัญชีรับเงิน: ${row.account_name ?? "-"}`,

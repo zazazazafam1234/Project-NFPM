@@ -1,6 +1,6 @@
 .page {
   position: relative;
-  overflow: hidden;
+  overflow-x: clip;
   min-height: 100vh;
   min-width: 0;
   padding-bottom: 80px;

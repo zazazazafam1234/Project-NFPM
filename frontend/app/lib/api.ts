@@ -328,10 +328,46 @@ export type AdminInventory = {
     userEmail: string | null;
     createdAt: string;
   }>;
+  pagination: {
+    profiles: PageMeta;
+    users: PageMeta;
+    lineTransferEvents: PageMeta;
+  };
+  counts: {
+    profiles: Record<string, number>;
+    users: Record<string, number>;
+  };
 };
 
-export function fetchAdminInventory() {
-  return apiFetch<AdminInventory>("/admin/inventory");
+export type PageMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AdminInventoryQuery = {
+  profilesPage: number;
+  profilesSearch: string;
+  profilesStatus: string;
+  usersPage: number;
+  usersSearch: string;
+  usersStatus: string;
+  transfersPage: number;
+  transfersSearch: string;
+};
+
+export function fetchAdminInventory(query?: Partial<AdminInventoryQuery>) {
+  const params = new URLSearchParams();
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        params.set(key, String(value));
+      }
+    });
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return apiFetch<AdminInventory>(`/admin/inventory${suffix}`);
 }
 
 export function saveAdminPackage(body: {
@@ -769,6 +805,7 @@ export function deleteAllDecoyRooms() {
 
 export type PendingTopup = {
   id: string;
+  reference: string;
   points: number;
   createdAt: string;
   expiresAt: string;
@@ -814,4 +851,57 @@ export function testLineBot() {
 
 export function removeLineBotGroup(groupId: string) {
   return apiFetch(`/admin/line-bot/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" });
+}
+
+export type SupportTopup = {
+  id: string;
+  reference: string;
+  status: "pending" | "paid" | "expired" | "cancelled" | "failed";
+  points: number;
+  payableCents: number;
+  discountCents: number;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+  checkRequestedAt: string | null;
+  checkRequestCount: number;
+  confirmedVia: "line" | "admin" | null;
+  confirmedByName: string | null;
+  paymentAccountId: string | null;
+  accountName: string | null;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  matchedTransferId: string | null;
+};
+
+export type UnmatchedTransfer = {
+  id: string;
+  paymentAccountId: string | null;
+  amountCents: number;
+  senderName: string | null;
+  fromAccount: string | null;
+  occurredAt: string | null;
+  occurredRaw: string | null;
+  receivedAt: string;
+  status: string;
+  matchReason: string | null;
+  accountName: string | null;
+};
+
+export function fetchPaymentSupport(days = 7) {
+  return apiFetch<{ topups: SupportTopup[]; unmatchedTransfers: UnmatchedTransfer[] }>(
+    `/admin/topups/support?days=${days}`,
+  );
+}
+
+export function resyncTopupWithLine(id: string) {
+  return apiFetch(`/admin/topups/${id}/resync`, { method: "POST" });
+}
+
+export function confirmTopupAsAdmin(id: string, transferEventId: string | null) {
+  return apiFetch<{ points: number; userPoints: number }>(`/admin/topups/${id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ transferEventId }),
+  });
 }

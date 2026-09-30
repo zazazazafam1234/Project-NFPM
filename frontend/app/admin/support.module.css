@@ -1,0 +1,109 @@
+.list {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--c-ffffff14);
+  border-radius: 14px;
+  background: var(--c-0f0e15ff);
+  font-size: 12px;
+}
+.card[data-status="pending"] {
+  border-color: var(--c-a783ffff);
+}
+.card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.card header div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.card header code {
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: var(--c-f7f4ffff);
+  background: var(--c-7953ed25);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.card header b {
+  font-size: 14px;
+}
+.card header small {
+  color: var(--c-948c9dff);
+}
+.card header em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-weight: 700;
+}
+.card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.card dt {
+  color: var(--c-948c9dff);
+  font-size: 10.5px;
+}
+.card dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+.sub {
+  margin: 0;
+  color: var(--c-948c9dff);
+  font-size: 11px;
+}
+.transfers {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.transfers li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--c-ffffff14);
+  border-radius: 10px;
+}
+.transfers li[data-exact="true"] {
+  border-color: var(--c-75d79dff);
+}
+.transfers button,
+.card footer button {
+  padding: 7px 11px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 8px;
+  color: var(--c-bca8e9ff);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.transfers li[data-exact="true"] button {
+  border-color: var(--c-75d79dff);
+  color: var(--c-75d79dff);
+}
+.card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

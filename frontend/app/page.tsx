@@ -6,6 +6,7 @@ import { BrandLogo } from "./components/BrandLogo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
 import { publicProfileLabel, unavailableSlotLabel } from "./lib/slots";
+import { SupportLink } from "./components/SupportLink";
 import styles from "./page.module.css";
 
 type RevealSectionProps = {
@@ -301,6 +302,10 @@ export default function Home() {
               เลือกห้อง เลือก slot แล้วเลือกโปรที่ต้องการ ระบบจะหัก Point และล็อก profile ให้ทันที
             </p>
           </details>
+        </div>
+        <div className={styles.faqSupport}>
+          <p>ยังหาคำตอบไม่เจอ หรือมีปัญหาการใช้งาน?</p>
+          <SupportLink />
         </div>
       </RevealSection>
       <footer className={styles.footer}>
