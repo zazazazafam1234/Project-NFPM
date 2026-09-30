@@ -1540,8 +1540,7 @@ a.slotChoice:hover {
 .scrollStage {
   min-height: 100dvh;
   max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: visible;
+  overflow-x: clip;
   scroll-behavior: smooth;
   background: var(--c-09080fff);
   scrollbar-width: thin;

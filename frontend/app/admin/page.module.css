@@ -54,7 +54,6 @@
   min-height: 100dvh;
   max-height: 100dvh;
   overflow-y: auto;
-  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   padding: 24px 14px;
