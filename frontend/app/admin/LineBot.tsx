@@ -67,7 +67,7 @@ export function LineBotPanel({ onDone }: { onDone: (message: string) => void }) 
         <li>
           ตั้ง Webhook URL เป็น <code>{status?.webhookUrl ?? "…"}</code> เปิด Use webhook และปิด Auto-reply
         </li>
-        <li>ใส่ Channel secret และ Channel access token ด้านล่าง แล้วเชิญบอทเข้ากลุ่ม LINE</li>
+        <li>ใส่ Channel secret และ Channel access token ด้านล่าง แล้วเชิญบอทเข้ากลุ่ม LINE (ถ้าบอทอยู่ในกลุ่มแล้ว พิมพ์ <code>!register</code> ในกลุ่ม)</li>
       </ol>
 
       <div className={`${styles.formRows} ${rewardStyles.inlineForm}`}>

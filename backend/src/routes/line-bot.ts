@@ -41,9 +41,22 @@ lineBot.post("/webhook", async (c) => {
       } else if (event.type === "leave") {
         await sql`UPDATE line_bot_groups SET left_at = NOW() WHERE group_id = ${groupId}`;
         console.log(`[line-bot] left group=${groupId}`);
+      } else if (event.type === "message" && event.message?.text?.trim() === "!register" && event.replyToken) {
+        // For groups the bot was already in before the webhook was switched on.
+        const name = await groupName(token, groupId);
+        await sql`
+          INSERT INTO line_bot_groups (group_id, name) VALUES (${groupId}, ${name})
+          ON CONFLICT (group_id) DO UPDATE SET name = EXCLUDED.name, joined_at = NOW(), left_at = NULL
+        `;
+        console.log(`[line-bot] registered group=${groupId} name=${name ?? "-"}`);
+        await replyText(token, event.replyToken, "✅ ลงทะเบียนกลุ่มนี้แล้ว จะแจ้งเตือนเมื่อลูกค้ากด “ฉันจ่ายเงินแล้ว ยังไม่เข้า”");
       } else if (event.type === "message" && event.message?.text?.trim() === "!status" && event.replyToken) {
         const [group] = await sql`SELECT left_at IS NULL AS active FROM line_bot_groups WHERE group_id = ${groupId}`;
-        await replyText(token, event.replyToken, group?.active ? "✅ กลุ่มนี้รับการแจ้งเตือนอยู่" : "⚠️ กลุ่มนี้ยังไม่ได้ลงทะเบียน กรุณาเชิญบอทเข้ากลุ่มใหม่");
+        await replyText(
+          token,
+          event.replyToken,
+          group?.active ? "✅ กลุ่มนี้รับการแจ้งเตือนอยู่" : "⚠️ กลุ่มนี้ยังไม่ได้ลงทะเบียน พิมพ์ !register เพื่อลงทะเบียน",
+        );
       }
     } catch (err) {
       console.error(`[line-bot] event ${event.type} failed`, err instanceof Error ? err.message : err);
