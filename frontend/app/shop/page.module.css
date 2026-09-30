@@ -783,6 +783,9 @@
     flex: 0 0 auto;
     white-space: nowrap;
   }
+  .navLinks > a:nth-child(-n + 3) {
+    display: none;
+  }
   .mobileLogin {
     display: none;
   }

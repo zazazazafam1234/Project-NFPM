@@ -126,6 +126,9 @@ export default function Home() {
             <BrandLogo />
           </a>
           <div className={styles.navLinks}>
+            <a href="#packages">แพ็กเกจ</a>
+            <a href="#how-it-works">ขั้นตอน</a>
+            <a href="#faq">ช่วยเหลือ</a>
             <Link href="/shop">ร้านค้า</Link>
             <Link href="/profile">บัญชี</Link>
           </div>
