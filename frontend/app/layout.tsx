@@ -13,6 +13,13 @@ const notoSansThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: "Fast Movie | เลือกแพ็กเกจความบันเทิงของคุณ",
   description: "เลือกแพ็กเกจความบันเทิงที่เหมาะกับคุณ พร้อมบริการดูแลจากแอดมิน",
+  icons: {
+    icon: [
+      { url: "/fastmovie-logo.png?v=2", type: "image/png", sizes: "any" },
+    ],
+    shortcut: ["/fastmovie-logo.png?v=2"],
+    apple: [{ url: "/fastmovie-logo.png?v=2", type: "image/png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
