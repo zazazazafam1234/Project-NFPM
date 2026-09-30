@@ -16,6 +16,7 @@ import {
 } from "../lib/api";
 import { useSession } from "../providers";
 import { formatDuration } from "../lib/duration";
+import { publicProfileLabel } from "../lib/slots";
 import styles from "../payment/page.module.css";
 
 export default function CheckoutPage() {
@@ -55,6 +56,11 @@ export default function CheckoutPage() {
     () => selectedRoom?.slots.find((slot) => slot.id === profileId) ?? null,
     [selectedRoom, profileId],
   );
+  const selectedSlotLabel = useMemo(() => {
+    if (!selectedRoom || !selectedSlot) return null;
+    const index = selectedRoom.slots.findIndex((slot) => slot.id === selectedSlot.id);
+    return index >= 0 ? publicProfileLabel(index) : "Profile";
+  }, [selectedRoom, selectedSlot]);
   const availablePackages = useMemo(
     () => selectedSlot?.availablePackages ?? [],
     [selectedSlot],
@@ -114,13 +120,13 @@ export default function CheckoutPage() {
           </h1>
           <p>
             {selectedRoom && selectedSlot
-              ? `${selectedRoom.name} · ${selectedSlot.name}`
+              ? `${selectedRoom.name} · ${selectedSlotLabel}`
               : "กรุณาเลือก slot จากหน้าร้านก่อน"}
           </p>
           <div className={styles.summary}>
             <div>
               <span>{selectedRoom?.service.toUpperCase() ?? "FAST MOVIE"}</span>
-              <strong>{selectedSlot?.name ?? "ยังไม่ได้เลือก slot"}</strong>
+              <strong>{selectedSlotLabel ?? "ยังไม่ได้เลือก slot"}</strong>
               <small>{selectedRoom?.label ?? "เลือกห้องจากหน้าร้าน"}</small>
             </div>
             <b>✦</b>

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
-import { unavailableSlotLabel } from "./lib/slots";
+import { publicProfileLabel, unavailableSlotLabel } from "./lib/slots";
 import styles from "./page.module.css";
 
 type RevealSectionProps = {
@@ -354,6 +354,7 @@ export default function Home() {
               {activeRoom.slots.map((slot, index) => {
                 const lowestPackage = slot.availablePackages[0];
                 const canChoose = slot.isAvailable && Boolean(lowestPackage);
+                const profileLabel = publicProfileLabel(index);
                 const slotStatus = slot.isAvailable
                   ? "ไม่มีโปรโมชัน"
                   : unavailableSlotLabel(slot.status);
@@ -366,7 +367,7 @@ export default function Home() {
                   >
                     <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                     <span className={styles.slotChoiceInfo}>
-                      <strong>{slot.name}</strong>
+                      <strong>{profileLabel}</strong>
                       <small>ว่าง · เริ่ม {lowestPackage.priceAmount.toLocaleString()} PT</small>
                     </span>
                     <span className={styles.slotChoiceArrow} aria-hidden="true">→</span>
@@ -375,7 +376,7 @@ export default function Home() {
                   <div className={`${styles.slotChoice} ${styles.slotChoiceUnavailable}`} key={slot.id}>
                     <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                     <span className={styles.slotChoiceInfo}>
-                      <strong>{slot.name}</strong>
+                      <strong>{profileLabel}</strong>
                       <small>{slotStatus}</small>
                     </span>
                     <span className={styles.slotUnavailableLabel}>ไม่พร้อมใช้งาน</span>

@@ -6,7 +6,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "../lib/api";
 import { useSession } from "../providers";
-import { unavailableSlotLabel } from "../lib/slots";
+import { publicProfileLabel, unavailableSlotLabel } from "../lib/slots";
 import styles from "./page.module.css";
 
 function CapacityDots({ room }: { room: StreamingRoom }) {
@@ -171,6 +171,7 @@ export default function ShopPage() {
                     {room.slots.map((slot, slotIndex) => {
                       const href = `/checkout?room=${room.id}&profile=${slot.id}`;
                       const lowestPackage = slot.availablePackages[0];
+                      const profileLabel = publicProfileLabel(slotIndex);
                       return slot.isAvailable ? (
                         <Link
                           className={styles.slotAvailable}
@@ -178,7 +179,7 @@ export default function ShopPage() {
                           key={slot.id}
                         >
                           <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
-                          <strong>{slot.name}</strong>
+                          <strong>{profileLabel}</strong>
                           <span>
                             ว่าง · เริ่ม {lowestPackage?.priceAmount.toLocaleString() ?? "—"} PT
                           </span>
@@ -186,7 +187,7 @@ export default function ShopPage() {
                       ) : (
                         <button className={styles.slotUnavailable} disabled key={slot.id}>
                           <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
-                          <strong>{slot.name}</strong>
+                          <strong>{profileLabel}</strong>
                           <span>{unavailableSlotLabel(slot.status)}</span>
                         </button>
                       );
