@@ -64,6 +64,11 @@ export function PendingTopupsPanel({ onDone }: { onDone: (message: string) => vo
         {topups.map((topup) => (
           <div key={topup.id}>
             <b>{topup.userName}</b>
+            {topup.checkRequestedAt && (
+              <em className={styles.yellow}>
+                ⚠ ลูกค้าแจ้งว่าโอนแล้ว {topup.checkRequestCount} ครั้ง (ล่าสุด {time(topup.checkRequestedAt)})
+              </em>
+            )}
             <span>
               {topup.userEmail} · เติม {topup.points.toLocaleString()} Point · โอน ฿{baht(topup.payableCents)}
               {topup.discountCents > 0 ? ` (ลด ฿${baht(topup.discountCents)})` : ""}

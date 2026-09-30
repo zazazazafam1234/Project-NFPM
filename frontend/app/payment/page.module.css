@@ -879,3 +879,42 @@
   color: var(--c-ff7a85ff, #ff7a85);
   font-size: 11.5px;
 }
+
+.paidCheck {
+  display: grid;
+  gap: 8px;
+  margin: -8px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-ffffff16);
+  border-radius: 12px;
+  text-align: center;
+}
+.paidCheck p {
+  margin: 0;
+  color: var(--c-cfc7daff);
+  font-size: 12px;
+}
+.paidCheck b {
+  color: var(--c-f7f4ffff);
+  font-variant-numeric: tabular-nums;
+}
+.paidCheck button {
+  padding: 11px 14px;
+  border: 1px solid var(--c-a783ffff);
+  border-radius: 11px;
+  color: var(--c-f7f4ffff);
+  background: var(--c-7953ed25);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.paidCheck button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.paidCheck small {
+  color: var(--c-c7b7ffff);
+  font-size: 11.5px;
+  line-height: 1.6;
+}

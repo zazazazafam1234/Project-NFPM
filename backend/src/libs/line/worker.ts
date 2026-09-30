@@ -4,6 +4,7 @@ import { LINESSEClient, parseFlexMessage } from "./LINESSEClient.js";
 import {
   amountToCents,
   confirmTopUpByAmount,
+  getAccountsAwaitingPayment,
   getActivePaymentAccounts,
   markLineTransferEventFailed,
   recordLineTransferEvent,
@@ -12,6 +13,15 @@ import {
 
 const revisionDir = process.env.LINE_REVISION_DIR ?? "./data/line-revisions";
 const reloadMs = Number(process.env.LINE_ACCOUNTS_RELOAD_MS ?? 30000);
+
+// LINE sometimes holds transfer notifications (often late at night). While a QR is
+// waiting we re-sync by reconnecting from the saved revision: every minute normally,
+// every 10 seconds for a few minutes after a customer presses "ฉันจ่ายเงินแล้ว".
+const RESYNC_CHECK_MS = 5000;
+const RESYNC_IDLE_MS = 60 * 1000;
+const RESYNC_BOOST_MS = 10 * 1000;
+const RESYNC_BOOST_MINUTES = 5;
+const lastResync = new Map<string, number>();
 
 type ManagedClient = {
   accountId: string;
@@ -167,6 +177,21 @@ function startClient(account: ActivePaymentAccount) {
   void client.connect();
 }
 
+async function resyncAwaitingAccounts() {
+  const awaiting = await getAccountsAwaitingPayment(RESYNC_BOOST_MINUTES);
+  const now = Date.now();
+  for (const { payment_account_id: accountId, boost } of awaiting) {
+    const managed = clients.get(accountId);
+    // Only reconnect a live stream; the "disconnected" handler reconnects it in 3 s.
+    if (!managed || !managed.client.isConnected()) continue;
+    const since = now - (lastResync.get(accountId) ?? 0);
+    if (since < (boost ? RESYNC_BOOST_MS : RESYNC_IDLE_MS)) continue;
+    lastResync.set(accountId, now);
+    console.log(`[line-worker] resync account=${accountId} reason=${boost ? "customer_check" : "pending_topup"}`);
+    managed.client.disconnect();
+  }
+}
+
 async function reloadAccounts() {
   const accounts = await getActivePaymentAccounts();
   const activeIds = new Set(accounts.map((account) => account.id));
@@ -196,6 +221,11 @@ async function boot() {
       console.error("[line-worker] reload failed", err instanceof Error ? err.message : err);
     });
   }, Number.isFinite(reloadMs) && reloadMs >= 5000 ? reloadMs : 30000);
+  setInterval(() => {
+    resyncAwaitingAccounts().catch((err) => {
+      console.error("[line-worker] resync failed", err instanceof Error ? err.message : err);
+    });
+  }, RESYNC_CHECK_MS);
 }
 
 boot().catch((err) => {

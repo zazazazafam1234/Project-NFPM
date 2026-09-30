@@ -779,6 +779,8 @@ export type PendingTopup = {
   userEmail: string;
   streamerName: string | null;
   streamerCode: string | null;
+  checkRequestedAt: string | null;
+  checkRequestCount: number;
 };
 
 export function fetchPendingTopups() {

@@ -26,9 +26,13 @@ const topUps = [
   { points: 350, price: 350, label: "ยอดนิยม" },
 ];
 const DEFAULT_MIN_TOPUP_POINTS = 10;
+const PAID_BUTTON_DELAY_MS = 60 * 1000;
+const CHECK_COOLDOWN_MS = 20 * 1000;
 
 type TopUpResponse = {
   id: string;
+  createdAt?: string;
+  checkRequestedAt?: string | null;
   status: "pending" | "paid" | "expired" | "cancelled" | "failed";
   points: number;
   paymentAccountId?: string | null;
@@ -194,6 +198,35 @@ export default function TopUpPage() {
       .then((settings) => setMinTopupPoints(settings.minTopupPoints))
       .catch(() => undefined);
   }, []);
+
+  // Clock for the "I paid" countdown while a QR is waiting.
+  const [now, setNow] = useState(0);
+  const [checkNote, setCheckNote] = useState("");
+  const [lastCheckAt, setLastCheckAt] = useState(0);
+  const isWaiting = pendingTopUp?.status === "pending";
+  useEffect(() => {
+    if (!isWaiting) return;
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 1000);
+    queueMicrotask(tick);
+    return () => window.clearInterval(timer);
+  }, [isWaiting]);
+  const qrCreatedAt = pendingTopUp?.createdAt ? new Date(pendingTopUp.createdAt).getTime() : now;
+  const secondsUntilCheck = now ? Math.max(0, Math.ceil((qrCreatedAt + PAID_BUTTON_DELAY_MS - now) / 1000)) : 60;
+  const checkCooldown = now ? Math.max(0, Math.ceil((lastCheckAt + CHECK_COOLDOWN_MS - now) / 1000)) : 0;
+
+  async function reportPaid() {
+    if (!pendingTopUp) return;
+    setLastCheckAt(Date.now());
+    try {
+      await apiFetch(`/points/top-ups/${pendingTopUp.id}/check`, { method: "POST" });
+      setCheckNote(
+        "ได้รับแจ้งแล้ว ระบบกำลังตรวจสอบกับธนาคารถี่ขึ้น (ทุก 10 วินาที) · ช่วงดึก LINE/ธนาคารอาจแจ้งช้า 1–5 นาที ไม่ต้องโอนซ้ำ",
+      );
+    } catch (err) {
+      setCheckNote(err instanceof Error ? err.message : "แจ้งไม่สำเร็จ กรุณาลองใหม่");
+    }
+  }
 
   useEffect(() => {
     if (!pendingTopUp || pendingTopUp.status !== "pending") return;
@@ -504,6 +537,23 @@ export default function TopUpPage() {
               )}
             </div>
           </div>
+          )}
+          {isWaiting && (
+            <div className={styles.paidCheck}>
+              {secondsUntilCheck > 0 ? (
+                <p>
+                  ⏳ กำลังรอยืนยันการโอนอัตโนมัติ… ถ้าโอนแล้วยังไม่เข้า กดแจ้งได้ใน{" "}
+                  <b>
+                    {Math.floor(secondsUntilCheck / 60)}:{String(secondsUntilCheck % 60).padStart(2, "0")}
+                  </b>
+                </p>
+              ) : (
+                <button disabled={checkCooldown > 0} onClick={() => void reportPaid()} type="button">
+                  {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "ฉันจ่ายเงินแล้ว ยังไม่เข้า"}
+                </button>
+              )}
+              {checkNote && <small>{checkNote}</small>}
+            </div>
           )}
           {pendingTopUp?.qrImage && <div className={styles.divider} />}
           {message && (

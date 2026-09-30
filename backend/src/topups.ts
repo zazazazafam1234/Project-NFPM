@@ -76,6 +76,8 @@ function publicTopUp(row: Record<string, any>, qrImage?: string | null) {
     paidAt: row.paid_at,
     qrPayload: row.qr_payload,
     qrImage: qrImage ?? null,
+    createdAt: row.created_at,
+    checkRequestedAt: row.check_requested_at ?? null,
     // Discounts already taken off the transfer (satang).
     discountCents: Number(row.discount_cents ?? 0),
     chargeAmount: centsToAmount(Number(row.payable_amount_cents) - Number(row.ref_decimal)),
@@ -353,6 +355,45 @@ export async function cancelTopUpForUser(id: string, userId: string) {
   });
 
   return topUp;
+}
+
+export const CHECK_REQUEST_COOLDOWN_SECONDS = 20;
+
+// Customer says they paid but the top-up is still pending: flag it so the LINE
+// worker re-syncs with LINE frequently (see libs/line/worker.ts).
+export async function requestTopUpCheck(id: string, userId: string) {
+  const [row] = await sql`
+    UPDATE point_topups
+    SET check_requested_at = NOW(), check_request_count = check_request_count + 1, updated_at = NOW()
+    WHERE id = ${id}::uuid
+      AND user_id = ${userId}
+      AND status = 'pending'
+      AND expires_at >= NOW()
+      AND (check_requested_at IS NULL
+        OR check_requested_at <= NOW() - make_interval(secs => ${CHECK_REQUEST_COOLDOWN_SECONDS}))
+    RETURNING id
+  `;
+  if (row) return { ok: true as const };
+  const [current] = await sql`
+    SELECT status, expires_at < NOW() AS expired FROM point_topups WHERE id = ${id}::uuid AND user_id = ${userId}
+  `;
+  if (!current) return { ok: false as const, message: "ไม่พบรายการเติมเงิน" };
+  if (current.status !== "pending" || current.expired) {
+    return { ok: false as const, message: "รายการนี้ไม่ได้รอชำระแล้ว" };
+  }
+  return { ok: true as const }; // already requested moments ago; still being checked
+}
+
+// Payment accounts with pending top-ups, and whether a customer asked for a
+// re-check in the last few minutes.
+export async function getAccountsAwaitingPayment(boostMinutes: number) {
+  return sql<Array<{ payment_account_id: string; boost: boolean }>>`
+    SELECT payment_account_id,
+      BOOL_OR(check_requested_at > NOW() - make_interval(mins => ${boostMinutes})) AS boost
+    FROM point_topups
+    WHERE status = 'pending' AND expires_at >= NOW() AND payment_account_id IS NOT NULL
+    GROUP BY payment_account_id
+  `;
 }
 
 export async function recordLineTransferEvent({

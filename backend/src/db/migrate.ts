@@ -441,6 +441,9 @@ await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_id UUID RE
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS promotion_reward_cents INTEGER NOT NULL DEFAULT 0`;
 // Promotion + streamer-code discount taken off the transfer when the QR is made.
 await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0`;
+// "ฉันจ่ายเงินแล้ว ยังไม่เข้า": makes the LINE worker reconnect often for a while.
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS check_requested_at TIMESTAMPTZ`;
+await sql`ALTER TABLE point_topups ADD COLUMN IF NOT EXISTS check_request_count INTEGER NOT NULL DEFAULT 0`;
 
 // Decoy rooms: display-only full rooms for the storefront. Kept apart from
 // master_emails/profiles so they never touch real accounts, stock or sales.

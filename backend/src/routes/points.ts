@@ -3,7 +3,7 @@ import { getSessionUserId } from "../session";
 import sql from "../db";
 import { checkStreamerCode } from "../rewards";
 import { getMinTopupPoints } from "../settings";
-import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser } from "../topups";
+import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser, requestTopUpCheck } from "../topups";
 
 const points = new Hono();
 
@@ -84,6 +84,14 @@ points.get("/top-ups/:id", async (c) => {
   if (!topUp) return c.json({ message: "ไม่พบรายการเติมเงิน" }, 404);
 
   return c.json(topUp);
+});
+
+points.post("/top-ups/:id/check", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+  const result = await requestTopUpCheck(c.req.param("id"), userId);
+  if (!result.ok) return c.json({ message: result.message }, 400);
+  return c.json({ ok: true });
 });
 
 points.post("/top-ups/:id/cancel", async (c) => {

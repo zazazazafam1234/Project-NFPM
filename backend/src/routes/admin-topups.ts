@@ -11,6 +11,7 @@ topups.get("/topups/pending", async (c) => {
     SELECT
       t.id, t.points, t.created_at AS "createdAt", t.expires_at AS "expiresAt",
       t.payable_amount_cents AS "payableCents", t.discount_cents AS "discountCents",
+      t.check_requested_at AS "checkRequestedAt", t.check_request_count AS "checkRequestCount",
       u.id AS "userId", u.name AS "userName", u.email AS "userEmail",
       s.name AS "streamerName", s.code AS "streamerCode"
     FROM point_topups t
