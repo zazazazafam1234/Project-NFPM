@@ -16,6 +16,8 @@ import {
   type Subscription,
   type Transaction,
   formatDiscount,
+  discountPointsFor,
+  renewSubscription,
 } from "../lib/api";
 import { useSession } from "../providers";
 import styles from "./page.module.css";
@@ -64,9 +66,16 @@ const topUpStatusLabel: Record<string, string> = {
   failed: "ไม่สำเร็จ",
 };
 
+const SUBSCRIPTION_STATUS: Record<string, string> = {
+  expired: "หมดอายุ",
+  cancelled: "ยกเลิก",
+  refunded: "คืนเงิน",
+  pending: "รอดำเนินการ",
+};
+
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, isLoading, signOut } = useSession();
+  const { user, isLoading, signOut, refreshSession } = useSession();
   const [tab, setTab] = useState<Tab>("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -75,6 +84,45 @@ export default function ProfilePage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [busyTopUpId, setBusyTopUpId] = useState<string | null>(null);
   const [activityError, setActivityError] = useState("");
+  const [renewingId, setRenewingId] = useState<string | null>(null);
+  // Expiry emails link to /profile?renew=<subscriptionId>
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromLink = new URLSearchParams(window.location.search).get("renew");
+    if (fromLink) queueMicrotask(() => setHighlightId(fromLink));
+  }, []);
+
+  useEffect(() => {
+    if (!highlightId || subscriptions.length === 0) return;
+    document.getElementById(`subscription-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, subscriptions]);
+
+  async function renew(subscription: Subscription) {
+    const price = subscription.renewPrice ?? 0;
+    const discount = discountPointsFor(user?.discountCents, price);
+    const ok = window.confirm(
+      `ต่ออายุ ${subscription.packageName} (โปรไฟล์ ${subscription.profileName})\n` +
+        `ราคา ${price.toLocaleString()} Point` +
+        (discount > 0 ? ` − ส่วนลด ${discount.toLocaleString()} = ${(price - discount).toLocaleString()} Point` : "") +
+        "\nใช้โปรไฟล์และ PIN เดิมต่อได้ทันที",
+    );
+    if (!ok) return;
+    setRenewingId(subscription.id);
+    try {
+      const result = await renewSubscription(subscription.id);
+      await refreshSession();
+      const list = await fetchSubscriptions();
+      setSubscriptions(list.subscriptions);
+      window.alert(
+        `ต่ออายุสำเร็จ ใช้ได้ถึง ${new Date(result.expiresAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}`,
+      );
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ต่ออายุไม่สำเร็จ");
+    } finally {
+      setRenewingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/register");
@@ -213,7 +261,11 @@ export default function ProfilePage() {
                 {subscriptions.map((s) => {
                   const expiry = formatExpiry(s.expiresAt);
                   return (
-                    <li key={s.id} className={styles.item}>
+                    <li
+                      key={s.id}
+                      id={`subscription-${s.id}`}
+                      className={`${styles.item} ${highlightId === s.id ? styles.itemHighlight : ""}`}
+                    >
                       <span className={styles.itemIcon} data-status={s.status} aria-hidden="true" />
                       <div className={styles.itemBody}>
                         <strong>คำสั่งซื้อ {s.packageName}</strong>
@@ -226,12 +278,30 @@ export default function ProfilePage() {
                             </em>
                           )}
                         </span>
+                        {s.canRenew && expiry?.expired && s.renewDeadline && (
+                          <span className={styles.renewNote}>
+                            ⏳ ต่ออายุได้ถึง {formatDateTime(s.renewDeadline)} · ใช้โปรไฟล์และ PIN เดิม
+                          </span>
+                        )}
                       </div>
                       <div className={styles.itemRight}>
                         <strong className={styles.debit}>−{s.pricePaid} Point</strong>
-                        <span className={styles.statusPill} data-status={s.status}>
-                          {s.status === "active" ? "กำลังใช้งาน" : s.status}
+                        <span
+                          className={styles.statusPill}
+                          data-status={s.status === "active" && expiry?.expired ? "expired" : s.status}
+                        >
+                          {s.status === "active" ? (expiry?.expired ? "หมดอายุ" : "กำลังใช้งาน") : SUBSCRIPTION_STATUS[s.status] ?? s.status}
                         </span>
+                        {s.canRenew && (
+                          <button
+                            className={styles.renewButton}
+                            disabled={renewingId === s.id}
+                            onClick={() => void renew(s)}
+                            type="button"
+                          >
+                            {renewingId === s.id ? "กำลังต่ออายุ…" : `ต่ออายุ ${s.renewPrice ?? ""} Point`}
+                          </button>
+                        )}
                         <span className={styles.itemDate}>{formatDate(s.createdAt)}</span>
                       </div>
                     </li>

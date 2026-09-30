@@ -218,10 +218,18 @@ export type Subscription = {
   durationMinutes: number;
   profileName: string;
   masterEmail: string;
+  /** Renewable until renewDeadline (12 h after expiry) with the same profile and PIN. */
+  canRenew?: boolean;
+  renewPrice?: number;
+  renewDeadline?: string;
 };
 
 export function fetchSubscriptions() {
   return apiFetch<{ subscriptions: Subscription[] }>("/subscriptions");
+}
+
+export function renewSubscription(subscriptionId: string) {
+  return apiFetch<PurchaseSubscriptionResponse>(`/subscriptions/${subscriptionId}/renew`, { method: "POST" });
 }
 
 export type AdminInventory = {

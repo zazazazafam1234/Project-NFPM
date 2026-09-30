@@ -506,3 +506,33 @@
 .wallet .discountBalance b {
   color: var(--c-d8bcffff, #d8bcff);
 }
+
+.itemHighlight {
+  margin: 0 -10px;
+  padding-inline: 10px;
+  border-radius: 12px;
+  background: var(--c-7953ed25, #7953ed25);
+  box-shadow: inset 0 0 0 1px var(--c-a783ffff, #a783ff);
+}
+.renewNote {
+  display: block;
+  margin-top: 4px;
+  color: var(--c-f2c14eff, #f2c14e);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.renewButton {
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--c-8b62ffff, #8b62ff), var(--c-6841edff, #6841ed));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.renewButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
