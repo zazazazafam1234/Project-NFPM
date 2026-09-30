@@ -116,6 +116,19 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 860px)").matches) return;
+
+    const resetToHero = () => {
+      window.scrollTo(0, 0);
+      stageRef.current?.scrollTo(0, 0);
+    };
+
+    resetToHero();
+    const frameId = window.requestAnimationFrame(resetToHero);
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
   return (
     <>
       <main ref={stageRef} className={styles.scrollStage} data-scroll-stage>
