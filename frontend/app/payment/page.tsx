@@ -31,12 +31,8 @@ type TopUpResponse = {
   id: string;
   status: "pending" | "paid" | "expired" | "cancelled" | "failed";
   points: number;
-  paymentMethod: "promptpay" | "stripe_promptpay" | string;
   paymentAccountId?: string | null;
   paymentAccountName?: string | null;
-  stripePaymentIntentId?: string | null;
-  stripeStatus?: string | null;
-  stripePromptPayHostedUrl?: string | null;
   baseAmount: number;
   payableAmount: number;
   refDecimal: number;
@@ -111,7 +107,7 @@ export default function TopUpPage() {
   const router = useRouter();
   const { user, refreshSession } = useSession();
   const [pointsInput, setPointsInput] = useState("150");
-  const [method, setMethod] = useState<"promptpay" | "stripe_promptpay">("promptpay");
+  const [method, setMethod] = useState<"promptpay">("promptpay");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
@@ -246,11 +242,7 @@ export default function TopUpPage() {
         }),
       });
       setPendingTopUp(topUp);
-      setMessage(
-        method === "stripe_promptpay"
-          ? "สร้าง QR ผ่าน Stripe แล้ว กรุณาสแกนจ่ายและรอระบบยืนยันอัตโนมัติ"
-          : "สร้าง QR แล้ว กรุณาโอนยอดให้ตรงรวมทศนิยมเพื่อยืนยันอัตโนมัติ",
-      );
+      setMessage("สร้าง QR แล้ว กรุณาโอนยอดให้ตรงรวมทศนิยมเพื่อยืนยันอัตโนมัติ");
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -419,22 +411,7 @@ export default function TopUpPage() {
                 <Image alt="" height={28} src="/promptpay-mark.svg" width={28} />
               </span>
               <span>
-                PromptPay เดิม<small>LINE ตรวจยอดโอน</small>
-              </span>
-              <i />
-            </button>
-            <button
-              className={method === "stripe_promptpay" ? styles.active : ""}
-              aria-pressed={method === "stripe_promptpay"}
-              type="button"
-              onClick={() => {
-                setMethod("stripe_promptpay");
-                setMessage("");
-              }}
-            >
-              <span className={styles.stripeIcon} aria-hidden="true">S</span>
-              <span>
-                Stripe PromptPay<small>ยืนยันผ่าน Stripe</small>
+                PromptPay<small>สแกน QR Code</small>
               </span>
               <i />
             </button>
@@ -484,15 +461,13 @@ export default function TopUpPage() {
               </h2>
               {pendingTopUp ? (
                 <div className={styles.paymentRef}>
-                  <span>{pendingTopUp.paymentMethod === "stripe_promptpay" ? "ยอดที่ต้องจ่าย" : "ยอดที่ต้องโอนให้ตรง"}</span>
+                  <span>ยอดที่ต้องโอนให้ตรง</span>
                   <strong>{formatBaht(pendingTopUp.payableAmount)} บาท</strong>
                   <small>
                     {(pendingTopUp.discountCents ?? 0) > 0
                       ? `ราคา ${formatBaht(pendingTopUp.baseAmount)} − ส่วนลด ${formatBaht((pendingTopUp.discountCents ?? 0) / 100)} = ${formatBaht(pendingTopUp.chargeAmount ?? pendingTopUp.baseAmount)}`
                       : `ยอดหลัก ${formatBaht(pendingTopUp.baseAmount)}`}{" "}
-                    {pendingTopUp.paymentMethod === "stripe_promptpay"
-                      ? "ผ่าน Stripe"
-                      : `+ ref .${String(pendingTopUp.refDecimal).padStart(2, "0")}`}
+                    + ref .{String(pendingTopUp.refDecimal).padStart(2, "0")}
                   </small>
                   {(pendingTopUp.discountCents ?? 0) > 0 && (
                     <p className={styles.discountNote}>
@@ -510,17 +485,13 @@ export default function TopUpPage() {
                       )}
                     </p>
                   )}
-                  {pendingTopUp.paymentMethod !== "stripe_promptpay" && (
-                    <p className={styles.discountNote}>
-                      💡 เศษ <b>.{String(pendingTopUp.refDecimal).padStart(2, "0")} บาท</b> จะถูกสะสมเป็น
-                      <b> เงินส่วนลด</b> ใช้ลดราคาตอนซื้อแพ็กเกจครั้งถัดไป
-                      {user ? <span> · สะสมแล้ว {formatDiscount(user.discountCents)}</span> : null}
-                    </p>
-                  )}
+                  <p className={styles.discountNote}>
+                    💡 เศษ <b>.{String(pendingTopUp.refDecimal).padStart(2, "0")} บาท</b> จะถูกสะสมเป็น
+                    <b> เงินส่วนลด</b> ใช้ลดราคาตอนซื้อแพ็กเกจครั้งถัดไป
+                    {user ? <span> · สะสมแล้ว {formatDiscount(user.discountCents)}</span> : null}
+                  </p>
                   <em>
-                    {pendingTopUp.paymentMethod === "stripe_promptpay"
-                      ? "Stripe PromptPay"
-                      : `บัญชีรับเงิน ${pendingTopUp.paymentAccountName ?? "PromptPay"}`} · หมดอายุ{" "}
+                    บัญชีรับเงิน {pendingTopUp.paymentAccountName ?? "PromptPay"} · หมดอายุ{" "}
                     {formatDateTime(pendingTopUp.expiresAt)}
                   </em>
                 </div>
