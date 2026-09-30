@@ -758,7 +758,7 @@
     font-size: 12px;
   }
 }
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .header {
     top: 15px;
     min-height: 54px;

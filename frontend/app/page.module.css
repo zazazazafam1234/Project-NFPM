@@ -1685,6 +1685,10 @@ a.slotChoice:hover {
     min-height: auto;
     display: block;
   }
+  .scrollStage > .hero {
+    height: auto;
+    min-height: 650px;
+  }
   .hero {
     min-height: 650px;
     padding: 15px 20px 42px;
