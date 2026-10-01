@@ -517,6 +517,9 @@ await sql`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (us
 await sql`CREATE INDEX IF NOT EXISTS subscriptions_profile_idx ON subscriptions (profile_id, expires_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_status_role_idx ON "User" (status, role, "createdAt" DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS users_email_search_idx ON "User" (LOWER(email))`;
+await sql`CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx ON admin_audit_logs (created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS admin_audit_logs_action_idx ON admin_audit_logs (action, created_at DESC)`;
+await sql`CREATE INDEX IF NOT EXISTS admin_audit_logs_actor_idx ON admin_audit_logs (actor_user_id, created_at DESC)`;
 await sql`CREATE INDEX IF NOT EXISTS payment_accounts_status_idx ON payment_accounts (status, is_default) WHERE deleted_at IS NULL`;
 await sql`
   CREATE UNIQUE INDEX IF NOT EXISTS payment_accounts_default_unique

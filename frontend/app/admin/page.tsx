@@ -12,6 +12,7 @@ import {
   deletePaymentAccount,
   deleteProfile,
   expireProfileRental,
+  fetchAuditLogs,
   fetchAdminInventory,
   fetchAdminSettings,
   saveAdminPackage,
@@ -27,6 +28,8 @@ import {
   updatePaymentAccount,
   updateProfile,
   updateProfileStatus,
+  type AuditLogQuery,
+  type AuditLogResponse,
   type AdminInventoryQuery,
   type AdminInventory,
   type PageMeta,
@@ -52,6 +55,7 @@ const menu = [
   ["topupPromotions", "โปรเติมเงิน", "⬆"],
   ["streamers", "Streamer / โค้ด", "★"],
   ["decoys", "ห้องหลอก", "◌"],
+  ["audit", "Audit log", "▣"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
 ] as const;
 
@@ -66,6 +70,17 @@ const defaultInventoryQuery: AdminInventoryQuery = {
   usersStatus: "all",
   transfersPage: 1,
   transfersSearch: "",
+};
+
+const defaultAuditQuery: AuditLogQuery = {
+  page: 1,
+  search: "",
+  action: "",
+  entityType: "",
+  actorUserId: "",
+  status: "",
+  from: "",
+  to: "",
 };
 
 const tomorrow = new Date(Date.now() + 1000 * 60 * 60 * 24)
@@ -310,6 +325,7 @@ export default function AdminPage() {
             onDone={handleDone}
           />
         )}
+        {section === "audit" && <AuditLogsPanel users={inventory?.users ?? []} />}
         {section === "settings" && <LineBotPanel onDone={handleDone} />}
         {section === "settings" && inventory && (
           <Settings
@@ -472,6 +488,156 @@ function PaginationControls({
         </button>
       </div>
     </div>
+  );
+}
+
+function metadataText(metadata: Record<string, unknown>) {
+  const text = JSON.stringify(metadata);
+  if (text.length <= 260) return text;
+  return `${text.slice(0, 260)}...`;
+}
+
+function metadataValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function AuditLogsPanel({ users }: { users: AdminInventory["users"] }) {
+  const [query, setQuery] = useState<AuditLogQuery>(defaultAuditQuery);
+  const [data, setData] = useState<AuditLogResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load(nextQuery = query) {
+    setLoading(true);
+    setError("");
+    try {
+      setData(await fetchAuditLogs(nextQuery));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "โหลด Audit log ไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load(query);
+  }, [query]);
+
+  function patchQuery(patch: Partial<AuditLogQuery>) {
+    setQuery((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
+  }
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <p className={styles.eyebrow}>AUDIT TRAIL</p>
+          <h2>Audit log ทั้งเว็บ</h2>
+        </div>
+        <div className={styles.panelTools}>
+          <button className={styles.primary} onClick={() => void load()} type="button">
+            รีเฟรช
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.auditFilters}>
+        <input
+          className={styles.search}
+          placeholder="ค้นหา action, user, path, metadata"
+          value={query.search}
+          onChange={(event) => patchQuery({ search: event.target.value })}
+        />
+        <select value={query.action} onChange={(event) => patchQuery({ action: event.target.value })}>
+          <option value="">ทุก action</option>
+          {(data?.actions ?? []).map((item) => (
+            <option key={item.action} value={item.action}>
+              {item.action} ({item.count})
+            </option>
+          ))}
+        </select>
+        <select value={query.entityType} onChange={(event) => patchQuery({ entityType: event.target.value })}>
+          <option value="">ทุก entity</option>
+          {(data?.entityTypes ?? []).map((item) => (
+            <option key={item.entityType} value={item.entityType}>
+              {item.entityType} ({item.count})
+            </option>
+          ))}
+        </select>
+        <select value={query.status} onChange={(event) => patchQuery({ status: event.target.value })}>
+          <option value="">ทุก status</option>
+          <option value="200">200</option>
+          <option value="201">201</option>
+          <option value="204">204</option>
+          <option value="400">400</option>
+          <option value="401">401</option>
+          <option value="404">404</option>
+          <option value="500">500</option>
+        </select>
+        <select value={query.actorUserId} onChange={(event) => patchQuery({ actorUserId: event.target.value })}>
+          <option value="">ทุก user</option>
+          {users.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name} · {item.email}
+            </option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={query.from}
+          onChange={(event) => patchQuery({ from: event.target.value })}
+        />
+        <input
+          type="date"
+          value={query.to}
+          onChange={(event) => patchQuery({ to: event.target.value })}
+        />
+        <button className={styles.secondary} onClick={() => setQuery(defaultAuditQuery)} type="button">
+          ล้าง filter
+        </button>
+      </div>
+
+      {error && <p className={styles.emptyInline}>{error}</p>}
+      {loading && <p className={styles.emptyInline}>กำลังโหลด Audit log…</p>}
+
+      <div className={`${styles.table} ${styles.auditTable}`}>
+        {(data?.logs ?? []).map((log) => {
+          const status = metadataValue(log.metadata, "status");
+          const path = metadataValue(log.metadata, "path") || log.entityId || "-";
+          const ip = metadataValue(log.metadata, "ip");
+          return (
+            <motion.div key={log.id} {...rowMotion}>
+              <div className={styles.auditMain}>
+                <b>{log.action}</b>
+                <small>{formatDateTime(log.createdAt)}</small>
+                <code>{path}</code>
+                <p>{metadataText(log.metadata)}</p>
+              </div>
+              <em>{log.entityType}</em>
+              <span>
+                {log.actorName || log.actorEmail || "Guest"}
+                {status ? ` · ${status}` : ""}
+                {ip ? ` · ${ip}` : ""}
+              </span>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {!loading && (data?.logs.length ?? 0) === 0 && (
+        <div className={styles.emptyState}>
+          <span>▣</span>
+          <h3>ยังไม่มี Audit log ตาม filter นี้</h3>
+          <p>ลองล้าง filter หรือเลือกช่วงวันที่ใหม่</p>
+        </div>
+      )}
+
+      <PaginationControls
+        meta={data?.pagination}
+        onPageChange={(page) => patchQuery({ page })}
+      />
+    </section>
   );
 }
 

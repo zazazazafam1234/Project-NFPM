@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { getSessionUserId } from "../session";
+import { auditRequestMetadata, logAudit } from "../audit";
 
 const track = new Hono();
 
@@ -22,6 +23,17 @@ track.post("/", async (c) => {
       INSERT INTO page_views (visitor_id, user_id, path, referrer)
       VALUES (${visitorId}, ${userId}, ${path}, ${referrer})
     `;
+    await logAudit({
+      actorUserId: userId,
+      action: "page.viewed",
+      entityType: "page",
+      entityId: path,
+      metadata: auditRequestMetadata(c, {
+        visitorId,
+        path,
+        referrer,
+      }),
+    });
   } catch (err) {
     // Tracking must never break the storefront (e.g. a session for a deleted user).
     console.error("[track] insert failed", err instanceof Error ? err.message : err);

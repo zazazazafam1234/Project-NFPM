@@ -166,6 +166,89 @@ function statusCounts(rows: Array<{ status?: string; role?: string; count: numbe
   return counts;
 }
 
+admin.get("/audit-logs", async (c) => {
+  const query = c.req.query();
+  const page = pageNumber(query.page);
+  const limit = pageSize(query.limit);
+  const offset = (page - 1) * limit;
+  const search = (query.search ?? "").trim();
+  const action = (query.action ?? "").trim();
+  const entityType = (query.entityType ?? "").trim();
+  const actorUserId = (query.actorUserId ?? "").trim();
+  const status = (query.status ?? "").trim();
+  const from = (query.from ?? "").trim();
+  const to = (query.to ?? "").trim();
+  const searchLike = `%${search}%`;
+
+  const filter = sql`
+    TRUE
+    ${search
+      ? sql`
+        AND (
+          l.action ILIKE ${searchLike}
+          OR l.entity_type ILIKE ${searchLike}
+          OR COALESCE(l.entity_id, '') ILIKE ${searchLike}
+          OR COALESCE(u.name, '') ILIKE ${searchLike}
+          OR COALESCE(u.email, '') ILIKE ${searchLike}
+          OR l.metadata::text ILIKE ${searchLike}
+        )
+      `
+      : sql``}
+    ${action ? sql`AND l.action = ${action}` : sql``}
+    ${entityType ? sql`AND l.entity_type = ${entityType}` : sql``}
+    ${actorUserId ? sql`AND l.actor_user_id = ${actorUserId}` : sql``}
+    ${status ? sql`AND l.metadata->>'status' = ${status}` : sql``}
+    ${from ? sql`AND l.created_at >= ${bangkokDateOnlyToUtcIso(from, "start")}` : sql``}
+    ${to ? sql`AND l.created_at <= ${bangkokDateOnlyToUtcIso(to, "end")}` : sql``}
+  `;
+
+  const [logs, totalRows, actions, entityTypes] = await Promise.all([
+    sql`
+      SELECT
+        l.id,
+        l.actor_user_id AS "actorUserId",
+        u.name AS "actorName",
+        u.email AS "actorEmail",
+        l.action,
+        l.entity_type AS "entityType",
+        l.entity_id AS "entityId",
+        l.metadata,
+        l.created_at AS "createdAt"
+      FROM admin_audit_logs l
+      LEFT JOIN "User" u ON u.id = l.actor_user_id
+      WHERE ${filter}
+      ORDER BY l.created_at DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS total
+      FROM admin_audit_logs l
+      LEFT JOIN "User" u ON u.id = l.actor_user_id
+      WHERE ${filter}
+    `,
+    sql`
+      SELECT action, COUNT(*)::int AS count
+      FROM admin_audit_logs
+      GROUP BY action
+      ORDER BY action
+    `,
+    sql`
+      SELECT entity_type AS "entityType", COUNT(*)::int AS count
+      FROM admin_audit_logs
+      GROUP BY entity_type
+      ORDER BY entity_type
+    `,
+  ]);
+
+  return c.json({
+    logs,
+    actions,
+    entityTypes,
+    pagination: pageMeta(page, limit, Number(totalRows[0]?.total ?? 0)),
+  });
+});
+
 admin.get("/inventory", async (c) => {
   const query = c.req.query();
   const profilesPage = pageNumber(query.profilesPage);

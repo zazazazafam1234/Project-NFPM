@@ -370,6 +370,49 @@ export function fetchAdminInventory(query?: Partial<AdminInventoryQuery>) {
   return apiFetch<AdminInventory>(`/admin/inventory${suffix}`);
 }
 
+export type AuditLog = {
+  id: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type AuditLogQuery = {
+  page: number;
+  search: string;
+  action: string;
+  entityType: string;
+  actorUserId: string;
+  status: string;
+  from: string;
+  to: string;
+};
+
+export type AuditLogResponse = {
+  logs: AuditLog[];
+  actions: Array<{ action: string; count: number }>;
+  entityTypes: Array<{ entityType: string; count: number }>;
+  pagination: PageMeta;
+};
+
+export function fetchAuditLogs(query?: Partial<AuditLogQuery>) {
+  const params = new URLSearchParams();
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        params.set(key, String(value));
+      }
+    });
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return apiFetch<AuditLogResponse>(`/admin/audit-logs${suffix}`);
+}
+
 export function saveAdminPackage(body: {
   slug: string;
   name: string;

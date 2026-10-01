@@ -12,6 +12,7 @@ import track from "./routes/track";
 import lineBot from "./routes/line-bot";
 import { startReminderWorker } from "./libs/gmail/reminder-worker";
 import { startPinRotationWorker } from "./libs/pin-rotation/worker";
+import { auditRequestMiddleware } from "./audit";
 
 const app = new Hono();
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
@@ -28,6 +29,7 @@ app.use(
 );
 
 const api = new Hono();
+api.use("*", auditRequestMiddleware());
 api.route("/admin", admin);
 api.route("/auth", auth);
 api.route("/catalog", catalog);

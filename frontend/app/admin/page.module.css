@@ -689,6 +689,47 @@
 .search {
   width: 220px;
 }
+.auditFilters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(6, minmax(120px, 1fr)) auto;
+  gap: 8px;
+  margin-top: 18px;
+}
+.auditFilters input,
+.auditFilters select {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-ffffff1a);
+  border-radius: 8px;
+  outline: 0;
+  color: var(--c-eee9f5ff);
+  background: var(--c-0f0e15ff);
+  font: inherit;
+  font-size: 11px;
+}
+.auditFilters .search {
+  width: auto;
+}
+.auditTable > div {
+  align-items: flex-start;
+}
+.auditMain {
+  display: grid;
+  flex: 1 1 420px;
+  gap: 5px;
+  min-width: 260px;
+}
+.auditMain small,
+.auditMain code,
+.auditMain p {
+  margin: 0;
+  color: var(--c-948c9dff);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.auditMain code {
+  color: var(--c-b79bffff);
+}
 .categoryTabs {
   display: flex;
   flex-wrap: wrap;
@@ -806,6 +847,9 @@
     align-items: stretch;
     flex-direction: column;
   }
+  .auditFilters {
+    grid-template-columns: 1fr 1fr;
+  }
   .search {
     width: 100%;
   }
@@ -827,6 +871,12 @@
   .formRows label {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+  .auditFilters {
+    grid-template-columns: 1fr;
+  }
+  .auditMain {
+    min-width: 0;
   }
   .table > div span {
     display: none;
