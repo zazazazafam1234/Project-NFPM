@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import sql from "../../db";
 import { decryptSecret, encryptSecret } from "../../crypto";
 import { sendPlainEmail } from "../gmail/mailsender";
+import { pushToGroups } from "../line-bot";
 
 /**
  * After a purchase the customer's email is added to the rented Netflix profile
@@ -21,6 +22,7 @@ export const RENEW_GRACE_HOURS = 12;
 const CHECK_INTERVAL_MS = 60 * 1000;
 export const MAX_ROTATION_ATTEMPTS = 3;
 const MAX_EMAIL_ATTEMPTS = 3;
+const SUPPORT_DISCORD_URL = process.env.SUPPORT_DISCORD_URL ?? "https://discord.gg/9guggS5EXD";
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 let running = false;
@@ -325,6 +327,58 @@ async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
       ? `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครบ ${MAX_EMAIL_ATTEMPTS} ครั้งแล้ว หยุดลอง (รอแอดมิน) reason=${reason}`
       : `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
   );
+  if (attempt >= MAX_EMAIL_ATTEMPTS) await reportAddGaveUp(job, reason);
+}
+
+function orderRef(subscriptionId: string) {
+  return `#${subscriptionId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
+// Last attempt failed: the customer is told to contact support on Discord and the admin LINE groups are alerted.
+async function reportAddGaveUp(job: EmailJob, reason: string) {
+  const ref = orderRef(job.subscription_id);
+  const text = [
+    "ขออภัยครับ ระบบยังเตรียมบัญชีของคุณไม่สำเร็จ",
+    "",
+    `รหัสคำสั่งซื้อ: ${ref}`,
+    `แพ็กเกจ: ${job.package_name}`,
+    `โปรไฟล์: ${job.profile_name}`,
+    "",
+    "กรุณาติดต่อทีมงานทาง Discord พร้อมแจ้งรหัสคำสั่งซื้อด้านบน ทีมงานจะช่วยดำเนินการให้โดยเร็วที่สุด",
+    SUPPORT_DISCORD_URL,
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  try {
+    await sendPlainEmail({ to: job.user_email, subject: `เตรียมบัญชีไม่สำเร็จ — กรุณาติดต่อทีมงาน (${ref})`, text });
+    await logEvent(job.subscription_id, "profile_email_failed_notice_sent", `Support notice sent to ${job.user_email}`);
+  } catch (err) {
+    console.error(
+      `[profile-email] ❌ ส่งเมลแจ้งติดต่อทีมงานไม่สำเร็จ to=${job.user_email}`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  await alertAdmins([
+    `🚨 เพิ่มอีเมลลูกค้าในโปรไฟล์ไม่สำเร็จ (ครบ ${MAX_EMAIL_ATTEMPTS} ครั้ง)`,
+    "",
+    `คำสั่งซื้อ: ${ref}`,
+    `ลูกค้า: ${job.user_email}`,
+    `แพ็กเกจ: ${job.package_name}`,
+    `บัญชีแม่: ${job.master_email} · โปรไฟล์: ${job.profile_name}`,
+    `สาเหตุ: ${reason.slice(0, 200)}`,
+    "",
+    "ส่งเมลให้ลูกค้าติดต่อทาง Discord แล้ว กรุณาเพิ่มอีเมลให้ลูกค้าด้วยตัวเอง",
+  ]);
+}
+
+async function alertAdmins(lines: string[]) {
+  try {
+    const result = await pushToGroups(lines.join("\n"));
+    console.log(`[profile-email] 🔔 แจ้งเตือน LINE sent=${result.sent} failed=${result.failed}${result.reason ? ` reason=${result.reason}` : ""}`);
+  } catch (err) {
+    console.error("[profile-email] ❌ แจ้งเตือน LINE ไม่สำเร็จ", err instanceof Error ? err.message : err);
+  }
 }
 
 // "Ready to use" email with the profile PIN, sent once the customer's email is on the profile.
