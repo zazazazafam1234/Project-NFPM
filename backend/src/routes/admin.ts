@@ -383,6 +383,7 @@ admin.get("/inventory", async (c) => {
         me.master_expired_at,
         me.note,
         (me.account_pin_ciphertext IS NOT NULL) AS "hasAccountPin",
+        (me.mailbox_password_ciphertext IS NOT NULL) AS "hasMailboxPassword",
         COUNT(p.id)::int AS "profileCount",
         COUNT(p.id) FILTER (
           WHERE (
@@ -1180,6 +1181,7 @@ admin.post("/master-emails", async (c) => {
     status?: "active" | "inactive" | "expired" | "suspended";
     maxProfiles?: number;
     accountPin?: string | null;
+    mailboxPassword?: string | null;
     note?: string;
   }>();
 
@@ -1197,13 +1199,15 @@ admin.post("/master-emails", async (c) => {
 
   const [account] = await sql`
     INSERT INTO master_emails (
-      service, email, password_ciphertext, account_pin_ciphertext, status, purchased_at, master_expired_at, max_profiles, note
+      service, email, password_ciphertext, account_pin_ciphertext, mailbox_password_ciphertext,
+      status, purchased_at, master_expired_at, max_profiles, note
     )
     VALUES (
       ${service},
       ${body.email},
       ${encryptSecret(body.password)},
       ${body.accountPin ? encryptSecret(body.accountPin) : null},
+      ${body.mailboxPassword ? encryptSecret(body.mailboxPassword) : null},
       ${body.status ?? "active"},
       ${masterPurchasedAt(body.purchasedAt)},
       ${masterExpiredAt(body.masterExpiredAt)},
@@ -1227,6 +1231,7 @@ admin.patch("/master-emails/:id", async (c) => {
     status?: "active" | "inactive" | "expired" | "suspended";
     maxProfiles?: number;
     accountPin?: string | null;
+    mailboxPassword?: string | null;
     note?: string | null;
   }>();
 
@@ -1249,6 +1254,8 @@ admin.patch("/master-emails/:id", async (c) => {
   if (body.password) addUpdate(sets, values, "password_ciphertext", encryptSecret(body.password));
   if (body.accountPin) addUpdate(sets, values, "account_pin_ciphertext", encryptSecret(body.accountPin));
   if (body.accountPin === null) addUpdate(sets, values, "account_pin_ciphertext", null);
+  if (body.mailboxPassword) addUpdate(sets, values, "mailbox_password_ciphertext", encryptSecret(body.mailboxPassword));
+  if (body.mailboxPassword === null) addUpdate(sets, values, "mailbox_password_ciphertext", null);
   if (body.purchasedAt !== undefined) addUpdate(sets, values, "purchased_at", masterPurchasedAt(body.purchasedAt));
   if (body.masterExpiredAt !== undefined) addUpdate(sets, values, "master_expired_at", masterExpiredAt(body.masterExpiredAt));
   if (body.status !== undefined) addUpdate(sets, values, "status", body.status, "::master_email_status");

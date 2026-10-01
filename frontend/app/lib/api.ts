@@ -264,6 +264,7 @@ export type AdminInventory = {
     status: string;
     maxProfiles: number;
     hasAccountPin?: boolean;
+    hasMailboxPassword?: boolean;
     purchased_at: string;
     master_expired_at: string;
     note: string | null;
@@ -454,6 +455,7 @@ export function saveMasterEmail(body: {
   email: string;
   password: string;
   accountPin?: string;
+  mailboxPassword?: string;
   purchasedAt?: string;
   masterExpiredAt: string;
   status?: string;
@@ -471,6 +473,7 @@ export function updateMasterEmail(masterEmailId: string, body: {
   email?: string;
   password?: string;
   accountPin?: string;
+  mailboxPassword?: string;
   purchasedAt?: string;
   masterExpiredAt?: string;
   status?: string;

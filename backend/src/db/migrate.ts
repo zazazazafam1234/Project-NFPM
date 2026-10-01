@@ -196,6 +196,8 @@ await sql`
 
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES packages(id) ON DELETE SET NULL`;
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS account_pin_ciphertext TEXT`;
+// Gmail App Password of the master email: the pin-service reads Netflix verification codes over IMAP.
+await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS mailbox_password_ciphertext TEXT`;
 await sql`ALTER TABLE master_emails ADD COLUMN IF NOT EXISTS max_profiles INTEGER NOT NULL DEFAULT 5 CHECK (max_profiles > 0)`;
 await sql`UPDATE master_emails SET package_id = NULL WHERE package_id IS NOT NULL`;
 await sql`

@@ -4,20 +4,28 @@ import { decryptSecret, encryptSecret } from "../../crypto";
 import { sendPlainEmail } from "../gmail/mailsender";
 
 /**
+ * After a purchase the customer's email is added to the rented Netflix profile
+ * (pin-service POST /profile-email, action "add"); the email now on the profile
+ * is kept in profiles.metadata.profileEmail.
+ *
  * When a rental ends the slot is held and the customer gets RENEW_GRACE_HOURS to
  * renew with the same profile and PIN (emailed a renew link). After that — or right
  * away when an admin ends the rental — the profile's lock PIN is changed through
- * the Python pin-service (see /pin-service), the slot goes back on sale and the
- * customer is emailed. Without PIN_SERVICE_URL and PIN_SERVICE_KEY the last step
+ * the Python pin-service (see /pin-service), after removing the customer's email
+ * from the profile; then the slot goes back on sale and the customer is emailed. Without PIN_SERVICE_URL and PIN_SERVICE_KEY the last step
  * only expires the rental, releases the slot and emails.
  */
 
 export const RENEW_GRACE_HOURS = 12;
 const CHECK_INTERVAL_MS = 60 * 1000;
 export const MAX_ROTATION_ATTEMPTS = 3;
+const MAX_EMAIL_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 let running = false;
+let tick: (() => void) | null = null;
+
+type Service = { url: string; key: string };
 
 type ExpiredRental = {
   subscription_id: string;
@@ -30,6 +38,8 @@ type ExpiredRental = {
   master_email: string;
   password_ciphertext: string;
   account_pin_ciphertext: string | null;
+  mailbox_password_ciphertext: string | null;
+  profile_email: string | null;
   failures: number;
 };
 
@@ -48,6 +58,8 @@ async function findExpiredRentals(profileId: string | null = null) {
       me.email AS master_email,
       me.password_ciphertext,
       me.account_pin_ciphertext,
+      me.mailbox_password_ciphertext,
+      p.metadata->>'profileEmail' AS profile_email,
       (SELECT COUNT(*) FROM subscription_events se
         WHERE se.subscription_id = s.id AND se.event_type = 'pin_rotation_failed')::int AS failures
     FROM subscriptions s
@@ -213,7 +225,124 @@ async function sendExpiredEmail(rental: ExpiredRental, { pinChanged }: { pinChan
   }
 }
 
-async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: string) {
+// Throws with the pin-service's reason unless it reports success.
+async function callService(service: Service, path: string, body: Record<string, unknown>) {
+  const response = await fetch(`${service.url.replace(/\/+$/, "")}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-service-key": service.key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const data = (await response.json().catch(() => ({}))) as { success?: boolean; reason?: string };
+  if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
+  return data.reason ?? "ok";
+}
+
+function masterLogin(rental: Pick<ExpiredRental, "master_email" | "password_ciphertext" | "account_pin_ciphertext" | "mailbox_password_ciphertext" | "profile_name">) {
+  return {
+    masterEmail: rental.master_email,
+    masterPassword: decryptSecret(rental.password_ciphertext),
+    accountPin: rental.account_pin_ciphertext ? decryptSecret(rental.account_pin_ciphertext) : null,
+    mailboxPassword: rental.mailbox_password_ciphertext ? decryptSecret(rental.mailbox_password_ciphertext) : null,
+    profileName: rental.profile_name,
+  };
+}
+
+type EmailJob = Omit<ExpiredRental, "expires_at" | "package_name" | "profile_deleted">;
+
+// Running rentals whose profile does not carry the customer's email yet.
+async function findRentalsNeedingEmail() {
+  return sql<EmailJob[]>`
+    SELECT
+      s.id AS subscription_id,
+      s.profile_id,
+      u.email AS user_email,
+      p.profile_name,
+      me.email AS master_email,
+      me.password_ciphertext,
+      me.account_pin_ciphertext,
+      me.mailbox_password_ciphertext,
+      p.metadata->>'profileEmail' AS profile_email,
+      (SELECT COUNT(*) FROM subscription_events se
+        WHERE se.subscription_id = s.id AND se.event_type = 'profile_email_add_failed')::int AS failures
+    FROM subscriptions s
+    JOIN "User" u ON u.id = s.user_id
+    JOIN profiles p ON p.id = s.profile_id
+    JOIN master_emails me ON me.id = p.master_email_id
+    WHERE s.status = 'active'
+      AND s.started_at <= NOW()
+      AND s.expires_at > NOW()
+      AND p.deleted_at IS NULL
+      AND me.deleted_at IS NULL
+      AND LOWER(COALESCE(p.metadata->>'profileEmail', '')) <> LOWER(u.email)
+    ORDER BY s.started_at
+  `;
+}
+
+async function addProfileEmail(job: EmailJob, service: Service) {
+  const attempt = job.failures + 1;
+  console.log(
+    `[profile-email] ⏳ เริ่มเพิ่มอีเมล ${job.user_email} ในโปรไฟล์ ${job.profile_name} master=${job.master_email} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS}`,
+  );
+  try {
+    const reason = await callService(service, "/profile-email", {
+      action: "add",
+      ...masterLogin(job),
+      customerEmail: job.user_email,
+    });
+    await sql`
+      UPDATE profiles
+      SET metadata = metadata || ${sql.json({ profileEmail: job.user_email })}, updated_at = NOW()
+      WHERE id = ${job.profile_id}::uuid
+    `;
+    await logEvent(job.subscription_id, "profile_email_added", `Added ${job.user_email} to profile ${job.profile_name} (${reason})`);
+    console.log(`[profile-email] ✅ เพิ่มอีเมล ${job.user_email} ในโปรไฟล์ ${job.profile_name} แล้ว`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await logEvent(
+      job.subscription_id,
+      "profile_email_add_failed",
+      `Attempt ${attempt}/${MAX_EMAIL_ATTEMPTS}: ${reason}`.slice(0, 500),
+    );
+    console.error(
+      attempt >= MAX_EMAIL_ATTEMPTS
+        ? `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครบ ${MAX_EMAIL_ATTEMPTS} ครั้งแล้ว หยุดลอง (รอแอดมิน) reason=${reason}`
+        : `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
+    );
+  }
+}
+
+// Takes the ended customer's email off the profile. Returns false (and counts a failed rotation) if it could not.
+async function removeProfileEmail(rental: ExpiredRental, service: Service, attempt: number) {
+  console.log(`[profile-email] ⏳ เริ่มลบอีเมล ${rental.profile_email} ออกจากโปรไฟล์ ${rental.profile_name}`);
+  try {
+    const reason = await callService(service, "/profile-email", { action: "remove", ...masterLogin(rental) });
+    await sql`
+      UPDATE profiles SET metadata = metadata - 'profileEmail', updated_at = NOW()
+      WHERE id = ${rental.profile_id}::uuid
+    `;
+    await logEvent(rental.subscription_id, "profile_email_removed", `Removed ${rental.profile_email} from profile ${rental.profile_name} (${reason})`);
+    console.log(`[profile-email] ✅ ลบอีเมลออกจากโปรไฟล์ ${rental.profile_name} แล้ว`);
+    return true;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await logEvent(
+      rental.subscription_id,
+      "pin_rotation_failed",
+      `Attempt ${attempt}/${MAX_ROTATION_ATTEMPTS}: remove profile email: ${reason}`.slice(0, 500),
+    );
+    console.error(
+      `[profile-email] ❌ ลบอีเมลไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} reason=${reason}`,
+    );
+    return false;
+  }
+}
+
+async function rotate(rental: ExpiredRental, service: Service) {
+  const attempt = rental.failures + 1;
+  // The email goes first: a failure here retries the whole rotation next minute.
+  if (rental.profile_email && !(await removeProfileEmail(rental, service, attempt))) return;
+
   const newPin = String(randomInt(0, 10000)).padStart(4, "0");
   // Keep the new PIN before touching Netflix so it is never lost if the DB update below fails.
   await sql`
@@ -222,25 +351,11 @@ async function rotate(rental: ExpiredRental, serviceUrl: string, serviceKey: str
     WHERE id = ${rental.profile_id}::uuid
   `;
 
-  const attempt = rental.failures + 1;
   console.log(
     `[pin-rotation] ⏳ เริ่มเปลี่ยน PIN profile=${rental.profile_name} master=${rental.master_email} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS}`,
   );
   try {
-    const response = await fetch(`${serviceUrl.replace(/\/+$/, "")}/rotate-pin`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-service-key": serviceKey },
-      body: JSON.stringify({
-        masterEmail: rental.master_email,
-        masterPassword: decryptSecret(rental.password_ciphertext),
-        accountPin: rental.account_pin_ciphertext ? decryptSecret(rental.account_pin_ciphertext) : null,
-        profileName: rental.profile_name,
-        newPin,
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const data = (await response.json().catch(() => ({}))) as { success?: boolean; reason?: string };
-    if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
+    await callService(service, "/rotate-pin", { ...masterLogin(rental), newPin });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     await logEvent(
@@ -294,7 +409,13 @@ async function releaseWithoutRotation(rental: ExpiredRental) {
   console.log(`[pin-rotation] ✅ ปิดการเช่าแล้ว (ไม่ได้เปลี่ยน PIN) profile=${rental.profile_name} ปล่อย Slot กลับมาขายแล้ว`);
 }
 
-async function checkExpiredRentals(service: { url: string; key: string } | null) {
+async function checkExpiredRentals(service: Service | null) {
+  if (service) {
+    for (const job of await findRentalsNeedingEmail()) {
+      if (job.failures < MAX_EMAIL_ATTEMPTS) await addProfileEmail(job, service);
+    }
+  }
+
   for (const rental of await findRentalsEnteringGrace()) await startRenewalWindow(rental);
 
   const rentals = await findExpiredRentals();
@@ -321,7 +442,7 @@ async function checkExpiredRentals(service: { url: string; key: string } | null)
       continue;
     }
     if (rental.failures >= MAX_ROTATION_ATTEMPTS) continue; // left reserved for an admin
-    await rotate(rental, service.url, service.key);
+    await rotate(rental, service);
   }
 }
 
@@ -365,12 +486,17 @@ export async function expireProfileRentalNow(profileId: string, actorUserId: str
   return ended;
 }
 
+/** Runs the worker now (e.g. right after a purchase) instead of waiting for the next minute. */
+export function runPinWorkerSoon() {
+  tick?.();
+}
+
 export function startPinRotationWorker() {
   const serviceUrl = process.env.PIN_SERVICE_URL;
   const serviceKey = process.env.PIN_SERVICE_KEY;
   const service = serviceUrl && serviceKey ? { url: serviceUrl, key: serviceKey } : null;
 
-  const tick = () => {
+  tick = () => {
     if (running) return;
     running = true;
     checkExpiredRentals(service)

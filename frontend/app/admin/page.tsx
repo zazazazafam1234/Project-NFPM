@@ -1097,6 +1097,7 @@ function AccountsPanel({
     email: "",
     password: "",
     accountPin: "",
+    mailboxPassword: "",
     purchasedAt: tomorrow,
     masterExpiredAt: tomorrow,
     status: "active",
@@ -1129,6 +1130,7 @@ function AccountsPanel({
       email: "",
       password: "",
       accountPin: "",
+      mailboxPassword: "",
       purchasedAt: tomorrow,
       masterExpiredAt: tomorrow,
       status: "active",
@@ -1141,6 +1143,7 @@ function AccountsPanel({
     const payload = {
       ...form,
       accountPin: form.accountPin.trim() || undefined,
+      mailboxPassword: form.mailboxPassword.trim() || undefined,
       service: form.service.trim().toLowerCase(),
       purchasedAt: dateOnlyToIso(form.purchasedAt, "start"),
       masterExpiredAt: dateOnlyToIso(form.masterExpiredAt, "end"),
@@ -1160,6 +1163,7 @@ function AccountsPanel({
           service: editForm.service.trim().toLowerCase(),
           password: editForm.password || undefined,
           accountPin: editForm.accountPin.trim() || undefined,
+          mailboxPassword: editForm.mailboxPassword.trim() || undefined,
           purchasedAt: dateOnlyToIso(editForm.purchasedAt, "start"),
           masterExpiredAt: dateOnlyToIso(editForm.masterExpiredAt, "end"),
         }),
@@ -1215,6 +1219,7 @@ function AccountsPanel({
                     email: account.email,
                     password: "",
                     accountPin: "",
+                    mailboxPassword: "",
                     purchasedAt: dateInputValue(account.purchased_at) || tomorrow,
                     masterExpiredAt: dateInputValue(account.master_expired_at) || tomorrow,
                     status: account.status,
@@ -1279,6 +1284,15 @@ function AccountsPanel({
               maxLength={4}
               value={form.accountPin}
               onChange={(event) => setForm({ ...form, accountPin: event.target.value.replace(/\D/g, "") })}
+            />
+          </label>
+          <label>
+            Gmail App Password ของอีเมลนี้ (ใช้ดึงรหัสยืนยันจาก Netflix ตอนเพิ่ม/ลบอีเมลโปรไฟล์)
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={form.mailboxPassword}
+              onChange={(event) => setForm({ ...form, mailboxPassword: event.target.value })}
             />
           </label>
           <label>
@@ -1381,6 +1395,15 @@ function AccountsPanel({
               maxLength={4}
               value={editForm.accountPin}
               onChange={(event) => setEditForm({ ...editForm, accountPin: event.target.value.replace(/\D/g, "") })}
+            />
+          </label>
+          <label>
+            Gmail App Password ({editingAccount?.hasMailboxPassword ? "มีแล้ว · เว้นว่าง = ไม่เปลี่ยน" : "ยังไม่ได้ตั้ง"})
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={editForm.mailboxPassword}
+              onChange={(event) => setEditForm({ ...editForm, mailboxPassword: event.target.value })}
             />
           </label>
           <label>

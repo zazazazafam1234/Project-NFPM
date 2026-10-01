@@ -7,6 +7,14 @@ POST /rotate-pin  (header x-service-key: $PIN_SERVICE_KEY)
 }
 -> 200 {"success": true, "reason": "pin_changed", "profileName": ..., "steps": [...]}
 -> 4xx/5xx {"success": false, "reason": "...", ...}
+
+POST /profile-email  (same header)
+{
+  "action": "add" | "remove", "masterEmail": "...", "masterPassword": "...",
+  "accountPin": "1234" | null, "mailboxPassword": "<Gmail app password>" | null,
+  "profileName": "n4v7wi", "customerEmail": "buyer@example.com"   (add only)
+}
+-> 200 {"success": true, "reason": "email_added" | "email_removed" | "email_already_...", ...}
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ from flask import Flask, jsonify, request
 from netflix_login_checker.core import DEFAULT_PROFILES_DIR, login_netflix
 
 from .change_pin import change_profile_pin
+from .profile_email import update_profile_email
 
 # One browser at a time: jobs for the same master account share a browser profile.
 _browser_lock = threading.Lock()
@@ -80,6 +89,72 @@ def create_app() -> Flask:
                 account_pin=account_pin,
                 profile_name=profile_name,
                 new_pin=new_pin,
+                profiles_dir=profiles_dir,
+                headless=headless,
+                proxy_server=proxy_server,
+                debug=debug,
+            )
+
+        payload = asdict(outcome)
+        return _response(
+            outcome.success,
+            outcome.reason,
+            200 if outcome.success else 502,
+            profileName=payload.pop("profile_name"),
+            url=payload["url"],
+            steps=payload["steps"],
+        )
+
+    @app.post("/profile-email")
+    def profile_email():
+        if not service_key or not hmac.compare_digest(request.headers.get("x-service-key", ""), service_key):
+            return _response(False, "unauthorized", 401)
+
+        data = request.get_json(silent=True) or {}
+        action = str(data.get("action") or "").strip()
+        email = str(data.get("masterEmail") or "").strip()
+        password = str(data.get("masterPassword") or "").rstrip("\r\n")
+        account_pin = str(data.get("accountPin") or "").strip() or None
+        mailbox_password = str(data.get("mailboxPassword") or "").strip() or None
+        profile_name = str(data.get("profileName") or "").strip()
+        customer_email = str(data.get("customerEmail") or "").strip() or None
+        if action not in ("add", "remove"):
+            return _response(False, "action must be add or remove", 400)
+        if not email or not password or not profile_name:
+            return _response(False, "missing_fields: masterEmail, masterPassword, profileName", 400)
+        if action == "add" and (not customer_email or "@" not in customer_email):
+            return _response(False, "customerEmail required for add", 400)
+
+        request_id = uuid4().hex[:8]
+        debug = lambda message: _log(request_id, message)  # noqa: E731
+        _log(
+            request_id,
+            f"profile_email_received action={action} email={_mask_email(email)} profile={profile_name}"
+            + (f" customer={_mask_email(customer_email)}" if customer_email else ""),
+        )
+
+        with _browser_lock:
+            login = login_netflix(
+                email,
+                password,
+                headless=headless,
+                persistent_profile=True,
+                profiles_dir=profiles_dir,
+                proxy_server=proxy_server,
+                debug=debug,
+                allow_manual_login=False,
+            )
+            if not login.success:
+                return _response(False, f"login_failed: {login.reason}", 502, profileName=profile_name)
+
+            outcome = update_profile_email(
+                action=action,
+                email=email,
+                account_password=password,
+                account_pin=account_pin,
+                profile_name=profile_name,
+                customer_email=customer_email,
+                mailbox_password=mailbox_password,
                 profiles_dir=profiles_dir,
                 headless=headless,
                 proxy_server=proxy_server,

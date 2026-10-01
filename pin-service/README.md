@@ -16,6 +16,25 @@ Movie backend calls it; it reuses the login and profile code from
    marks the rental `expired` and emails the customer. On failure it retries
    (3 attempts in total), then leaves the slot `reserved` for an admin.
 
+## Profile email flow
+
+- **Purchase:** right after a customer buys a slot, the backend worker calls
+  `POST /profile-email` with `action: "add"` and the customer's account email.
+  The service opens the profile's *Edit profile* page → email link → verifies
+  identity → fills the email → "เพิ่มอีเมล" → "บันทึก". The backend keeps the
+  email in `profiles.metadata.profileEmail` (3 attempts, then logged as
+  `profile_email_add_failed` for an admin).
+- **Expiry:** before rotating the PIN, the worker calls `action: "remove"`
+  (email link → "ลบอีเมล" → "บันทึก"). A failure counts as a failed rotation
+  and is retried; the slot stays `reserved` until both steps succeed.
+- **Identity check:** if Netflix offers the password option it is used.
+  Otherwise "ส่งรหัสทางอีเมล" is clicked and the 6-digit code is read from the
+  master email's inbox over IMAP: codes received after the click are tried
+  closest-in-time first (others cover a parallel request); if none work, the
+  code is re-sent once. Mailbox login is the master email + its **Gmail App
+  Password** (set per master email in the admin page), or a shared inbox that
+  receives forwarded Netflix mail via `OTP_IMAP_USER` / `OTP_IMAP_PASSWORD`.
+
 ## Run
 
 ```bash
@@ -39,6 +58,8 @@ docker run -d --name fastmovie-pin-service -p 5055:5055 \
 | `PIN_SERVICE_HEADLESS` | `true` | `false` to watch the browser |
 | `PIN_SERVICE_PROFILES_DIR` | `.netflix_profiles` | saved browser sessions, one per master email |
 | `PIN_SERVICE_PROXY` | — | e.g. `socks5://host:1080` |
+| `OTP_IMAP_HOST` | `imap.gmail.com` | mailbox for Netflix verification codes |
+| `OTP_IMAP_USER` / `OTP_IMAP_PASSWORD` | — | shared inbox, used when a master email has no App Password |
 
 Backend side (`backend/.env`): `PIN_SERVICE_URL=http://<host>:5055` and the same
 `PIN_SERVICE_KEY`. The rotation worker stays off until both are set.
@@ -52,5 +73,15 @@ Backend side (`backend/.env`): `PIN_SERVICE_URL=http://<host>:5055` and the same
   "profileName": "n4v7wi", "newPin": "5831" }
 ```
 
-`200 {"success": true, "reason": "pin_changed", ...}` or an error status with
+`POST /profile-email` with the same header:
+
+```json
+{ "action": "add", "masterEmail": "a@b.com", "masterPassword": "...", "accountPin": "1234",
+  "mailboxPassword": "abcd efgh ijkl mnop", "profileName": "n4v7wi",
+  "customerEmail": "buyer@example.com" }
+```
+
+`action: "remove"` takes the same fields without `customerEmail`.
+
+Both return `200 {"success": true, "reason": "...", ...}` or an error status with
 `{"success": false, "reason": "..."}`. `GET /health` reports whether a job is running.

@@ -3,7 +3,7 @@ import sql from "../db";
 import { decryptSecret } from "../crypto";
 import { getSessionUserId } from "../session";
 import { sendSubscriptionEmail } from "../libs/gmail/mailsender";
-import { RENEW_GRACE_HOURS } from "../libs/pin-rotation/worker";
+import { RENEW_GRACE_HOURS, runPinWorkerSoon } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
 
@@ -303,6 +303,8 @@ subscriptions.post("/", async (c) => {
         error: err instanceof Error ? err.message : err,
       });
     });
+    // Adds the customer's email to the rented profile (see libs/pin-rotation/worker).
+    runPinWorkerSoon();
 
     return c.json({
       subscriptionId: result.subscription.id,
