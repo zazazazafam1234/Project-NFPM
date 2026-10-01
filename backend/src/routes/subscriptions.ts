@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import sql from "../db";
-import { decryptSecret } from "../crypto";
 import { getSessionUserId } from "../session";
-import { sendSubscriptionEmail } from "../libs/gmail/mailsender";
 import { RENEW_GRACE_HOURS, runPinWorkerSoon } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
@@ -77,13 +75,14 @@ subscriptions.get("/", async (c) => {
       pkg.duration_days AS "durationDays",
       pkg.duration_minutes AS "durationMinutes",
       p.profile_name AS "profileName",
-      me.email AS "masterEmail",
+      (LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)) AS "ready",
       pkg.price_amount AS "renewPrice",
       (${renewable()}) AS "canRenew"
     FROM subscriptions s
     JOIN packages pkg ON pkg.id = s.package_id
     JOIN profiles p ON p.id = s.profile_id
     JOIN master_emails me ON me.id = p.master_email_id
+    JOIN "User" u ON u.id = s.user_id
     WHERE s.user_id = ${userId}
     ORDER BY s.created_at DESC
     LIMIT 50
@@ -103,7 +102,7 @@ subscriptions.get("/", async (c) => {
       durationDays: row.durationDays,
       durationMinutes: row.durationMinutes,
       profileName: row.profileName,
-      masterEmail: row.masterEmail,
+      ready: row.ready,
       canRenew: row.canRenew,
       renewPrice: row.renewPrice,
       renewDeadline: new Date(new Date(row.expires_at).getTime() + RENEW_GRACE_HOURS * 60 * 60 * 1000),
@@ -284,26 +283,8 @@ subscriptions.post("/", async (c) => {
       };
     });
 
-    const credentials = {
-      email: result.profile.master_email,
-      password: decryptSecret(result.profile.master_password_ciphertext),
-      profileName: result.profile.profile_name,
-      pin: decryptSecret(result.profile.profile_pin_ciphertext),
-    };
-
-    const order = {
-      packageName: result.package.name,
-      startedAt: result.subscription.started_at,
-      expiresAt: result.subscription.expires_at,
-    };
-    sendSubscriptionEmail({ to: result.userEmail, credentials, order }).catch((err) => {
-      console.error("[gmail] sendSubscriptionEmail failed", {
-        userId,
-        subscriptionId: result.subscription.id,
-        error: err instanceof Error ? err.message : err,
-      });
-    });
-    // Adds the customer's email to the rented profile (see libs/pin-rotation/worker).
+    // The master account is never sent to the customer: the worker adds the customer's
+    // email to the profile, then emails the PIN saying it is ready (see libs/pin-rotation/worker).
     runPinWorkerSoon();
 
     return c.json({

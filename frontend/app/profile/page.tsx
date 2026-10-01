@@ -272,7 +272,7 @@ export default function ProfilePage() {
                       <div className={styles.itemBody}>
                         <strong>คำสั่งซื้อ {s.packageName}</strong>
                         <span className={styles.itemSub}>
-                          <b>Slot:</b> {s.profileName} · <b>บัญชี:</b> {s.masterEmail}
+                          <b>Slot:</b> {s.profileName}
                           {expiry && (
                             <em className={expiry.expired ? styles.expired : styles.active}>
                               {expiry.expired ? " · หมดอายุ " : " · ถึง "}
@@ -292,7 +292,13 @@ export default function ProfilePage() {
                           className={styles.statusPill}
                           data-status={s.status === "active" && expiry?.expired ? "expired" : s.status}
                         >
-                          {s.status === "active" ? (expiry?.expired ? "หมดอายุ" : "กำลังใช้งาน") : SUBSCRIPTION_STATUS[s.status] ?? s.status}
+                          {s.status === "active"
+                            ? expiry?.expired
+                              ? "หมดอายุ"
+                              : s.ready
+                                ? "กำลังใช้งาน"
+                                : "กำลังเตรียมบัญชี"
+                            : SUBSCRIPTION_STATUS[s.status] ?? s.status}
                         </span>
                         {s.canRenew && (
                           <button

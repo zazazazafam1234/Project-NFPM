@@ -17,13 +17,11 @@ const WINDOWS: ReminderWindow[] = [
 
 function buildReminderText({
   profileName,
-  email,
   pin,
   expiresAt,
   label,
 }: {
   profileName: string;
-  email: string;
   pin: string | null;
   expiresAt: Date;
   label: string;
@@ -37,7 +35,7 @@ function buildReminderText({
     `แพ็กเกจของคุณจะหมดอายุใน ${label}`,
     `หมดอายุ: ${expireStr}`,
     "",
-    `Email บัญชีหลัก: ${email}`,
+    `เข้าสู่ระบบ Netflix ด้วยอีเมลของคุณ`,
     `โปรไฟล์: ${profileName}`,
     ...(pin ? [`PIN: ${pin}`] : []),
     "",
@@ -100,7 +98,6 @@ async function processWindow(window: ReminderWindow) {
         },
         bodyOverride: buildReminderText({
           profileName: row.profile_name,
-          email: row.master_email,
           pin,
           expiresAt: new Date(row.expires_at),
           label: window.label,

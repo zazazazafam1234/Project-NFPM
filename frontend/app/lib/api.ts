@@ -217,7 +217,8 @@ export type Subscription = {
   durationDays: number;
   durationMinutes: number;
   profileName: string;
-  masterEmail: string;
+  /** The customer's email is on the Netflix profile; the "ready" email with the PIN has gone out. */
+  ready: boolean;
   /** Renewable until renewDeadline (12 h after expiry) with the same profile and PIN. */
   canRenew?: boolean;
   renewPrice?: number;

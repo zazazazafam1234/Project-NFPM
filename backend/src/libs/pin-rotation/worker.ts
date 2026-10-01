@@ -6,7 +6,8 @@ import { sendPlainEmail } from "../gmail/mailsender";
 /**
  * After a purchase the customer's email is added to the rented Netflix profile
  * (pin-service POST /profile-email, action "add"); the email now on the profile
- * is kept in profiles.metadata.profileEmail.
+ * is kept in profiles.metadata.profileEmail. Only then is the customer emailed the
+ * profile PIN with "ready to use" — the master account is never sent to customers.
  *
  * When a rental ends the slot is held and the customer gets RENEW_GRACE_HOURS to
  * renew with the same profile and PIN (emailed a renew link). After that — or right
@@ -248,7 +249,10 @@ function masterLogin(rental: Pick<ExpiredRental, "master_email" | "password_ciph
   };
 }
 
-type EmailJob = Omit<ExpiredRental, "expires_at" | "package_name" | "profile_deleted">;
+type EmailJob = Omit<ExpiredRental, "profile_deleted"> & {
+  started_at: Date;
+  profile_pin_ciphertext: string | null;
+};
 
 // Running rentals whose profile does not carry the customer's email yet.
 async function findRentalsNeedingEmail() {
@@ -256,8 +260,12 @@ async function findRentalsNeedingEmail() {
     SELECT
       s.id AS subscription_id,
       s.profile_id,
+      s.started_at,
+      s.expires_at,
       u.email AS user_email,
+      pkg.name AS package_name,
       p.profile_name,
+      p.profile_pin_ciphertext,
       me.email AS master_email,
       me.password_ciphertext,
       me.account_pin_ciphertext,
@@ -267,6 +275,7 @@ async function findRentalsNeedingEmail() {
         WHERE se.subscription_id = s.id AND se.event_type = 'profile_email_add_failed')::int AS failures
     FROM subscriptions s
     JOIN "User" u ON u.id = s.user_id
+    JOIN packages pkg ON pkg.id = s.package_id
     JOIN profiles p ON p.id = s.profile_id
     JOIN master_emails me ON me.id = p.master_email_id
     WHERE s.status = 'active'
@@ -298,16 +307,53 @@ async function addProfileEmail(job: EmailJob, service: Service) {
     await logEvent(job.subscription_id, "profile_email_added", `Added ${job.user_email} to profile ${job.profile_name} (${reason})`);
     console.log(`[profile-email] ✅ เพิ่มอีเมล ${job.user_email} ในโปรไฟล์ ${job.profile_name} แล้ว`);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    await logEvent(
-      job.subscription_id,
-      "profile_email_add_failed",
-      `Attempt ${attempt}/${MAX_EMAIL_ATTEMPTS}: ${reason}`.slice(0, 500),
-    );
+    await recordAddFailure(job, attempt, err);
+    return;
+  }
+  await sendReadyEmail(job);
+}
+
+async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
+  const reason = err instanceof Error ? err.message : String(err);
+  await logEvent(
+    job.subscription_id,
+    "profile_email_add_failed",
+    `Attempt ${attempt}/${MAX_EMAIL_ATTEMPTS}: ${reason}`.slice(0, 500),
+  );
+  console.error(
+    attempt >= MAX_EMAIL_ATTEMPTS
+      ? `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครบ ${MAX_EMAIL_ATTEMPTS} ครั้งแล้ว หยุดลอง (รอแอดมิน) reason=${reason}`
+      : `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
+  );
+}
+
+// "Ready to use" email with the profile PIN, sent once the customer's email is on the profile.
+async function sendReadyEmail(job: EmailJob) {
+  const pin = job.profile_pin_ciphertext ? decryptSecret(job.profile_pin_ciphertext) : null;
+  const text = [
+    "บัญชีของคุณพร้อมใช้งานแล้ว ขอบคุณที่ใช้บริการครับ",
+    "",
+    `แพ็กเกจ: ${job.package_name}`,
+    `วันที่ซื้อ: ${formatBangkok(job.started_at)} น.`,
+    `หมดอายุ: ${formatBangkok(job.expires_at)} น.`,
+    "",
+    "วิธีเข้าใช้งาน (กรุณาอย่าแชร์ PIN ให้ผู้อื่น)",
+    `1. เข้าสู่ระบบ Netflix ด้วยอีเมลของคุณ: ${job.user_email}`,
+    `2. เลือกโปรไฟล์: ${job.profile_name}`,
+    ...(pin ? [`3. ใส่ PIN: ${pin}`] : []),
+    "",
+    "หากพบปัญหาในการเข้าใช้งาน กรุณาติดต่อแอดมิน",
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  try {
+    await sendPlainEmail({ to: job.user_email, subject: `บัญชีพร้อมใช้งานแล้ว — จอ ${job.profile_name}`, text });
+    await logEvent(job.subscription_id, "ready_email_sent", `Ready email sent to ${job.user_email}`);
+    console.log(`[profile-email] 📧 ส่งเมลแจ้งพร้อมใช้งานแล้ว profile=${job.profile_name} to=${job.user_email}`);
+  } catch (err) {
     console.error(
-      attempt >= MAX_EMAIL_ATTEMPTS
-        ? `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครบ ${MAX_EMAIL_ATTEMPTS} ครั้งแล้ว หยุดลอง (รอแอดมิน) reason=${reason}`
-        : `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
+      `[profile-email] ❌ ส่งเมลแจ้งพร้อมใช้งานไม่สำเร็จ profile=${job.profile_name} to=${job.user_email}`,
+      err instanceof Error ? err.message : err,
     );
   }
 }

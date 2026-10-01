@@ -223,8 +223,8 @@ export default function CheckoutPage() {
             <span className={styles.successIcon} aria-hidden="true">✓</span>
             <h2 id="purchase-success-title">ซื้อสำเร็จ</h2>
             <p>
-              ระบบส่งข้อมูลการเข้าใช้งานไปที่อีเมล
-              {user?.email ? <b> {user.email}</b> : null} แล้ว
+              ระบบกำลังเพิ่มอีเมล
+              {user?.email ? <b> {user.email}</b> : null} ในโปรไฟล์ เมื่อพร้อมใช้งานจะส่ง PIN ไปที่อีเมลนี้
             </p>
             <p className={styles.successHint}>
               หากไม่พบในกล่องจดหมาย กรุณาตรวจสอบในโฟลเดอร์สแปม (Spam / จดหมายขยะ)
