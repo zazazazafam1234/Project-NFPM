@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { getSessionUserId } from "../session";
+import { sendPlainEmail } from "../libs/gmail/mailsender";
 import { PREPARE_HOLD_MINUTES, RENEW_GRACE_HOURS, pinRotationEnabled, runPinWorkerSoon } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
@@ -32,6 +33,27 @@ async function spendDiscount(
     INSERT INTO discount_ledger (user_id, amount_cents, balance_cents, kind, reason, subscription_id)
     VALUES (${userId}, ${-points * 100}, ${user.discount_cents}, 'purchase', ${reason}, ${subscriptionId})
   `;
+}
+
+// "Your account is being set up" right after a purchase; the ready or failure email follows.
+async function sendSettingUpEmail(
+  { to, subscriptionId, packageName, pricePaid }: { to: string; subscriptionId: string; packageName: string; pricePaid: number },
+) {
+  const ref = `#${subscriptionId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+  const text = [
+    "ได้รับคำสั่งซื้อแล้ว ขอบคุณที่ใช้บริการครับ",
+    "",
+    `รหัสคำสั่งซื้อ: ${ref}`,
+    `แพ็กเกจ: ${packageName}`,
+    `ชำระ: ${pricePaid} Point`,
+    "",
+    "ระบบกำลังติดตั้งบัญชีให้คุณ โดยเพิ่มอีเมลนี้เข้าในโปรไฟล์ Netflix",
+    "ปกติใช้เวลาไม่กี่นาที เมื่อพร้อมใช้งานจะส่ง PIN ของโปรไฟล์มาที่อีเมลนี้",
+    "ระบบจะเริ่มนับเวลาใช้งานเมื่อบัญชีพร้อมใช้งานแล้วเท่านั้น",
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  await sendPlainEmail({ to, subject: `กำลังติดตั้งบัญชีของคุณ (${ref})`, text });
 }
 
 function addMinutes(date: Date, minutes: number) {
@@ -302,6 +324,16 @@ subscriptions.post("/", async (c) => {
 
     // The master account is never sent to the customer: the worker adds the customer's
     // email to the profile, then emails the PIN saying it is ready (see libs/pin-rotation/worker).
+    if (result.subscription.status === "pending") {
+      sendSettingUpEmail({
+        to: result.userEmail,
+        subscriptionId: result.subscription.id,
+        packageName: result.package.name,
+        pricePaid: result.pricePaid,
+      }).catch((err) => {
+        console.error(`[gmail] ส่งเมลแจ้งกำลังติดตั้งบัญชีไม่สำเร็จ to=${result.userEmail}`, err instanceof Error ? err.message : err);
+      });
+    }
     runPinWorkerSoon();
 
     return c.json({
