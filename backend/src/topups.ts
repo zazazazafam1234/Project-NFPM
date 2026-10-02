@@ -244,9 +244,9 @@ export type TopUpQuote = {
 /**
  * What a top-up of `points` costs with the best promotion and an optional code.
  * The preview on the top-up page and the QR itself both come from here, so the shown
- * amount is the charged amount. Discounts stack but never take the transfer below the
- * minimum top-up; when capped the code's share is trimmed first, so the lines always
- * add up to the total.
+ * amount is the charged amount. The minimum top-up applies to the amount typed in, not
+ * the transfer: discounts come off in full, only never below a ฿1 transfer. When that
+ * cap bites the code's share is trimmed first, so the lines always add up to the total.
  */
 export async function quoteTopUp(
   db: Db,
@@ -284,7 +284,7 @@ export async function quoteTopUp(
     }
   }
 
-  const cap = Math.max(0, baseCents - minPoints * 100);
+  const cap = Math.max(0, baseCents - 100);
   const promotionCents = Math.min(promotionRule?.rewardCents ?? 0, cap);
   codeCents = Math.min(codeCents, cap - promotionCents);
   if (codeInfo) codeInfo = { ...codeInfo, cents: codeCents };

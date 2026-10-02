@@ -430,9 +430,7 @@ export default function TopUpPage() {
               <strong>฿{formatBaht(quote.chargeCents / 100)}</strong>
               <small className={styles.summaryNote}>
                 ตอนสร้าง QR จะมีเศษสตางค์ต่อท้าย (เช่น .37) เพื่อยืนยันการโอนอัตโนมัติ · เศษนี้คืนเป็นเงินส่วนลดให้คุณ
-                {quote.discountCents > 0 && quote.chargeCents === quote.minPoints * 100
-                  ? ` · ยอดโอนขั้นต่ำ ฿${quote.minPoints} ส่วนลดจึงลดได้ไม่เกินนี้`
-                  : ""}
+
               </small>
             </div>
           )}
