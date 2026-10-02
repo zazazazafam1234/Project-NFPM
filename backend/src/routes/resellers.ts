@@ -7,7 +7,6 @@ import {
   THAI_BANKS,
   createReseller,
   listResellerRequests,
-  parseCommissionBaht,
   parseMaxUses,
   searchUsersForResellers,
   getPayoutCycle,
@@ -93,10 +92,10 @@ resellers.get("/user-search", async (c) => {
 resellers.post("/requests", async (c) => {
   const manager = await managerOf(c);
   if (!manager) return c.json({ message: "เฉพาะคนดูแลตัวแทนจำหน่าย" }, 403);
-  const body = await c.req.json<{ userId?: string; commission?: number; maxUses?: number | null }>();
+  const body = await c.req.json<{ userId?: string; maxUses?: number | null }>();
   if (!body.userId) return c.json({ message: "กรุณาเลือกผู้ใช้" }, 400);
-  const commission = body.commission === undefined ? DEFAULT_RESELLER_COMMISSION_CENTS : parseCommissionBaht(body.commission);
-  if (commission === null) return c.json({ message: "ค่าคอมต้องเป็นตัวเลข 0 ขึ้นไป (บาท)" }, 400);
+  // Commission is the admin's call: requests start at the default and only admins change it.
+  const commission = DEFAULT_RESELLER_COMMISSION_CENTS;
   const maxUses = parseMaxUses(body.maxUses);
   if (maxUses === "invalid") return c.json({ message: "จำนวนคนที่ใช้ได้ต้องเป็นจำนวนเต็ม 1 ขึ้นไป (เว้นว่าง = ไม่จำกัด)" }, 400);
 

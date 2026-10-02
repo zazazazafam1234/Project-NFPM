@@ -1079,7 +1079,7 @@ export function searchUsersAsManager(q: string) {
   return apiFetch<{ users: ResellerCandidate[] }>(`/resellers/user-search?q=${encodeURIComponent(q)}`);
 }
 
-export function requestReseller(body: { userId: string; commission: number; maxUses: number | null }) {
+export function requestReseller(body: { userId: string; maxUses: number | null }) {
   return apiFetch<{ id: string }>("/resellers/requests", { method: "POST", body: JSON.stringify(body) });
 }
 

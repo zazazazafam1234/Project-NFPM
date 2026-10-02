@@ -4,7 +4,8 @@ import { generateStreamerCode } from "./rewards";
 
 /**
  * Resellers ("ตัวแทนจำหน่าย"): customer accounts with their own code. A customer may
- * use a given reseller's code once, on a top-up: the transfer gets
+ * use one reseller code, once, ever — from then on they are that reseller's customer
+ * and no other reseller's code works for them. On that top-up the transfer gets
  * reseller_discount_percent off (app setting, default 5%) and, once the top-up is
  * paid, the reseller earns their commission_cents (default ฿0.25) — never as points.
  * "ยอดขาย" is the number of customers. An admin cuts earned commission into payouts
@@ -39,8 +40,8 @@ export type ResellerCodeCheck =
   | { ok: true; reseller: { id: string; code: string; commission_cents: number }; percent: number }
   | { ok: false; notFound: boolean; message: string };
 
-// A reseller code works while the reseller is active with quota left, once per customer,
-// and never for the reseller's own account.
+// A reseller code works while the reseller is active with quota left, for a customer who
+// has never used any reseller's code, and never for the reseller's own account.
 export async function checkResellerCode(db: Db, code: string, userId: string): Promise<ResellerCodeCheck> {
   const normalized = code.trim().toUpperCase();
   const [reseller] = await db`
@@ -57,22 +58,32 @@ export async function checkResellerCode(db: Db, code: string, userId: string): P
 
   const [history] = await db`
     SELECT
-      EXISTS (
-        SELECT 1 FROM reseller_redemptions
-        WHERE reseller_id = ${reseller.id} AND user_id = ${userId} AND status = 'redeemed'
-      ) AS used_code,
+      (
+        SELECT x.reseller_id FROM reseller_redemptions x
+        WHERE x.user_id = ${userId} AND x.status = 'redeemed'
+        LIMIT 1
+      ) AS customer_of,
       EXISTS (
         SELECT 1 FROM reseller_redemptions x
         JOIN point_topups t ON t.id = x.topup_id
-        WHERE x.reseller_id = ${reseller.id} AND x.user_id = ${userId} AND x.status = 'pending' AND t.status = 'pending'
+        WHERE x.user_id = ${userId} AND x.status = 'pending' AND t.status = 'pending'
       ) AS code_waiting
   `;
-  if (history.used_code) return { ok: false, notFound: false, message: "บัญชีนี้เคยใช้โค้ดของตัวแทนคนนี้ไปแล้ว (ใช้ได้ 1 ครั้งต่อคน)" };
+  if (history.customer_of) {
+    return {
+      ok: false,
+      notFound: false,
+      message:
+        history.customer_of === reseller.id
+          ? "บัญชีนี้ใช้โค้ดของตัวแทนคนนี้ไปแล้ว (ใช้โค้ดตัวแทนได้ 1 ครั้งต่อบัญชี)"
+          : "บัญชีนี้เป็นลูกค้าของตัวแทนจำหน่ายคนอื่นแล้ว ใช้โค้ดตัวแทนได้เพียงคนเดียว",
+    };
+  }
   if (history.code_waiting) {
     return {
       ok: false,
       notFound: false,
-      message: "มีรายการเติมที่ใช้โค้ดนี้รอชำระอยู่ กรุณาชำระ QR เดิม รอให้หมดอายุ หรือติดต่อแอดมินให้ยกเลิก",
+      message: "มีรายการเติมที่ใช้โค้ดตัวแทนรอชำระอยู่ กรุณาชำระ QR เดิม รอให้หมดอายุ หรือติดต่อแอดมินให้ยกเลิก",
     };
   }
   if (reseller.max_uses && Number(reseller.used) >= Number(reseller.max_uses)) {
@@ -93,8 +104,7 @@ export async function redeemResellerCode(db: Db, topupId: string) {
     WHERE x.topup_id = ${topupId} AND x.status IN ('pending', 'void')
       AND NOT EXISTS (
         SELECT 1 FROM reseller_redemptions o
-        WHERE o.reseller_id = x.reseller_id AND o.user_id = x.user_id AND o.id <> x.id
-          AND o.status IN ('pending', 'redeemed')
+        WHERE o.user_id = x.user_id AND o.id <> x.id AND o.status IN ('pending', 'redeemed')
       )
   `;
 }

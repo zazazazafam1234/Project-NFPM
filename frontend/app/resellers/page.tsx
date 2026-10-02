@@ -74,7 +74,7 @@ export default function ResellersPage() {
   // Reseller manager tools
   const [requesting, setRequesting] = useState(false);
   const [picked, setPicked] = useState<ResellerCandidate | null>(null);
-  const [requestForm, setRequestForm] = useState({ commission: "0.25", maxUses: "" });
+  const [requestForm, setRequestForm] = useState({ maxUses: "" });
   const [requestError, setRequestError] = useState("");
   const [sending, setSending] = useState(false);
   const [details, setDetails] = useState<{ stat: ResellerStat; uses: ResellerUse[] } | null>(null);
@@ -86,7 +86,6 @@ export default function ResellersPage() {
     try {
       await requestReseller({
         userId: picked.id,
-        commission: Number(requestForm.commission),
         maxUses: requestForm.maxUses.trim() ? Number(requestForm.maxUses) : null,
       });
       setRequesting(false);
@@ -264,7 +263,7 @@ export default function ResellersPage() {
                   setRequesting(true);
                   setPicked(null);
                   setRequestError("");
-                  setRequestForm({ commission: "0.25", maxUses: "" });
+                  setRequestForm({ maxUses: "" });
                 }}
                 type="button"
               >
@@ -355,7 +354,9 @@ export default function ResellersPage() {
                 ×
               </button>
             </div>
-            <p className={styles.note}>ส่งให้แอดมินอนุมัติ · โค้ดจะใช้ได้หลังอนุมัติ</p>
+            <p className={styles.note}>
+              ส่งให้แอดมินอนุมัติ · โค้ดจะใช้ได้หลังอนุมัติ · ค่าคอมเริ่มต้น ฿0.25 ต่อลูกค้า 1 คน (แอดมินเป็นผู้ปรับ)
+            </p>
             <div className={styles.modalForm}>
               <div className={styles.field}>
                 <span>ผู้ใช้</span>
@@ -369,16 +370,6 @@ export default function ResellersPage() {
                 />
               </div>
               <label className={styles.field}>
-                <span>ค่าคอมต่อลูกค้า 1 คน (บาท)</span>
-                <input
-                  inputMode="decimal"
-                  value={requestForm.commission}
-                  onChange={(event) =>
-                    setRequestForm({ ...requestForm, commission: event.target.value.replace(/[^\d.]/g, "") })
-                  }
-                />
-              </label>
-              <label className={styles.field}>
                 <span>ใช้ได้กี่คน (เว้นว่าง = ไม่จำกัด)</span>
                 <input
                   inputMode="numeric"
@@ -389,7 +380,7 @@ export default function ResellersPage() {
               {requestError && <p className={styles.error}>{requestError}</p>}
               <button
                 className={styles.primaryButton}
-                disabled={sending || !picked || requestForm.commission.trim() === ""}
+                disabled={sending || !picked}
                 onClick={() => void sendRequest()}
                 type="button"
               >

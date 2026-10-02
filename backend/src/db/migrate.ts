@@ -680,6 +680,11 @@ await sql`
   CREATE UNIQUE INDEX IF NOT EXISTS reseller_redemptions_customer_unique
   ON reseller_redemptions (reseller_id, user_id) WHERE status IN ('pending', 'redeemed')
 `;
+// One reseller per customer, ever: a customer's single live use of any reseller code.
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS reseller_redemptions_one_reseller_per_customer
+  ON reseller_redemptions (user_id) WHERE status IN ('pending', 'redeemed')
+`;
 await sql`CREATE INDEX IF NOT EXISTS reseller_redemptions_reseller_idx ON reseller_redemptions (reseller_id, status)`;
 await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS is_reseller_manager BOOLEAN NOT NULL DEFAULT FALSE`;
 await sql`

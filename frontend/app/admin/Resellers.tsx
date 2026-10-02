@@ -347,7 +347,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             <p className={styles.eyebrow}>RESELLERS</p>
             <h2>ตัวแทนจำหน่าย</h2>
             <p className={styles.muted}>
-              ลูกค้ากรอกโค้ดตัวแทนตอนเติมเงิน ได้ส่วนลด {discountPercent}% · ลูกค้า 1 คนใช้โค้ดของตัวแทนแต่ละคนได้ 1 ครั้ง ·
+              ลูกค้ากรอกโค้ดตัวแทนตอนเติมเงิน ได้ส่วนลด {discountPercent}% · ลูกค้า 1 คนใช้โค้ดตัวแทนได้ครั้งเดียว และกลายเป็นลูกค้าของตัวแทนคนนั้นถาวร (ใช้โค้ดตัวแทนคนอื่นไม่ได้) ·
               ตัวแทนได้ค่าคอม (ไม่เข้า Point) เมื่อลูกค้าเติมสำเร็จ · ตัดยอด{PAYOUT_CYCLE_LABEL[payoutCycle]}
             </p>
           </div>
