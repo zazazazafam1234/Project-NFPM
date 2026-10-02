@@ -5,6 +5,12 @@ import { buildPromptPayPayload } from "./promptpay";
 import { getMinTopupPoints, MAX_TOPUP_POINTS } from "./settings";
 import { notifyTopUpCheck, notifyTopUpPaid } from "./libs/line-bot";
 import { bestTopupPromotion, checkStreamerCode, creditDiscount, rewardCents, voidUnpaidRedemptions } from "./rewards";
+import {
+  checkResellerCode,
+  redeemResellerCode,
+  resellerDiscountCents,
+  voidUnpaidResellerRedemptions,
+} from "./resellers";
 
 const DEFAULT_EXPIRES_MINUTES = 15;
 
@@ -155,6 +161,7 @@ async function expireOldTopUps(db = sql) {
       AND expires_at < NOW()
   `;
   await voidUnpaidRedemptions(db);
+  await voidUnpaidResellerRedemptions(db);
 }
 
 // Picks a satang ref not used by another pending top-up that charges the same amount.
@@ -250,7 +257,10 @@ export async function createPromptPayTopUp({
     `;
     if (!user) throw new Error("บัญชีนี้ไม่พร้อมใช้งาน");
 
-    const codeCheck = code?.trim() ? await checkStreamerCode(db, code, userId) : null;
+    // One code box: a reseller code first, otherwise a streamer code.
+    const resellerCheck = code?.trim() ? await checkResellerCode(db, code, userId) : null;
+    if (resellerCheck && !resellerCheck.ok && !resellerCheck.notFound) throw new Error(resellerCheck.message);
+    const codeCheck = code?.trim() && !resellerCheck?.ok ? await checkStreamerCode(db, code, userId) : null;
     if (codeCheck && !codeCheck.ok) throw new Error(codeCheck.message);
 
     const paymentAccount = await getDefaultPaymentAccount(db);
@@ -263,7 +273,8 @@ export async function createPromptPayTopUp({
     const promotion = await bestTopupPromotion(db, baseAmountCents);
     const promotionCents = promotion?.rewardCents ?? 0;
     const streamerCents = codeCheck?.ok ? rewardCents(codeCheck.streamer, baseAmountCents) : 0;
-    const discountCents = Math.min(promotionCents + streamerCents, baseAmountCents - 100); // pay at least ฿1
+    const resellerCents = resellerCheck?.ok ? resellerDiscountCents(baseAmountCents, resellerCheck.percent) : 0;
+    const discountCents = Math.min(promotionCents + streamerCents + resellerCents, baseAmountCents - 100); // pay at least ฿1
     const chargeCents = baseAmountCents - discountCents;
 
     const refDecimal = await nextAvailableRefDecimal(chargeCents, paymentAccount.id, db);
@@ -289,6 +300,17 @@ export async function createPromptPayTopUp({
       await db`
         INSERT INTO streamer_redemptions (streamer_id, user_id, topup_id, status, reward_cents)
         VALUES (${codeCheck.streamer.id}, ${userId}, ${inserted.id}, 'pending', ${streamerCents})
+      `;
+    }
+    if (resellerCheck?.ok) {
+      await db`
+        INSERT INTO reseller_redemptions (
+          reseller_id, user_id, topup_id, status, base_amount_cents, discount_cents, commission_cents
+        )
+        VALUES (
+          ${resellerCheck.reseller.id}, ${userId}, ${inserted.id}, 'pending', ${baseAmountCents},
+          ${resellerCents}, ${resellerCheck.reseller.commission_cents}
+        )
       `;
     }
 
@@ -534,6 +556,7 @@ async function applyTopUpPayment(
     reason: `เศษสตางค์จากการเติม Point (.${String(satang).padStart(2, "0")})`,
     topupId: topUp.id,
   });
+  await redeemResellerCode(db, topUp.id);
   // Promotion/code discounts were already taken off the transfer; the code
   // redemption is confirmed here (also when an admin confirms an expired QR).
   const [redemption] = await db`

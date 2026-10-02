@@ -42,6 +42,7 @@ import { LineBotPanel } from "./LineBot";
 import { PaymentSupportPanel } from "./PaymentSupport";
 import { PendingTopupsPanel } from "./PendingTopups";
 import { StreamersPanel, TopupPromotionsPanel } from "./Rewards";
+import { ResellersPanel } from "./Resellers";
 import styles from "./page.module.css";
 
 const menu = [
@@ -54,6 +55,7 @@ const menu = [
   ["users", "ผู้ใช้", "◍"],
   ["topupPromotions", "โปรเติมเงิน", "⬆"],
   ["streamers", "Streamer / โค้ด", "★"],
+  ["resellers", "ตัวแทนจำหน่าย", "♜"],
   ["decoys", "ห้องหลอก", "◌"],
   ["audit", "Audit log", "▣"],
   ["settings", "ตั้งค่าระบบ", "⚙"],
@@ -319,6 +321,7 @@ export default function AdminPage() {
         {section === "payments" && <PaymentSupportPanel onDone={handleDone} />}
         {section === "topupPromotions" && <TopupPromotionsPanel onDone={handleDone} />}
         {section === "streamers" && <StreamersPanel onDone={handleDone} />}
+        {section === "resellers" && <ResellersPanel onDone={handleDone} />}
         {section === "decoys" && (
           <DecoyRoomsPanel
             services={[...new Set((inventory?.masterEmails ?? []).map((account) => account.service))]}

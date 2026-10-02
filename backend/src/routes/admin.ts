@@ -4,6 +4,7 @@ import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
 import reports from "./reports";
 import adminRewards from "./admin-rewards";
+import adminResellers from "./admin-resellers";
 import adminDecoys from "./admin-decoys";
 import adminTopups from "./admin-topups";
 import { expireProfileRentalNow, pinRotationEnabled } from "../libs/pin-rotation/worker";
@@ -14,6 +15,7 @@ const admin = new Hono();
 admin.use("*", requireAdmin);
 admin.route("/reports", reports);
 admin.route("/", adminRewards);
+admin.route("/", adminResellers);
 admin.route("/", adminDecoys);
 admin.route("/", adminTopups);
 

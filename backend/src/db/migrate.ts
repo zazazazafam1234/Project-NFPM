@@ -609,5 +609,51 @@ await sql`
   ON CONFLICT (slug) DO NOTHING
 `;
 
+// ─── Resellers ───
+// A reseller is a customer account with its own code. Each customer may use a given
+// reseller's code once: the top-up gets reseller_discount_percent off and the reseller
+// earns commission_cents once the top-up is paid. Reseller managers see every reseller.
+await sql`
+  CREATE TABLE IF NOT EXISTS resellers (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    code               TEXT NOT NULL,
+    commission_cents   INTEGER NOT NULL DEFAULT 25 CHECK (commission_cents >= 0),
+    max_uses           INTEGER CHECK (max_uses IS NULL OR max_uses > 0),
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ
+  )
+`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_code_unique ON resellers (UPPER(code)) WHERE deleted_at IS NULL`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_user_unique ON resellers (user_id) WHERE deleted_at IS NULL`;
+await sql`
+  CREATE TABLE IF NOT EXISTS reseller_redemptions (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reseller_id        UUID NOT NULL REFERENCES resellers(id) ON DELETE CASCADE,
+    user_id            TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    topup_id           UUID REFERENCES point_topups(id) ON DELETE SET NULL,
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'redeemed', 'void')),
+    base_amount_cents  INTEGER NOT NULL DEFAULT 0,
+    discount_cents     INTEGER NOT NULL DEFAULT 0,
+    commission_cents   INTEGER NOT NULL DEFAULT 0,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    redeemed_at        TIMESTAMPTZ,
+    paid_out_at        TIMESTAMPTZ
+  )
+`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS reseller_redemptions_customer_unique
+  ON reseller_redemptions (reseller_id, user_id) WHERE status IN ('pending', 'redeemed')
+`;
+await sql`CREATE INDEX IF NOT EXISTS reseller_redemptions_reseller_idx ON reseller_redemptions (reseller_id, status)`;
+await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS is_reseller_manager BOOLEAN NOT NULL DEFAULT FALSE`;
+await sql`
+  INSERT INTO app_settings (key, value)
+  VALUES ('reseller_discount_percent', '5'::jsonb)
+  ON CONFLICT (key) DO NOTHING
+`;
+
 console.log("Migration completed");
 await sql.end();

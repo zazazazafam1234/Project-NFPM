@@ -189,6 +189,9 @@ export default function ProfilePage() {
               หลังบ้าน Admin
             </Link>
           )}
+          <Link href="/resellers" className={styles.adminLink}>
+            ตัวแทนจำหน่าย
+          </Link>
           <button onClick={() => void signOut().then(() => router.push("/"))}>
             ออกจากระบบ
           </button>

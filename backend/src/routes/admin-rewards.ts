@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { generateStreamerCode } from "../rewards";
+import { referralCodeTaken } from "../resellers";
 
 /** Admin CRUD for top-up promotions and streamer referral codes (mounted under /admin). */
 const rewards = new Hono();
@@ -166,6 +167,7 @@ rewards.post("/streamers", async (c) => {
   }
 
   const requested = body.code ? cleanCode(body.code) : "";
+  if (requested && (await referralCodeTaken(requested))) return c.json({ message: `โค้ด ${requested} ถูกใช้แล้ว` }, 400);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = requested || generateStreamerCode(name);
     try {
@@ -209,7 +211,11 @@ rewards.patch("/streamers/:id", async (c) => {
     }
     columns.max_uses = maxUses;
   }
-  if (body.code) columns.code = cleanCode(body.code);
+  if (body.code) {
+    columns.code = cleanCode(body.code);
+    const [reseller] = await sql`SELECT 1 FROM resellers WHERE UPPER(code) = ${columns.code} AND deleted_at IS NULL`;
+    if (reseller) return c.json({ message: "โค้ดนี้ถูกใช้แล้ว" }, 400);
+  }
   if (body.regenerateCode) {
     const [current] = await sql`SELECT name FROM streamers WHERE id = ${c.req.param("id")}::uuid`;
     columns.code = generateStreamerCode(String(columns.name ?? current?.name ?? ""));

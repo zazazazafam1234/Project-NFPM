@@ -967,3 +967,102 @@ export function confirmTopupAsAdmin(id: string, transferEventId: string | null) 
     body: JSON.stringify({ transferEventId }),
   });
 }
+
+// ─── Resellers (ตัวแทนจำหน่าย) ───
+
+export type ResellerStat = {
+  id: string;
+  code: string;
+  commissionCents: number;
+  maxUses: number | null;
+  status: "active" | "inactive";
+  createdAt: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  /** Customers whose top-up with this code was paid. */
+  customers: number;
+  pending: number;
+  salesCents: number;
+  discountCents: number;
+  commissionEarnedCents: number;
+  commissionUnpaidCents: number;
+  referralLink?: string;
+};
+
+export type ResellerUse = {
+  id: string;
+  status: "pending" | "redeemed";
+  baseAmountCents: number;
+  discountCents: number;
+  commissionCents: number;
+  createdAt: string;
+  redeemedAt: string | null;
+  paidOutAt: string | null;
+  customer: string;
+};
+
+export type ResellerManager = { id: string; name: string; email: string };
+
+export function fetchAdminResellers() {
+  return apiFetch<{ discountPercent: number; resellers: ResellerStat[]; managers: ResellerManager[] }>("/admin/resellers");
+}
+
+export function addAdminReseller(body: { user: string; commission: number; maxUses: number | null; code?: string }) {
+  return apiFetch<{ id: string; code: string }>("/admin/resellers", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateAdminReseller(
+  id: string,
+  body: { commission?: number; maxUses?: number | null; status?: "active" | "inactive"; code?: string; regenerateCode?: boolean },
+) {
+  return apiFetch<{ id: string; code: string }>(`/admin/resellers/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function deleteAdminReseller(id: string) {
+  return apiFetch(`/admin/resellers/${id}`, { method: "DELETE" });
+}
+
+export function payoutAdminReseller(id: string) {
+  return apiFetch<{ uses: number; paidCents: number }>(`/admin/resellers/${id}/payout`, { method: "POST" });
+}
+
+export function fetchAdminResellerUses(id: string) {
+  return apiFetch<{ uses: ResellerUse[] }>(`/admin/resellers/${id}/uses`);
+}
+
+export function saveResellerDiscountPercent(discountPercent: number) {
+  return apiFetch<{ discountPercent: number }>("/admin/reseller-settings", {
+    method: "PUT",
+    body: JSON.stringify({ discountPercent }),
+  });
+}
+
+export function addResellerManager(user: string) {
+  return apiFetch<{ user: ResellerManager }>("/admin/reseller-managers", { method: "POST", body: JSON.stringify({ user }) });
+}
+
+export function removeResellerManager(userId: string) {
+  return apiFetch(`/admin/reseller-managers/${userId}`, { method: "DELETE" });
+}
+
+export type ResellerTopEntry = { rank: number; customers: number; salesCents: number };
+
+export function fetchResellerTop() {
+  return apiFetch<{ top: ResellerTopEntry[] }>("/resellers/top");
+}
+
+export type MyResellerView = {
+  discountPercent: number;
+  isManager: boolean;
+  reseller: (ResellerStat & { uses: ResellerUse[] }) | null;
+  all: ResellerStat[] | null;
+};
+
+export function fetchMyReseller() {
+  return apiFetch<MyResellerView>("/resellers/me");
+}
+
+export function bahtFromCents(cents: number) {
+  return (cents / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

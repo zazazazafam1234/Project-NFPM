@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { getSessionUserId } from "../session";
 import sql from "../db";
 import { checkStreamerCode } from "../rewards";
+import { checkResellerCode } from "../resellers";
 import { getMinTopupPoints } from "../settings";
 import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser, requestTopUpCheck } from "../topups";
 
@@ -62,10 +63,21 @@ points.get("/promotions", async (c) => {
   return c.json({ promotions });
 });
 
-// Checks a streamer code before the customer creates the QR.
+// Checks a reseller or streamer code before the customer creates the QR.
 points.get("/codes/:code", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
+  const reseller = await checkResellerCode(sql, c.req.param("code"), userId);
+  if (reseller.ok) {
+    return c.json({
+      streamerName: "ตัวแทนจำหน่าย",
+      code: reseller.reseller.code,
+      rewardType: "percent",
+      rewardValue: reseller.percent,
+      maxRewardCents: null,
+    });
+  }
+  if (!reseller.notFound) return c.json({ message: reseller.message }, 400);
   const check = await checkStreamerCode(sql, c.req.param("code"), userId);
   if (!check.ok) return c.json({ message: check.message }, 400);
   return c.json({

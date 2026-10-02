@@ -132,6 +132,7 @@ export default function Home() {
             <a href="#how-it-works">ขั้นตอน</a>
             <a href="#faq">ช่วยเหลือ</a>
             <Link href="/shop">ร้านค้า</Link>
+            <Link href="/resellers">ตัวแทนจำหน่าย</Link>
             <Link href="/profile">บัญชี</Link>
           </div>
           <div className={styles.headerActions}>
