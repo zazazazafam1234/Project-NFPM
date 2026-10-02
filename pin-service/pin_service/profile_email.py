@@ -157,48 +157,59 @@ def _update_profile_email_impl(
             if not profile_guid:
                 return result(False, "profile_not_found", page.url)
 
-            step("open_edit_profile")
-            if not _open_edit_profile(page, profile_guid, account_pin, debug=debug):
-                return result(False, "edit_profile_page_not_opened", page.url)
+            # Netflix's generic "มีข้อผิดพลาดเกิดขึ้น" toast is its advice to clear cache and
+            # cookies; the second attempt clears the site's cache and storage (cookies stay,
+            # so the login survives) and walks the flow again.
+            for attempt in (1, 2):
+                if attempt == 2:
+                    step("clear_site_cache_and_retry")
+                    _clear_site_cache(context, page, debug=debug)
 
-            link = first_visible(page, (EMAIL_LINK,), timeout_ms=5000)
-            href = (link.get_attribute("href") or "") if link else ""
-            has_email = "updateProfileEmail" in href
-            current_text = _safe_text(link) if link else ""
-            emit_debug(debug, f"profile_email_current has_email={has_email}")
-            if action == "remove" and link and not has_email:
-                return result(True, "email_already_removed", page.url)
-            if action == "add" and has_email and customer_email.lower() in current_text.lower():
-                return result(True, "email_already_set", page.url)
+                step("open_edit_profile")
+                if not _open_edit_profile(page, profile_guid, account_pin, debug=debug):
+                    return result(False, "edit_profile_page_not_opened", page.url)
 
-            step("open_email_page")
-            if link:
-                # A real click lets Netflix's page script run its own navigation, which is
-                # where it asks to verify identity ("ยืนยันตัวตนกันก่อน") before the form.
-                try:
-                    link.click(timeout=5000)
-                except PlaywrightError:
-                    link.click(force=True)
-            else:
-                page.goto(f"{NETFLIX}/account/profile/newProfileEmail/{profile_guid}", wait_until="domcontentloaded")
-            wait_for_short_network_idle(page, debug=debug)
+                link = first_visible(page, (EMAIL_LINK,), timeout_ms=5000)
+                href = (link.get_attribute("href") or "") if link else ""
+                has_email = "updateProfileEmail" in href
+                current_text = _safe_text(link) if link else ""
+                emit_debug(debug, f"profile_email_current has_email={has_email}")
+                if action == "remove" and link and not has_email:
+                    return result(True, "email_already_removed", page.url)
+                if action == "add" and has_email and customer_email.lower() in current_text.lower():
+                    return result(True, "email_already_set", page.url)
 
-            step("verify_and_submit_email")
-            outcome = _verify_and_submit(
-                page,
-                action=action,
-                customer_email=customer_email,
-                account_password=account_password,
-                mailbox=mailbox,
-                debug=debug,
-                timeout_ms=max(timeout_ms, 240000),
-            )
-            if outcome != "ok":
+                step("open_email_page")
+                if link:
+                    # A real click lets Netflix's page script run its own navigation, which is
+                    # where it asks to verify identity ("ยืนยันตัวตนกันก่อน") before the form.
+                    try:
+                        link.click(timeout=5000)
+                    except PlaywrightError:
+                        link.click(force=True)
+                else:
+                    page.goto(f"{NETFLIX}/account/profile/newProfileEmail/{profile_guid}", wait_until="domcontentloaded")
+                wait_for_short_network_idle(page, debug=debug)
+
+                step("verify_and_submit_email")
+                api_responses.clear()
+                outcome = _verify_and_submit(
+                    page,
+                    action=action,
+                    customer_email=customer_email,
+                    account_password=account_password,
+                    mailbox=mailbox,
+                    debug=debug,
+                    timeout_ms=max(timeout_ms, 240000),
+                )
+                if outcome == "ok":
+                    break
                 page.wait_for_timeout(500)
                 for response in api_responses[-5:]:
                     emit_debug(debug, f"profile_email_api_response {_describe_response(response)}")
-                capture_page_debug(page, debug=debug, label=f"profile_email_{action}_failed", profile_dir=profile_dir)
-                return result(False, outcome, page.url)
+                capture_page_debug(page, debug=debug, label=f"profile_email_{action}_failed_{attempt}", profile_dir=profile_dir)
+                if attempt == 2 or not outcome.startswith("email_rejected"):
+                    return result(False, outcome, page.url)
 
             step("save_profile")
             if not _save_edit_profile(page, debug=debug):
@@ -404,3 +415,22 @@ def _describe_response(response) -> str:
         body = f"<unreadable: {exc}>"
     path = response.url.split("netflix.com", 1)[-1][:120]
     return f"status={response.status} path={path} body={body}"
+
+
+def _clear_site_cache(context, page, *, debug: DebugCallback | None) -> None:
+    """Clears Netflix's HTTP cache and site storage but keeps cookies (the login)."""
+    try:
+        cdp = context.new_cdp_session(page)
+        cdp.send("Network.clearBrowserCache")
+        for origin in (NETFLIX, "https://netflix.com"):
+            cdp.send(
+                "Storage.clearDataForOrigin",
+                {
+                    "origin": origin,
+                    "storageTypes": "appcache,cache_storage,file_systems,indexeddb,local_storage,service_workers,websql",
+                },
+            )
+        cdp.detach()
+        emit_debug(debug, "profile_email_site_cache_cleared")
+    except PlaywrightError as exc:
+        emit_debug(debug, f"profile_email_site_cache_clear_failed {exc}")
