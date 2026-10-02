@@ -542,21 +542,24 @@ export default function TopUpPage() {
               {message}
             </p>
           )}
-          <button
-            className={styles.paidButton}
-            type="button"
-            disabled={isSubmitting || (Boolean(user) && !isValidTopUp)}
-            onClick={() => void createTopUp()}
-          >
-            {isSubmitting
-              ? "กำลังสร้าง QR…"
-              : !user
-                ? "เข้าสู่ระบบเพื่อเติม Point"
-                : quoteMatches
-                  ? `สร้าง QR ชำระ ฿${formatBaht(quote.chargeCents / 100)}`
-                  : "สร้าง QR ชำระเงิน"}{" "}
-            <span>→</span>
-          </button>
+          {/* Hidden while a QR waits for payment; back once it expires or the amount/code changes. */}
+          {!isWaiting && (
+            <button
+              className={styles.paidButton}
+              type="button"
+              disabled={isSubmitting || (Boolean(user) && !isValidTopUp)}
+              onClick={() => void createTopUp()}
+            >
+              {isSubmitting
+                ? "กำลังสร้าง QR…"
+                : !user
+                  ? "เข้าสู่ระบบเพื่อเติม Point"
+                  : quoteMatches
+                    ? `สร้าง QR ชำระ ฿${formatBaht(quote.chargeCents / 100)}`
+                    : "สร้าง QR ชำระเงิน"}{" "}
+              <span>→</span>
+            </button>
+          )}
           <div className={styles.supportRow}>
             <SupportLink />
           </div>
