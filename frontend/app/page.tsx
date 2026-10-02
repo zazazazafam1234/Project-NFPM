@@ -152,10 +152,6 @@ export default function Home() {
               <br />
               <em>แล้วหรือยัง?</em>
             </h1>
-            <p className={styles.lead}>
-              เลือกแพ็กเกจที่มีสต็อกจากโปรไฟล์จริง
-              <br className={styles.desktopOnly} /> ระบบล็อกโปรไฟล์ให้ตอนชำระ Point
-            </p>
             <a className={styles.primaryButton} href="#packages">
               เลือกแพ็กเกจ <span>→</span>
             </a>
