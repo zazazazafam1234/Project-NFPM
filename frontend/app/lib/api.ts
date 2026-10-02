@@ -1039,6 +1039,7 @@ export function fetchAdminResellers() {
     resellers: ResellerStat[];
     managers: ResellerManager[];
     payouts: ResellerPayout[];
+    requests: ResellerRequest[];
   }>("/admin/resellers");
 }
 
@@ -1048,8 +1049,43 @@ export type ResellerCandidate = {
   email: string;
   image: string | null;
   isReseller: boolean;
+  /** Has a reseller request waiting for an admin. */
+  isRequested: boolean;
   isResellerManager: boolean;
 };
+
+export type ResellerRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  commissionCents: number;
+  maxUses: number | null;
+  approval: "pending" | "approved" | "rejected";
+  requestedByName: string | null;
+  createdAt: string;
+};
+
+export function approveResellerRequest(id: string, body: { commission?: number; maxUses?: number | null }) {
+  return apiFetch(`/admin/resellers/${id}/approve`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function rejectResellerRequest(id: string) {
+  return apiFetch(`/admin/resellers/${id}/reject`, { method: "POST" });
+}
+
+// Reseller managers
+export function searchUsersAsManager(q: string) {
+  return apiFetch<{ users: ResellerCandidate[] }>(`/resellers/user-search?q=${encodeURIComponent(q)}`);
+}
+
+export function requestReseller(body: { userId: string; commission: number; maxUses: number | null }) {
+  return apiFetch<{ id: string }>("/resellers/requests", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function fetchResellerUsesAsManager(id: string) {
+  return apiFetch<{ uses: ResellerUse[] }>(`/resellers/${id}/uses`);
+}
 
 export function searchResellerCandidates(q: string) {
   return apiFetch<{ users: ResellerCandidate[] }>(`/admin/reseller-user-search?q=${encodeURIComponent(q)}`);
@@ -1115,6 +1151,8 @@ export type MyResellerView = {
     | (ResellerStat & { uses: ResellerUse[]; payouts: ResellerPayout[]; bank: ResellerBank | null })
     | null;
   all: ResellerStat[] | null;
+  requests: ResellerRequest[] | null;
+  payouts: ResellerPayout[] | null;
 };
 
 export function fetchMyReseller() {

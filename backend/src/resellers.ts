@@ -49,7 +49,8 @@ export async function checkResellerCode(db: Db, code: string, userId: string): P
         WHERE x.reseller_id = r.id AND x.status IN ('pending', 'redeemed'))::int AS used
     FROM resellers r
     JOIN "User" u ON u.id = r.user_id
-    WHERE UPPER(r.code) = ${normalized} AND r.status = 'active' AND r.deleted_at IS NULL AND u.status = 'active'
+    WHERE UPPER(r.code) = ${normalized} AND r.status = 'active' AND r.approval = 'approved'
+      AND r.deleted_at IS NULL AND u.status = 'active'
   `;
   if (!reseller) return { ok: false, notFound: true, message: "ไม่พบโค้ดนี้ หรือโค้ดถูกปิดใช้งานแล้ว" };
   if (reseller.user_id === userId) return { ok: false, notFound: false, message: "ใช้โค้ดตัวแทนของตัวเองไม่ได้" };
@@ -178,7 +179,7 @@ export async function resellerStats(resellerId: string | null = null): Promise<R
     JOIN "User" u ON u.id = r.user_id
     LEFT JOIN reseller_redemptions x ON x.reseller_id = r.id
     LEFT JOIN reseller_payouts p ON p.id = x.payout_id
-    WHERE r.deleted_at IS NULL AND (${resellerId}::uuid IS NULL OR r.id = ${resellerId}::uuid)
+    WHERE r.deleted_at IS NULL AND r.approval = 'approved' AND (${resellerId}::uuid IS NULL OR r.id = ${resellerId}::uuid)
     GROUP BY r.id, u.id
     ORDER BY customers DESC, "topupCents" DESC, r.created_at
   `;
@@ -220,7 +221,7 @@ export async function topResellers() {
     SELECT COUNT(x.id)::int AS customers, MIN(x.redeemed_at) AS first_sale
     FROM resellers r
     JOIN reseller_redemptions x ON x.reseller_id = r.id AND x.status = 'redeemed'
-    WHERE r.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL AND r.approval = 'approved'
     GROUP BY r.id
     ORDER BY customers DESC, first_sale
     LIMIT 3
@@ -268,7 +269,7 @@ export async function saveResellerBank(
     UPDATE resellers
     SET bank_name = ${bank}, bank_account_name = ${holder},
         bank_account_number_ciphertext = ${encryptSecret(number)}, bank_updated_at = NOW(), updated_at = NOW()
-    WHERE user_id = ${userId} AND deleted_at IS NULL
+    WHERE user_id = ${userId} AND deleted_at IS NULL AND approval = 'approved'
     RETURNING id
   `;
   return reseller ? null : "บัญชีนี้ไม่ได้เป็นตัวแทนจำหน่าย";
@@ -412,4 +413,105 @@ export async function approveResellerPayout(payoutId: string, adminUserId: strin
     RETURNING id, amount_cents
   `;
   return payout ?? null;
+}
+
+// ─── Requests from reseller managers ───
+
+export type ResellerRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  commissionCents: number;
+  maxUses: number | null;
+  approval: "pending" | "approved" | "rejected";
+  requestedByName: string | null;
+  createdAt: Date;
+};
+
+/** Requests waiting for an admin, or one manager's own requests (any state). */
+export async function listResellerRequests({ requestedBy = null }: { requestedBy?: string | null } = {}) {
+  return sql<ResellerRequest[]>`
+    SELECT r.id, u.id AS "userId", u.name AS "userName", u.email AS "userEmail",
+      r.commission_cents AS "commissionCents", r.max_uses AS "maxUses", r.approval,
+      m.name AS "requestedByName", r.created_at AS "createdAt"
+    FROM resellers r
+    JOIN "User" u ON u.id = r.user_id
+    LEFT JOIN "User" m ON m.id = r.requested_by
+    WHERE r.requested_by IS NOT NULL
+      AND (
+        (${requestedBy}::text IS NULL AND r.approval = 'pending' AND r.deleted_at IS NULL)
+        OR r.requested_by = ${requestedBy}::text
+      )
+    ORDER BY r.created_at DESC
+    LIMIT 100
+  `;
+}
+
+/** Users for the pickers; `role` says whether they already are (or are requested as) one. */
+export async function searchUsersForResellers(q: string) {
+  if (!q.trim()) return [];
+  return sql`
+    SELECT u.id, u.name, u.email, u.image, u.is_reseller_manager AS "isResellerManager",
+      EXISTS (
+        SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'approved'
+      ) AS "isReseller",
+      EXISTS (
+        SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'pending'
+      ) AS "isRequested"
+    FROM "User" u
+    WHERE u.status = 'active' AND (u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`})
+    ORDER BY (LOWER(u.email) = LOWER(${q}) OR LOWER(u.name) = LOWER(${q})) DESC, u.name
+    LIMIT 10
+  `;
+}
+
+export function parseCommissionBaht(value: unknown) {
+  const baht = Number(value);
+  if (!Number.isFinite(baht) || baht < 0 || baht > 100000) return null;
+  return Math.round(baht * 100);
+}
+
+export function parseMaxUses(value: unknown): number | null | "invalid" {
+  if (value === null || value === "" || value === undefined) return null;
+  const maxUses = Number(value);
+  return Number.isInteger(maxUses) && maxUses >= 1 ? maxUses : "invalid";
+}
+
+/**
+ * Creates a reseller for `userId` — approved right away when an admin adds it, or as a
+ * request (approval 'pending') when a reseller manager does. Returns an error message or the row.
+ */
+export async function createReseller({
+  userId,
+  commissionCents,
+  maxUses,
+  code,
+  requestedBy = null,
+}: {
+  userId: string;
+  commissionCents: number;
+  maxUses: number | null;
+  code?: string;
+  requestedBy?: string | null;
+}) {
+  const [user] = await sql`SELECT id, name, email FROM "User" WHERE id = ${userId} AND status = 'active'`;
+  if (!user) return { error: "ไม่พบผู้ใช้ที่เลือก" };
+  const [existing] = await sql`SELECT approval FROM resellers WHERE user_id = ${userId} AND deleted_at IS NULL`;
+  if (existing) {
+    return {
+      error:
+        existing.approval === "pending"
+          ? `${user.name} มีคำขอเป็นตัวแทนรออนุมัติอยู่แล้ว`
+          : `${user.name} เป็นตัวแทนอยู่แล้ว`,
+    };
+  }
+  if (code && (await referralCodeTaken(code))) return { error: `โค้ด ${code} ถูกใช้แล้ว` };
+  const finalCode = code || (await newResellerCode(String(user.name)));
+  const [reseller] = await sql`
+    INSERT INTO resellers (user_id, code, commission_cents, max_uses, approval, requested_by)
+    VALUES (${userId}, ${finalCode}, ${commissionCents}, ${maxUses}, ${requestedBy ? "pending" : "approved"}, ${requestedBy})
+    RETURNING id, code, approval
+  `;
+  return { reseller, user };
 }

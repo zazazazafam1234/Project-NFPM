@@ -5,7 +5,12 @@ import { pushToGroups } from "../libs/line-bot";
 import {
   DEFAULT_RESELLER_COMMISSION_CENTS,
   approveResellerPayout,
+  createReseller,
   cutResellerPayouts,
+  listResellerRequests,
+  parseCommissionBaht,
+  parseMaxUses,
+  searchUsersForResellers,
   getPayoutCycle,
   getResellerDiscountPercent,
   listResellerPayouts,
@@ -60,40 +65,21 @@ async function findUser(query: string | undefined) {
   };
 }
 
-function parseCommission(value: unknown) {
-  const baht = Number(value);
-  if (!Number.isFinite(baht) || baht < 0 || baht > 100000) return null;
-  return Math.round(baht * 100);
-}
-
-function parseMaxUses(value: unknown): number | null | "invalid" {
-  if (value === null || value === "" || value === undefined) return null;
-  const maxUses = Number(value);
-  return Number.isInteger(maxUses) && maxUses >= 1 ? maxUses : "invalid";
-}
+const parseCommission = parseCommissionBaht;
 
 // Search box of the reseller / manager pickers.
 adminResellers.get("/reseller-user-search", async (c) => {
-  const q = (c.req.query("q") ?? "").trim();
-  if (q.length < 1) return c.json({ users: [] });
-  const users = await sql`
-    SELECT u.id, u.name, u.email, u.image, u.is_reseller_manager AS "isResellerManager",
-      EXISTS (SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL) AS "isReseller"
-    FROM "User" u
-    WHERE u.status = 'active' AND (u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`})
-    ORDER BY (LOWER(u.email) = LOWER(${q}) OR LOWER(u.name) = LOWER(${q})) DESC, u.name
-    LIMIT 10
-  `;
-  return c.json({ users });
+  return c.json({ users: await searchUsersForResellers((c.req.query("q") ?? "").trim()) });
 });
 
 adminResellers.get("/resellers", async (c) => {
-  const [resellers, managers, discountPercent, payoutCycle, payouts] = await Promise.all([
+  const [resellers, managers, discountPercent, payoutCycle, payouts, requests] = await Promise.all([
     resellerStats(),
     sql`SELECT id, name, email FROM "User" WHERE is_reseller_manager ORDER BY name`,
     getResellerDiscountPercent(),
     getPayoutCycle(),
     listResellerPayouts({ fullAccount: true }),
+    listResellerRequests(),
   ]);
   return c.json({
     discountPercent,
@@ -101,6 +87,7 @@ adminResellers.get("/resellers", async (c) => {
     resellers: resellers.map((row) => ({ ...row, referralLink: referralLink(String(row.code)) })),
     managers,
     payouts,
+    requests,
   });
 });
 
@@ -120,19 +107,57 @@ adminResellers.post("/resellers", async (c) => {
   const maxUses = parseMaxUses(body.maxUses);
   if (maxUses === "invalid") return c.json({ message: "จำนวนคนที่ใช้ได้ต้องเป็นจำนวนเต็ม 1 ขึ้นไป (เว้นว่าง = ไม่จำกัด)" }, 400);
 
-  const [existing] = await sql`SELECT id FROM resellers WHERE user_id = ${found.user.id} AND deleted_at IS NULL`;
-  if (existing) return c.json({ message: `${found.user.name} เป็นตัวแทนอยู่แล้ว` }, 400);
+  const created = await createReseller({
+    userId: found.user.id,
+    commissionCents: commission,
+    maxUses,
+    code: body.code ? cleanCode(body.code) : undefined,
+  });
+  if ("error" in created) return c.json({ message: created.error }, 400);
+  return c.json({ ...created.reseller, user: created.user, referralLink: referralLink(created.reseller.code) }, 201);
+});
 
-  const requested = body.code ? cleanCode(body.code) : "";
-  if (requested && (await referralCodeTaken(requested))) return c.json({ message: `โค้ด ${requested} ถูกใช้แล้ว` }, 400);
-  const code = requested || (await newResellerCode(String(found.user.name)));
-
+// A reseller manager's request: the admin may adjust commission / limit while approving.
+adminResellers.post("/resellers/:id/approve", async (c) => {
+  const admin = await getAdminSession(c);
+  const body = await c.req
+    .json<{ commission?: number; maxUses?: number | null }>()
+    .catch(() => ({}) as { commission?: number; maxUses?: number | null });
+  const columns: Record<string, unknown> = {
+    approval: "approved",
+    approved_by: admin?.id ?? null,
+    approved_at: new Date(),
+  };
+  if (body.commission !== undefined) {
+    const commission = parseCommission(body.commission);
+    if (commission === null) return c.json({ message: "ค่าคอมต้องเป็นตัวเลข 0 ขึ้นไป (บาท)" }, 400);
+    columns.commission_cents = commission;
+  }
+  if (body.maxUses !== undefined) {
+    const maxUses = parseMaxUses(body.maxUses);
+    if (maxUses === "invalid") return c.json({ message: "จำนวนคนที่ใช้ได้ต้องเป็นจำนวนเต็ม 1 ขึ้นไป (เว้นว่าง = ไม่จำกัด)" }, 400);
+    columns.max_uses = maxUses;
+  }
   const [reseller] = await sql`
-    INSERT INTO resellers (user_id, code, commission_cents, max_uses)
-    VALUES (${found.user.id}, ${code}, ${commission}, ${maxUses})
+    UPDATE resellers SET ${sql(columns)}, updated_at = NOW()
+    WHERE id = ${c.req.param("id")}::uuid AND approval = 'pending' AND deleted_at IS NULL
     RETURNING id, code
   `;
-  return c.json({ ...reseller, user: found.user, referralLink: referralLink(reseller.code) }, 201);
+  if (!reseller) return c.json({ message: "ไม่พบคำขอนี้ หรือดำเนินการไปแล้ว" }, 404);
+  return c.json(reseller);
+});
+
+adminResellers.post("/resellers/:id/reject", async (c) => {
+  const admin = await getAdminSession(c);
+  const [reseller] = await sql`
+    UPDATE resellers
+    SET approval = 'rejected', approved_by = ${admin?.id ?? null}, approved_at = NOW(), deleted_at = NOW(),
+        status = 'inactive', updated_at = NOW()
+    WHERE id = ${c.req.param("id")}::uuid AND approval = 'pending' AND deleted_at IS NULL
+    RETURNING id
+  `;
+  if (!reseller) return c.json({ message: "ไม่พบคำขอนี้ หรือดำเนินการไปแล้ว" }, 404);
+  return c.json({ ok: true });
 });
 
 adminResellers.patch("/resellers/:id", async (c) => {

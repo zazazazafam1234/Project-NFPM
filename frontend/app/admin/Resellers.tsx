@@ -7,6 +7,8 @@ import {
   addAdminReseller,
   addResellerManager,
   approveResellerPayout,
+  approveResellerRequest,
+  rejectResellerRequest,
   bahtFromCents,
   cutResellerPayouts,
   deleteAdminReseller,
@@ -21,9 +23,11 @@ import {
   type ResellerCandidate,
   type ResellerManager,
   type ResellerPayout,
+  type ResellerRequest,
   type ResellerStat,
   type ResellerUse,
 } from "../lib/api";
+import { UserPicker } from "../components/UserPicker";
 import { EditModal } from "./EditModal";
 import styles from "./page.module.css";
 import rewardStyles from "./rewards.module.css";
@@ -47,81 +51,6 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 }
 
-/** Type a name or email, pick one account from the matches. */
-function UserPicker({
-  selected,
-  onSelect,
-  disable,
-}: {
-  selected: ResellerCandidate | null;
-  onSelect: (user: ResellerCandidate | null) => void;
-  /** Why a match cannot be picked (e.g. already a reseller), or null. */
-  disable: (user: ResellerCandidate) => string | null;
-}) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ResellerCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      queueMicrotask(() => setResults([]));
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      searchResellerCandidates(q)
-        .then((data) => setResults(data.users))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  if (selected) {
-    return (
-      <div className={rewardStyles.pickedUser}>
-        <div>
-          <b>{selected.name}</b>
-          <small>{selected.email}</small>
-        </div>
-        <button className={styles.secondary} onClick={() => onSelect(null)} type="button">
-          เปลี่ยน
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className={rewardStyles.userPicker}>
-      <input
-        autoFocus
-        placeholder="พิมพ์ชื่อหรืออีเมลเพื่อค้นหา"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      {query.trim() && (
-        <ul>
-          {results.map((user) => {
-            const reason = disable(user);
-            return (
-              <li key={user.id}>
-                <button disabled={Boolean(reason)} onClick={() => onSelect(user)} type="button">
-                  <b>{user.name}</b>
-                  <small>{user.email}</small>
-                  {reason && <em>{reason}</em>}
-                </button>
-              </li>
-            );
-          })}
-          {!loading && results.length === 0 && <li className={rewardStyles.pickerEmpty}>ไม่พบผู้ใช้</li>}
-          {loading && <li className={rewardStyles.pickerEmpty}>กำลังค้นหา…</li>}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 type Confirm = { title: string; message: string; label: string; danger?: boolean; action: () => Promise<void> };
 
 export function ResellersPanel({ onDone }: { onDone: Notify }) {
@@ -140,6 +69,8 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
     null,
   );
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [requests, setRequests] = useState<ResellerRequest[]>([]);
+  const [approving, setApproving] = useState<ResellerRequest | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -150,6 +81,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
         setDiscountPercent(String(data.discountPercent));
         setPayoutCycle(data.payoutCycle);
         setPayouts(data.payouts);
+        setRequests(data.requests);
       })
       .catch((err) => window.alert(err instanceof Error ? err.message : "โหลดตัวแทนจำหน่ายไม่สำเร็จ"));
   }, []);
@@ -227,6 +159,46 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
       load();
     }
   }
+
+  function openApprove(request: ResellerRequest) {
+    setApproving(request);
+    setForm({
+      commission: String(request.commissionCents / 100),
+      maxUses: request.maxUses ? String(request.maxUses) : "",
+      code: "",
+    });
+  }
+
+  async function approve() {
+    if (!approving) return;
+    setBusy(true);
+    const ok = await run(
+      () =>
+        approveResellerRequest(approving.id, {
+          commission: Number(form.commission),
+          maxUses: form.maxUses.trim() ? Number(form.maxUses) : null,
+        }),
+      `อนุมัติ ${approving.userName} เป็นตัวแทนจำหน่ายแล้ว`,
+      onDone,
+    );
+    setBusy(false);
+    if (ok) {
+      setApproving(null);
+      load();
+    }
+  }
+
+  const askReject = (request: ResellerRequest) =>
+    setConfirm({
+      title: "ปฏิเสธคำขอ",
+      message: `ปฏิเสธคำขอให้ ${request.userName} เป็นตัวแทนจำหน่าย (ขอโดย ${request.requestedByName ?? "-"})?`,
+      label: "ปฏิเสธ",
+      danger: true,
+      action: async () => {
+        await rejectResellerRequest(request.id);
+        onDone(`ปฏิเสธคำขอของ ${request.userName} แล้ว`);
+      },
+    });
 
   async function showUses(reseller: ResellerStat) {
     try {
@@ -339,6 +311,36 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
 
   return (
     <>
+      {requests.length > 0 && (
+        <section className={styles.panel}>
+          <div className={styles.panelHead}>
+            <div>
+              <p className={styles.eyebrow}>REQUESTS</p>
+              <h2>คำขอเพิ่มตัวแทน รออนุมัติ ({requests.length})</h2>
+              <p className={styles.muted}>คนดูแลตัวแทนจำหน่ายเสนอมา · โค้ดจะใช้ได้หลังอนุมัติ</p>
+            </div>
+          </div>
+          <div className={styles.table}>
+            {requests.map((request) => (
+              <div key={request.id}>
+                <b>{request.userName}</b>
+                <span>
+                  {request.userEmail} · ค่าคอม ฿{bahtFromCents(request.commissionCents)}
+                  {request.maxUses ? ` · จำกัด ${request.maxUses} คน` : ""} · ขอโดย {request.requestedByName ?? "-"} ·{" "}
+                  {formatDate(request.createdAt)}
+                </span>
+                <button className={styles.primary} onClick={() => openApprove(request)} type="button">
+                  อนุมัติ
+                </button>
+                <button className={styles.danger} onClick={() => askReject(request)} type="button">
+                  ปฏิเสธ
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>
@@ -535,9 +537,10 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
                 <div className={rewardStyles.pickerField}>
                   <span>ผู้ใช้</span>
                   <UserPicker
+                    search={searchResellerCandidates}
                     selected={picked}
                     onSelect={setPicked}
-                    disable={(user) => (user.isReseller ? "เป็นตัวแทนอยู่แล้ว" : null)}
+                    disable={(user) => (user.isReseller ? "เป็นตัวแทนอยู่แล้ว" : user.isRequested ? "มีคำขอรออนุมัติ" : null)}
                   />
                 </div>
               ) : (
@@ -595,12 +598,54 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
       </AnimatePresence>
 
       <AnimatePresence>
+        {approving && (
+          <EditModal eyebrow="APPROVE" title={`อนุมัติ ${approving.userName}`} onClose={() => setApproving(null)}>
+            <div className={styles.formRows}>
+              <p className={styles.muted}>
+                {approving.userEmail} · ขอโดย {approving.requestedByName ?? "-"} · ปรับค่าคอมหรือจำนวนคนก่อนอนุมัติได้
+              </p>
+              <label>
+                ค่าคอมต่อลูกค้า 1 คน (บาท)
+                <input
+                  inputMode="decimal"
+                  value={form.commission}
+                  onChange={(event) => setForm({ ...form, commission: event.target.value.replace(/[^\d.]/g, "") })}
+                />
+              </label>
+              <label>
+                ใช้ได้กี่คน (เว้นว่าง = ไม่จำกัด)
+                <input
+                  inputMode="numeric"
+                  value={form.maxUses}
+                  onChange={(event) => setForm({ ...form, maxUses: event.target.value.replace(/\D/g, "") })}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  className={styles.primary}
+                  disabled={busy || form.commission.trim() === ""}
+                  onClick={() => void approve()}
+                  type="button"
+                >
+                  อนุมัติเป็นตัวแทน
+                </button>
+                <button className={styles.secondary} onClick={() => setApproving(null)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {appointing && (
           <EditModal eyebrow="RESELLER MANAGER" title="แต่งตั้งคนดูแลตัวแทนจำหน่าย" onClose={() => setAppointing(false)}>
             <div className={styles.formRows}>
               <div className={rewardStyles.pickerField}>
                 <span>ผู้ใช้</span>
                 <UserPicker
+                  search={searchResellerCandidates}
                   selected={pickedManager}
                   onSelect={setPickedManager}
                   disable={(user) => (user.isResellerManager ? "เป็นคนดูแลอยู่แล้ว" : null)}

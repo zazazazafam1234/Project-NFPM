@@ -81,7 +81,8 @@ auth.get("/session", async (c) => {
     SELECT u.*,
       EXISTS (
         SELECT 1 FROM resellers r
-        WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.bank_account_number_ciphertext IS NULL
+        WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'approved'
+          AND r.bank_account_number_ciphertext IS NULL
       ) AS reseller_needs_bank
     FROM "User" u
     WHERE u.id = ${userId} AND u.status = 'active'

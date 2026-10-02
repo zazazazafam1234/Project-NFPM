@@ -633,6 +633,14 @@ await sql`
     deleted_at         TIMESTAMPTZ
   )
 `;
+// Reseller managers request new resellers; the code works only once an admin approves.
+await sql`
+  ALTER TABLE resellers ADD COLUMN IF NOT EXISTS approval TEXT NOT NULL DEFAULT 'approved'
+    CHECK (approval IN ('pending', 'approved', 'rejected'))
+`;
+await sql`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS requested_by TEXT REFERENCES "User"(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS approved_by TEXT REFERENCES "User"(id) ON DELETE SET NULL`;
+await sql`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_code_unique ON resellers (UPPER(code)) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_user_unique ON resellers (user_id) WHERE deleted_at IS NULL`;
 await sql`
