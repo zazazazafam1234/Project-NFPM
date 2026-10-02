@@ -50,6 +50,8 @@ type ExpiredRental = {
   account_pin_ciphertext: string | null;
   mailbox_password_ciphertext: string | null;
   profile_email: string | null;
+  pending_profile_name: string | null;
+  pending_pin_ciphertext: string | null;
   failures: number;
 };
 
@@ -70,6 +72,8 @@ async function findExpiredRentals(profileId: string | null = null) {
       me.account_pin_ciphertext,
       me.mailbox_password_ciphertext,
       p.metadata->>'profileEmail' AS profile_email,
+      p.metadata->>'pendingProfileName' AS pending_profile_name,
+      p.metadata->>'pendingPinCiphertext' AS pending_pin_ciphertext,
       (SELECT COUNT(*) FROM subscription_events se
         WHERE se.subscription_id = s.id AND se.event_type IN ('pin_rotation_failed', 'profile_reset_failed'))::int AS failures
     FROM subscriptions s
@@ -275,7 +279,7 @@ function masterLogin(rental: Pick<ExpiredRental, "master_email" | "password_ciph
   };
 }
 
-type EmailJob = Omit<ExpiredRental, "profile_deleted"> & {
+type EmailJob = Omit<ExpiredRental, "profile_deleted" | "pending_profile_name" | "pending_pin_ciphertext"> & {
   started_at: Date;
   profile_pin_ciphertext: string | null;
 };
@@ -585,8 +589,12 @@ async function removeProfileEmail(rental: ExpiredRental, service: Service, attem
 
 async function rotate(rental: ExpiredRental, service: Service) {
   const attempt = rental.failures + 1;
-  const newPin = String(randomInt(0, 10000)).padStart(4, "0");
-  const newProfileName = randomProfileName();
+  // A retry keeps the name and PIN of the earlier attempt: that attempt may already have
+  // deleted the old profile and created this one, and the pin-service then just finishes it.
+  const newPin = rental.pending_pin_ciphertext
+    ? decryptSecret(rental.pending_pin_ciphertext)
+    : String(randomInt(0, 10000)).padStart(4, "0");
+  const newProfileName = rental.pending_profile_name || randomProfileName();
   // Keep the generated values before touching Netflix so they are never lost if the DB update below fails.
   await sql`
     UPDATE profiles

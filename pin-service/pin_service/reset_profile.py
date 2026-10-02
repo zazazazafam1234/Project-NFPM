@@ -120,28 +120,34 @@ def _reset_profile_impl(
                 return result(False, "account_pin_required_or_rejected", page.url)
             _ensure_manage_profiles_mode(page, debug=debug)
 
+            # A retry resumes where the earlier attempt stopped: the backend sends the same
+            # new name, so an existing new profile means delete/create already happened.
             step("find_old_profile")
             old_guid = _wait_for_profile_guid(page, old_profile_name, timeout_ms=timeout_ms)
-            if not old_guid:
-                return result(False, "old_profile_not_found", page.url)
+            new_exists = _wait_for_profile_guid(page, replacement_name, timeout_ms=3000) is not None
+            if not old_guid and not new_exists:
+                emit_debug(debug, "reset_profile_old_missing_creating_new")
+            if old_guid:
+                step("delete_old_profile")
+                if not _delete_profile(page, old_guid, old_profile_name, account_pin, debug=debug):
+                    return result(False, "old_profile_not_deleted", page.url)
 
-            step("delete_old_profile")
-            if not _delete_profile(page, old_guid, old_profile_name, account_pin, debug=debug):
-                return result(False, "old_profile_not_deleted", page.url)
-
-            step("create_new_profile")
-            page.goto(MANAGE_PROFILES_URL, wait_until="domcontentloaded")
-            wait_for_short_network_idle(page, debug=debug)
-            _ensure_manage_profiles_mode(page, debug=debug)
-            if not _click_add_profile(page, debug=debug):
-                return result(False, "add_profile_button_not_found", page.url)
-            if _handle_account_pin_prompt(page, account_pin, debug=debug) != "ok":
-                return result(False, "account_pin_required_or_rejected", page.url)
-            if not _wait_and_fill_new_profile_name(page, replacement_name, timeout_ms=timeout_ms):
-                return result(False, "new_profile_name_input_not_found", page.url)
-            if not _save_new_profile(page, replacement_name, debug=debug):
-                return result(False, "new_profile_save_button_not_found", page.url)
-            wait_for_short_network_idle(page, debug=debug)
+            if new_exists:
+                emit_debug(debug, "reset_profile_new_profile_exists_resume_lock")
+            else:
+                step("create_new_profile")
+                page.goto(MANAGE_PROFILES_URL, wait_until="domcontentloaded")
+                wait_for_short_network_idle(page, debug=debug)
+                _ensure_manage_profiles_mode(page, debug=debug)
+                if not _click_add_profile(page, debug=debug):
+                    return result(False, "add_profile_button_not_found", page.url)
+                if _handle_account_pin_prompt(page, account_pin, debug=debug) != "ok":
+                    return result(False, "account_pin_required_or_rejected", page.url)
+                if not _wait_and_fill_new_profile_name(page, replacement_name, timeout_ms=timeout_ms):
+                    return result(False, "new_profile_name_input_not_found", page.url)
+                if not _save_new_profile(page, replacement_name, debug=debug):
+                    return result(False, "new_profile_save_button_not_found", page.url)
+                wait_for_short_network_idle(page, debug=debug)
 
             step("lock_new_profile")
             locked = _lock_profile(
@@ -155,6 +161,8 @@ def _reset_profile_impl(
                 debug=debug,
             )
             if locked != "ok":
+                emit_debug(debug, f"reset_profile_lock_page {_page_summary(page)}")
+                capture_page_debug(page, debug=debug, label="reset_profile_lock_failed", profile_dir=profile_dir)
                 return result(False, f"new_profile_lock_not_created: {locked}", page.url)
 
             return result(True, "profile_recreated", page.url)
@@ -315,3 +323,25 @@ def _lock_profile(
         return "profile_lock_pin_not_saved"
     wait_for_short_network_idle(page, debug=debug)
     return "ok"
+
+
+def _page_summary(page) -> str:
+    """URL, heading and visible data-uia hooks, so an unknown page can be handled later."""
+    try:
+        info = page.evaluate(
+            """() => {
+                const visible = (el) => {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                };
+                const uia = Array.from(document.querySelectorAll('[data-uia]'))
+                    .filter(visible)
+                    .map((el) => el.getAttribute('data-uia'))
+                    .filter((name) => !name.startsWith('footer'));
+                const heading = Array.from(document.querySelectorAll('h1,h2')).filter(visible).map((el) => el.innerText.trim());
+                return { heading: heading.slice(0, 3), uia: Array.from(new Set(uia)).slice(0, 40) };
+            }"""
+        )
+    except PlaywrightError as exc:
+        return f"url={page.url} unreadable={exc}"
+    return f"url={page.url} heading={info.get('heading')} uia={info.get('uia')}"
