@@ -12,10 +12,10 @@ import { pushToGroups } from "../line-bot";
  *
  * When a rental ends the slot is held and the customer gets RENEW_GRACE_HOURS to
  * renew with the same profile and PIN (emailed a renew link). After that — or right
- * away when an admin ends the rental — the profile's lock PIN is changed through
- * the Python pin-service (see /pin-service), after removing the customer's email
- * from the profile; then the slot goes back on sale and the customer is emailed. Without PIN_SERVICE_URL and PIN_SERVICE_KEY the last step
- * only expires the rental, releases the slot and emails.
+ * away when an admin ends the rental — the Python pin-service deletes that Netflix
+ * profile and creates a fresh locked profile with a new name, new PIN and no
+ * customer email. Without PIN_SERVICE_URL and PIN_SERVICE_KEY the last step only
+ * expires the rental, releases the slot and emails.
  */
 
 export const RENEW_GRACE_HOURS = 12;
@@ -64,7 +64,7 @@ async function findExpiredRentals(profileId: string | null = null) {
       me.mailbox_password_ciphertext,
       p.metadata->>'profileEmail' AS profile_email,
       (SELECT COUNT(*) FROM subscription_events se
-        WHERE se.subscription_id = s.id AND se.event_type = 'pin_rotation_failed')::int AS failures
+        WHERE se.subscription_id = s.id AND se.event_type IN ('pin_rotation_failed', 'profile_reset_failed'))::int AS failures
     FROM subscriptions s
     JOIN "User" u ON u.id = s.user_id
     JOIN packages pkg ON pkg.id = s.package_id
@@ -191,7 +191,7 @@ async function expireRentals(profileId: string) {
   `;
 }
 
-async function sendExpiredEmail(rental: ExpiredRental, { pinChanged }: { pinChanged: boolean }) {
+async function sendExpiredEmail(rental: ExpiredRental, { profileReset }: { profileReset: boolean }) {
   const expiredAt = new Date(rental.expires_at).toLocaleString("th-TH", {
     day: "numeric",
     month: "long",
@@ -208,8 +208,8 @@ async function sendExpiredEmail(rental: ExpiredRental, { pinChanged }: { pinChan
     `โปรไฟล์: ${rental.profile_name}`,
     `หมดอายุเมื่อ: ${expiredAt} น.`,
     "",
-    pinChanged
-      ? "ระบบได้เปลี่ยน PIN ของโปรไฟล์นี้แล้ว จึงไม่สามารถใช้งานต่อได้"
+    profileReset
+      ? "ระบบได้ลบโปรไฟล์เดิมและสร้างโปรไฟล์ใหม่แล้ว จึงไม่สามารถใช้งานโปรไฟล์เดิมต่อได้"
       : "โปรไฟล์นี้ไม่สามารถใช้งานต่อได้แล้ว",
     `หากต้องการใช้งานต่อ สามารถเลือกซื้อแพ็กเกจใหม่ได้ที่เว็บไซต์${site ? ` ${site}` : ""}`,
     "",
@@ -239,6 +239,23 @@ async function callService(service: Service, path: string, body: Record<string, 
   const data = (await response.json().catch(() => ({}))) as { success?: boolean; reason?: string };
   if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
   return data.reason ?? "ok";
+}
+
+async function callServiceJson(service: Service, path: string, body: Record<string, unknown>) {
+  const response = await fetch(`${service.url.replace(/\/+$/, "")}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-service-key": service.key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    reason?: string;
+    newProfileName?: string;
+    newPin?: string;
+  };
+  if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
+  return data;
 }
 
 function masterLogin(rental: Pick<ExpiredRental, "master_email" | "password_ciphertext" | "account_pin_ciphertext" | "mailbox_password_ciphertext" | "profile_name">) {
@@ -332,6 +349,15 @@ async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
 
 function orderRef(subscriptionId: string) {
   return `#${subscriptionId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
+function randomProfileName() {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let name = "n";
+  for (let index = 0; index < 5; index += 1) {
+    name += alphabet[randomInt(0, alphabet.length)];
+  }
+  return name;
 }
 
 // Last attempt failed: the customer is told to contact support on Discord and the admin LINE groups are alerted.
@@ -440,33 +466,34 @@ async function removeProfileEmail(rental: ExpiredRental, service: Service, attem
 
 async function rotate(rental: ExpiredRental, service: Service) {
   const attempt = rental.failures + 1;
-  // The email goes first: a failure here retries the whole rotation next minute.
-  if (rental.profile_email && !(await removeProfileEmail(rental, service, attempt))) return;
-
   const newPin = String(randomInt(0, 10000)).padStart(4, "0");
-  // Keep the new PIN before touching Netflix so it is never lost if the DB update below fails.
+  const newProfileName = randomProfileName();
+  // Keep the generated values before touching Netflix so they are never lost if the DB update below fails.
   await sql`
     UPDATE profiles
-    SET metadata = metadata || ${sql.json({ pendingPinCiphertext: encryptSecret(newPin) })}, updated_at = NOW()
+    SET metadata = metadata || ${sql.json({ pendingProfileName: newProfileName, pendingPinCiphertext: encryptSecret(newPin) })}, updated_at = NOW()
     WHERE id = ${rental.profile_id}::uuid
   `;
 
   console.log(
-    `[pin-rotation] ⏳ เริ่มเปลี่ยน PIN profile=${rental.profile_name} master=${rental.master_email} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS}`,
+    `[pin-rotation] ⏳ เริ่มลบและสร้างโปรไฟล์ใหม่ old=${rental.profile_name} new=${newProfileName} master=${rental.master_email} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS}`,
   );
   try {
-    await callService(service, "/rotate-pin", { ...masterLogin(rental), newPin });
+    const data = await callServiceJson(service, "/reset-profile", { ...masterLogin(rental), newProfileName, newPin });
+    if (data.newProfileName && data.newProfileName !== newProfileName) {
+      throw new Error(`profile_name_mismatch: expected ${newProfileName}, got ${data.newProfileName}`);
+    }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     await logEvent(
       rental.subscription_id,
-      "pin_rotation_failed",
+      "profile_reset_failed",
       `Attempt ${attempt}/${MAX_ROTATION_ATTEMPTS}: ${reason}`.slice(0, 500),
     );
     console.error(
       attempt >= MAX_ROTATION_ATTEMPTS
-        ? `[pin-rotation] ❌ เปลี่ยน PIN ไม่สำเร็จ profile=${rental.profile_name} ครบ ${MAX_ROTATION_ATTEMPTS} ครั้งแล้ว หยุดลอง (Slot ค้าง reserved รอแอดมิน) reason=${reason}`
-        : `[pin-rotation] ❌ เปลี่ยน PIN ไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
+        ? `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครบ ${MAX_ROTATION_ATTEMPTS} ครั้งแล้ว หยุดลอง (Slot ค้าง reserved รอแอดมิน) reason=${reason}`
+        : `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
     );
     return;
   }
@@ -474,10 +501,11 @@ async function rotate(rental: ExpiredRental, service: Service) {
   await sql.begin(async (tx) => {
     await tx`
       UPDATE profiles p
-      SET profile_pin_ciphertext = ${encryptSecret(newPin)},
+      SET profile_name = ${newProfileName},
+          profile_pin_ciphertext = ${encryptSecret(newPin)},
           status = 'available',
           profile_expires_at = me.master_expired_at,
-          metadata = p.metadata - 'pendingPinCiphertext',
+          metadata = p.metadata - 'profileEmail' - 'pendingPinCiphertext' - 'pendingProfileName',
           updated_at = NOW()
       FROM master_emails me
       WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id
@@ -489,11 +517,11 @@ async function rotate(rental: ExpiredRental, service: Service) {
     `;
     await tx`
       INSERT INTO subscription_events (subscription_id, actor_user_id, event_type, message)
-      VALUES (${rental.subscription_id}, NULL, 'pin_rotated', ${`Profile ${rental.profile_name} PIN rotated`})
+      VALUES (${rental.subscription_id}, NULL, 'profile_recreated', ${`Profile ${rental.profile_name} recreated as ${newProfileName}`})
     `;
   });
-  console.log(`[pin-rotation] ✅ เปลี่ยน PIN สำเร็จ profile=${rental.profile_name} ปล่อย Slot กลับมาขายแล้ว`);
-  await sendExpiredEmail(rental, { pinChanged: true });
+  console.log(`[pin-rotation] ✅ ลบและสร้างโปรไฟล์ใหม่สำเร็จ old=${rental.profile_name} new=${newProfileName} ปล่อย Slot กลับมาขายแล้ว`);
+  await sendExpiredEmail(rental, { profileReset: true });
 }
 
 // Ends a rental without a PIN change: rental expired, slot back on sale, customer emailed.
@@ -505,7 +533,7 @@ async function releaseWithoutRotation(rental: ExpiredRental) {
     FROM master_emails me
     WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
   `;
-  await sendExpiredEmail(rental, { pinChanged: false });
+  await sendExpiredEmail(rental, { profileReset: false });
   console.log(`[pin-rotation] ✅ ปิดการเช่าแล้ว (ไม่ได้เปลี่ยน PIN) profile=${rental.profile_name} ปล่อย Slot กลับมาขายแล้ว`);
 }
 
@@ -527,7 +555,7 @@ async function checkExpiredRentals(service: Service | null) {
     return;
   }
 
-  // Hold every ended slot first so it cannot be sold while its PIN is still the old one.
+  // Hold every ended slot first so it cannot be sold while its Netflix profile is still the old one.
   const heldIds = rentals.filter((rental) => !rental.profile_deleted).map((rental) => rental.profile_id);
   if (heldIds.length) {
     await sql`
@@ -551,8 +579,8 @@ export function pinRotationEnabled() {
 }
 
 /**
- * Admin action: end the running rental on a profile now (no renewal window). With PIN rotation on, the
- * worker picks it up within a minute (new PIN, slot released, customer emailed);
+ * Admin action: end the running rental on a profile now (no renewal window). With pin-service on, the
+ * worker picks it up within a minute (fresh profile, slot released, customer emailed);
  * otherwise the slot is released right away and the customer is emailed.
  * Returns how many rentals were ended.
  */

@@ -916,3 +916,34 @@
   color: var(--c-8f89a3ff);
   font-size: 11px;
 }
+
+.table > div em.rentedBadge {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.rentalDetails {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 4px 0 18px;
+}
+.rentalDetails dt {
+  color: var(--c-948c9dff);
+}
+.rentalDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rentalActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.rentalActions button {
+  padding: 8px 14px;
+  border: 1px solid var(--c-ef6872ff);
+  border-radius: 8px;
+  color: var(--c-ef6872ff);
+  background: transparent;
+  cursor: pointer;
+}

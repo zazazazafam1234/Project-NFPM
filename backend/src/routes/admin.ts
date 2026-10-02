@@ -417,9 +417,32 @@ admin.get("/inventory", async (c) => {
         me.email AS "masterEmail",
         me.service,
         NULL::text AS "packageName",
-        NULL::text AS "packageSlug"
+        NULL::text AS "packageSlug",
+        rental.rental
       FROM profiles p
       JOIN master_emails me ON me.id = p.master_email_id
+      -- The rental running now (or not yet started), for the "โดนเช่า" badge and its detail view.
+      LEFT JOIN LATERAL (
+        SELECT json_build_object(
+          'subscriptionId', s.id,
+          'userId', u.id,
+          'userName', u.name,
+          'userEmail', u.email,
+          'packageName', pkg.name,
+          'pricePaid', s.price_paid,
+          'startedAt', s.started_at,
+          'expiresAt', s.expires_at,
+          'ready', LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)
+        ) AS rental
+        FROM subscriptions s
+        JOIN "User" u ON u.id = s.user_id
+        JOIN packages pkg ON pkg.id = s.package_id
+        WHERE s.profile_id = p.id
+          AND s.status IN ('pending', 'active')
+          AND s.expires_at > NOW()
+        ORDER BY s.started_at
+        LIMIT 1
+      ) rental ON TRUE
       WHERE ${profilesFilter}
       ORDER BY p.created_at DESC
       LIMIT ${profilesLimit}

@@ -20,6 +20,7 @@ from netflix_login_checker.core import (
     _has_running_asyncio_loop,
     _launch_context,
     _run_in_plain_thread,
+    capture_page_debug,
     click_text_candidate,
     emit_debug,
     first_visible,
@@ -27,6 +28,7 @@ from netflix_login_checker.core import (
     has_email_field,
     has_visible_error,
     resolve_profile_dir,
+    short_error,
     sync_playwright,
     wait_for_short_network_idle,
 )
@@ -101,16 +103,21 @@ def _change_profile_pin_impl(
 
     profile_dir = resolve_profile_dir(profile_name=None, identifier=email, profiles_dir=profiles_dir)
     with sync_playwright() as playwright:
-        browser, context = _launch_context(
-            playwright,
-            headless=headless,
-            slow_mo_ms=slow_mo_ms,
-            profile_dir=profile_dir,
-            proxy_server=proxy_server,
-            debug=debug,
-        )
+        try:
+            browser, context = _launch_context(
+                playwright,
+                headless=headless,
+                slow_mo_ms=slow_mo_ms,
+                profile_dir=profile_dir,
+                proxy_server=proxy_server,
+                debug=debug,
+            )
+        except PlaywrightError as exc:
+            return result(False, f"playwright_error: {short_error(exc)}", MANAGE_PROFILES_URL)
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(timeout_ms)
+        context.set_default_navigation_timeout(timeout_ms)
+        page.set_default_navigation_timeout(timeout_ms)
         try:
             step("open_manage_profiles")
             page.goto(MANAGE_PROFILES_URL, wait_until="domcontentloaded")
@@ -160,7 +167,8 @@ def _change_profile_pin_impl(
                 return result(False, f"pin_not_saved{': ' + error if error else ''}", page.url)
             return result(True, "pin_changed", page.url)
         except PlaywrightError as exc:
-            return result(False, f"playwright_error: {exc}", page.url)
+            capture_page_debug(page, debug=debug, label="change_pin_playwright_error", profile_dir=profile_dir)
+            return result(False, f"playwright_error: {short_error(exc)}", page.url)
         finally:
             emit_debug(debug, "change_pin_close_browser")
             context.close()

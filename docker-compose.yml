@@ -82,6 +82,14 @@ services:
     environment:
       PIN_SERVICE_HOST: 0.0.0.0
       PIN_SERVICE_PROFILES_DIR: /data/profiles
+      PIN_SERVICE_DEBUG_DIR: /data/profiles/_debug
+      PIN_SERVICE_PROXY_LIST_FILE: ${PIN_SERVICE_PROXY_LIST_FILE:-/app/pin-service/proxies/free-proxy-list.json}
+      PIN_SERVICE_PROXY_PROTOCOLS: ${PIN_SERVICE_PROXY_PROTOCOLS:-http,socks5}
+      PIN_SERVICE_PROXY_COUNTRIES: ${PIN_SERVICE_PROXY_COUNTRIES:-TH,VN,ID,HK,TW,PH,KR,JP,SG}
+      PIN_SERVICE_PROXY_ALLOW_HOSTING: ${PIN_SERVICE_PROXY_ALLOW_HOSTING:-false}
+      PIN_SERVICE_PROXY_TOP_N: ${PIN_SERVICE_PROXY_TOP_N:-8}
+      PIN_SERVICE_PROXY_RETRIES: ${PIN_SERVICE_PROXY_RETRIES:-5}
+      PIN_SERVICE_TIMEOUT_MS: ${PIN_SERVICE_TIMEOUT_MS:-60000}
       # Headed Chromium on the Xvfb display started by the image's CMD.
       PIN_SERVICE_HEADLESS: "false"
     volumes:

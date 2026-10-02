@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import shutil
 import threading
@@ -21,7 +22,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 PLAYWRIGHT_IMPORT_ERROR: ImportError | None = None
 
@@ -64,6 +65,7 @@ class LoginResult:
 
 
 DebugCallback = Callable[[str], None]
+LoginOtpProvider = Callable[[], Iterable[str]]
 
 
 def _has_running_asyncio_loop() -> bool:
@@ -94,6 +96,50 @@ def _run_in_plain_thread(function, *args, **kwargs):
 def emit_debug(debug: DebugCallback | None, message: str) -> None:
     if debug:
         debug(message)
+
+
+def short_error(exc: BaseException, max_length: int = 320) -> str:
+    message = " ".join(str(exc).split())
+    if len(message) > max_length:
+        return f"{message[:max_length - 3]}..."
+    return message or exc.__class__.__name__
+
+
+def capture_page_debug(
+    page: Page,
+    *,
+    debug: DebugCallback | None = None,
+    label: str,
+    profile_dir: str | Path | None = None,
+) -> str | None:
+    base_dir = os.environ.get("NETFLIX_DEBUG_DIR") or os.environ.get("PIN_SERVICE_DEBUG_DIR")
+    if not base_dir and profile_dir:
+        base_dir = str(Path(profile_dir).parent / "_debug")
+    if not base_dir:
+        return None
+
+    safe_label = re.sub(r"[^a-zA-Z0-9_.-]+", "_", label).strip("._") or "page"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target_dir = Path(base_dir).expanduser().resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{stamp}-{safe_label}-{hashlib.sha1(page.url.encode('utf-8', errors='ignore')).hexdigest()[:8]}"
+    screenshot_path = target_dir / f"{stem}.png"
+    html_path = target_dir / f"{stem}.html"
+
+    saved: list[str] = []
+    try:
+        page.screenshot(path=str(screenshot_path), full_page=True, timeout=7000)
+        saved.append(f"screenshot={screenshot_path}")
+    except PlaywrightError as exc:
+        saved.append(f"screenshot_error={short_error(exc, 120)}")
+    try:
+        html_path.write_text(page.content(), encoding="utf-8")
+        saved.append(f"html={html_path}")
+    except (OSError, PlaywrightError) as exc:
+        saved.append(f"html_error={short_error(exc, 120)}")
+
+    emit_debug(debug, f"debug_artifact label={safe_label} url={page.url} {' '.join(saved)}")
+    return str(target_dir)
 
 
 def wait_for_short_network_idle(page: Page, *, debug: DebugCallback | None = None, timeout_ms: int = 1000) -> None:
@@ -165,6 +211,22 @@ def clear_persistent_profile(profile_dir: Path | None, *, debug: DebugCallback |
     removed = not profile_dir.exists()
     emit_debug(debug, f"persistent_profile_reset profile={profile_dir} removed={removed}")
     return removed
+
+
+def clear_stale_chromium_profile_locks(profile_dir: Path | None, *, debug: DebugCallback | None = None) -> None:
+    if not profile_dir:
+        return
+    removed: list[str] = []
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        lock_path = profile_dir / name
+        try:
+            if lock_path.exists() or lock_path.is_symlink():
+                lock_path.unlink()
+                removed.append(name)
+        except OSError as exc:
+            emit_debug(debug, f"profile_lock_remove_failed file={lock_path} error={short_error(exc, 120)}")
+    if removed:
+        emit_debug(debug, f"profile_locks_removed profile={profile_dir} files={','.join(removed)}")
 
 
 def profile_name_for_identifier(identifier: str) -> str:
@@ -788,6 +850,173 @@ def submit_password_form(page: Page, timeout_ms: int = 2500) -> bool:
         return False
 
 
+def submit_login_otp(page: Page, code: str, *, debug: DebugCallback | None = None) -> bool:
+    code = re.sub(r"\D+", "", str(code))
+    if not 4 <= len(code) <= 6:
+        return False
+
+    locator = first_visible(
+        page,
+        (
+            '[data-uia="pin-entry+container"] input',
+            '[data-uia*="pin-entry"] input',
+            'input[name="challengeOtp"]',
+            'input[autocomplete="one-time-code"]',
+            'input[inputmode="numeric"]',
+            'input[type="tel"]',
+            'input[type="text"]',
+        ),
+        timeout_ms=2000,
+    )
+    if locator:
+        try:
+            page.evaluate(
+                """() => {
+                    const visible = element => {
+                        const rect = element.getBoundingClientRect();
+                        const style = window.getComputedStyle(element);
+                        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !element.disabled;
+                    };
+                    for (const input of Array.from(document.querySelectorAll('input')).filter(visible)) {
+                        input.value = '';
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }"""
+            )
+            locator.click(force=True, timeout=3000)
+            page.keyboard.type(code, delay=90)
+            emit_debug(debug, f"login_otp_typed length={len(code)}")
+            page.wait_for_timeout(600)
+            try:
+                page.keyboard.press("Enter")
+            except PlaywrightError:
+                pass
+            return True
+        except PlaywrightError as exc:
+            emit_debug(debug, f"login_otp_keyboard_type_failed {short_error(exc, 120)}")
+
+    try:
+        filled = bool(
+            page.evaluate(
+                """code => {
+                    const visible = element => {
+                        const rect = element.getBoundingClientRect();
+                        const style = window.getComputedStyle(element);
+                        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !element.disabled;
+                    };
+                    const inputs = Array.from(document.querySelectorAll('input')).filter(visible).filter(input => {
+                        const type = (input.getAttribute('type') || 'text').toLowerCase();
+                        return !['hidden', 'checkbox', 'radio', 'submit', 'button'].includes(type);
+                    });
+                    const pinInputs = inputs.filter(input => {
+                        const attrs = [
+                            input.getAttribute('name') || '',
+                            input.getAttribute('autocomplete') || '',
+                            input.getAttribute('inputmode') || '',
+                            input.getAttribute('aria-label') || '',
+                            input.closest('[data-uia]')?.getAttribute('data-uia') || '',
+                            input.parentElement?.getAttribute('data-uia') || '',
+                        ].join(' ');
+                        return /otp|pin|code|one-time|numeric|tel/i.test(attrs) || inputs.length <= 6;
+                    });
+                    const targets = pinInputs.length ? pinInputs : inputs;
+                    if (!targets.length) return false;
+
+                    const setValue = (input, value) => {
+                        input.focus();
+                        input.value = value;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    };
+
+                    if (targets.length === 1) {
+                        setValue(targets[0], code);
+                    } else {
+                        for (let i = 0; i < Math.min(code.length, targets.length); i += 1) {
+                            setValue(targets[i], code[i]);
+                        }
+                    }
+                    return true;
+                }""",
+                code,
+            )
+        )
+    except PlaywrightError:
+        filled = False
+
+    if not filled:
+        if not locator:
+            return False
+        try:
+            locator.fill(code, timeout=3000)
+            filled = True
+        except PlaywrightError:
+            return False
+
+    emit_debug(debug, f"login_otp_filled length={len(code)}")
+    try:
+        page.keyboard.press("Enter")
+    except PlaywrightError:
+        pass
+    return filled
+
+
+def maybe_complete_login_otp(
+    context: BrowserContext,
+    page: Page,
+    *,
+    otp_code_provider: LoginOtpProvider | None,
+    debug: DebugCallback | None,
+    timeout_ms: int,
+    profile: str | None,
+    wait_ms: int = 3000,
+) -> LoginResult | None:
+    deadline = time.monotonic() + (wait_ms / 1000)
+    while time.monotonic() < deadline:
+        if is_otp_login_page(page):
+            break
+        if looks_logged_in(context, page) or has_visible_error(page):
+            return None
+        page.wait_for_timeout(250)
+
+    if not is_otp_login_page(page):
+        return None
+
+    emit_debug(debug, "login_otp_page_visible")
+    if not otp_code_provider:
+        capture_page_debug(page, debug=debug, label="login_otp_required", profile_dir=profile)
+        return LoginResult(False, "login_otp_required", page.url, profile)
+
+    try:
+        codes = list(otp_code_provider())
+    except Exception as exc:  # pragma: no cover - provider owns mailbox IO
+        reason = short_error(exc)
+        emit_debug(debug, f"login_otp_provider_error {reason}")
+        return LoginResult(False, f"login_otp_provider_error: {reason}", page.url, profile)
+
+    if not codes:
+        capture_page_debug(page, debug=debug, label="login_otp_not_received", profile_dir=profile)
+        return LoginResult(False, "login_otp_not_received", page.url, profile)
+
+    for index, code in enumerate(codes, start=1):
+        emit_debug(debug, f"login_otp_try index={index} length={len(str(code))}")
+        if not submit_login_otp(page, str(code), debug=debug):
+            continue
+        wait_for_short_network_idle(page, debug=debug)
+        result = wait_for_login_result(context, page, min(timeout_ms, 12000))
+        emit_debug(debug, f"login_otp_result success={result.success} reason={result.reason} url={result.url}")
+        if result.success:
+            return _with_profile(result, profile)
+        if not is_otp_login_page(page):
+            return _with_profile(result, profile)
+        if has_visible_error(page):
+            continue
+
+    capture_page_debug(page, debug=debug, label="login_otp_failed", profile_dir=profile)
+    return LoginResult(False, "login_otp_failed", page.url, profile)
+
+
 def has_visible_error(page: Page) -> str | None:
     error_selectors = (
         '[data-uia*="error"]',
@@ -916,6 +1145,7 @@ def _launch_context(
     proxy = _proxy_options(proxy_server)
     if profile_dir:
         profile_dir.mkdir(parents=True, exist_ok=True)
+        clear_stale_chromium_profile_locks(profile_dir, debug=debug)
         emit_debug(debug, f"launch_persistent_browser profile={profile_dir} proxy={_proxy_label(proxy_server)}")
         context = playwright.chromium.launch_persistent_context(
             str(profile_dir),
@@ -944,6 +1174,18 @@ def _proxy_options(proxy_server: str | None) -> dict | None:
     server = str(proxy_server).strip()
     if not server:
         return None
+    parsed = urlparse(server)
+    if parsed.scheme and parsed.hostname and (parsed.username or parsed.password):
+        host = f"[{parsed.hostname}]" if ":" in parsed.hostname and not parsed.hostname.startswith("[") else parsed.hostname
+        clean_server = f"{parsed.scheme}://{host}"
+        if parsed.port:
+            clean_server = f"{clean_server}:{parsed.port}"
+        options = {"server": clean_server}
+        if parsed.username:
+            options["username"] = unquote(parsed.username)
+        if parsed.password:
+            options["password"] = unquote(parsed.password)
+        return options
     return {"server": server}
 
 
@@ -997,16 +1239,23 @@ def _check_netflix_session_impl(
         )
 
     with sync_playwright() as playwright:
-        browser, context = _launch_context(
-            playwright,
-            headless=headless,
-            slow_mo_ms=slow_mo_ms,
-            profile_dir=profile_dir,
-            proxy_server=proxy_server,
-            debug=debug,
-        )
+        try:
+            browser, context = _launch_context(
+                playwright,
+                headless=headless,
+                slow_mo_ms=slow_mo_ms,
+                profile_dir=profile_dir,
+                proxy_server=proxy_server,
+                debug=debug,
+            )
+        except PlaywrightError as exc:
+            reason = short_error(exc)
+            emit_debug(debug, f"session_launch_playwright_error type={exc.__class__.__name__} reason={reason}")
+            return LoginResult(False, f"playwright_error: {reason}", session_url, str(profile_dir))
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(timeout_ms)
+        context.set_default_navigation_timeout(timeout_ms)
+        page.set_default_navigation_timeout(timeout_ms)
         try:
             emit_debug(debug, "goto_session_page")
             page.goto(session_url, wait_until="domcontentloaded")
@@ -1051,6 +1300,7 @@ def _login_netflix_impl(
     debug: DebugCallback | None = None,
     allow_manual_login: bool = False,
     manual_login_timeout_ms: int = 300000,
+    otp_code_provider: LoginOtpProvider | None = None,
     _stale_reset_count: int = 0,
 ) -> LoginResult:
     original_login_url = login_url
@@ -1086,16 +1336,23 @@ def _login_netflix_impl(
         clear_persistent_profile(profile_dir, debug=debug)
 
     with sync_playwright() as playwright:
-        browser, context = _launch_context(
-            playwright,
-            headless=headless,
-            slow_mo_ms=slow_mo_ms,
-            profile_dir=profile_dir,
-            proxy_server=proxy_server,
-            debug=debug,
-        )
+        try:
+            browser, context = _launch_context(
+                playwright,
+                headless=headless,
+                slow_mo_ms=slow_mo_ms,
+                profile_dir=profile_dir,
+                proxy_server=proxy_server,
+                debug=debug,
+            )
+        except PlaywrightError as exc:
+            reason = short_error(exc)
+            emit_debug(debug, f"login_launch_playwright_error type={exc.__class__.__name__} reason={reason}")
+            return LoginResult(False, f"playwright_error: {reason}", login_url, str(profile_dir) if profile_dir else None)
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(timeout_ms)
+        context.set_default_navigation_timeout(timeout_ms)
+        page.set_default_navigation_timeout(timeout_ms)
         context_closed_for_retry = False
 
         def retry_after_stale_state(stage: str) -> LoginResult:
@@ -1145,6 +1402,7 @@ def _login_netflix_impl(
                 debug=debug,
                 allow_manual_login=allow_manual_login,
                 manual_login_timeout_ms=manual_login_timeout_ms,
+                otp_code_provider=otp_code_provider,
                 _stale_reset_count=_stale_reset_count + 1,
             )
 
@@ -1232,6 +1490,7 @@ def _login_netflix_impl(
                         ),
                         str(profile_dir) if profile_dir else None,
                     )
+                capture_page_debug(page, debug=debug, label="login_error_before_password", profile_dir=profile_dir)
                 return LoginResult(False, f"login_failed: {error}", page.url, str(profile_dir) if profile_dir else None)
             if next_step == "otp":
                 emit_debug(debug, "otp_page_open_use_password_menu")
@@ -1259,6 +1518,7 @@ def _login_netflix_impl(
                         ),
                         str(profile_dir) if profile_dir else None,
                     )
+                capture_page_debug(page, debug=debug, label="next_login_step_timeout", profile_dir=profile_dir)
                 return LoginResult(False, "next_login_step_timeout", page.url, str(profile_dir) if profile_dir else None)
 
             if is_otp_login_page(page) and not is_password_login_page(page):
@@ -1299,13 +1559,38 @@ def _login_netflix_impl(
                 if looks_logged_in(context, page):
                     emit_debug(debug, "logged_in_after_submit_button_missing")
                     return LoginResult(True, "login_success", page.url, str(profile_dir) if profile_dir else None)
+                otp_result = maybe_complete_login_otp(
+                    context,
+                    page,
+                    otp_code_provider=otp_code_provider,
+                    debug=debug,
+                    timeout_ms=timeout_ms,
+                    profile=str(profile_dir) if profile_dir else None,
+                    wait_ms=1000,
+                )
+                if otp_result is not None:
+                    return otp_result
                 emit_debug(debug, "password_submit_not_found")
+                capture_page_debug(page, debug=debug, label="password_submit_not_found", profile_dir=profile_dir)
                 return LoginResult(False, "password_submit_not_found", page.url, str(profile_dir) if profile_dir else None)
 
             wait_for_short_network_idle(page, debug=debug)
+            otp_result = maybe_complete_login_otp(
+                context,
+                page,
+                otp_code_provider=otp_code_provider,
+                debug=debug,
+                timeout_ms=timeout_ms,
+                profile=str(profile_dir) if profile_dir else None,
+                wait_ms=7000,
+            )
+            if otp_result is not None:
+                return otp_result
 
             result = wait_for_login_result(context, page, timeout_ms)
             emit_debug(debug, f"login_result success={result.success} reason={result.reason} url={result.url}")
+            if not result.success:
+                capture_page_debug(page, debug=debug, label="login_result_failure", profile_dir=profile_dir)
             if not result.success and allow_manual_login and not headless:
                 result = wait_for_manual_login(
                     context,
@@ -1315,6 +1600,11 @@ def _login_netflix_impl(
                     reason=result.reason,
                 )
             return _with_profile(result, str(profile_dir) if profile_dir else None)
+        except PlaywrightError as exc:
+            capture_page_debug(page, debug=debug, label="login_playwright_error", profile_dir=profile_dir)
+            reason = short_error(exc)
+            emit_debug(debug, f"login_playwright_error type={exc.__class__.__name__} reason={reason}")
+            return LoginResult(False, f"playwright_error: {reason}", page.url, str(profile_dir) if profile_dir else None)
         finally:
             emit_debug(debug, "close_browser")
             if not context_closed_for_retry:

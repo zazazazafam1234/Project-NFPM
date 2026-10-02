@@ -22,8 +22,9 @@ from email.utils import parsedate_to_datetime
 from netflix_login_checker.core import DebugCallback, emit_debug
 
 # The code sits on its own line/cell; SRC ids, links and phone numbers do not.
-CODE_LINE_PATTERN = re.compile(r"^\s*(\d{6})\s*$", re.M)
-CODE_PATTERN = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+# Netflix login can send a 4-digit code, while account-change MFA often sends 6.
+CODE_LINE_PATTERN = re.compile(r"^\s*(\d{4,6})\s*$", re.M)
+CODE_PATTERN = re.compile(r"(?<!\d)(\d{4,6})(?!\d)")
 # Mail received this long before the "send code" click still counts (clock drift).
 EARLY_SLACK = timedelta(seconds=60)
 
@@ -59,28 +60,45 @@ def fetch_otp_candidates(mailbox: MailboxLogin, sent_at: datetime, *, debug: Deb
     """Netflix codes received since `sent_at`, closest to `sent_at` first."""
     since = (sent_at - timedelta(days=1)).strftime("%d-%b-%Y")
     candidates: list[OtpCandidate] = []
+    inspected = 0
+    fetched = 0
+    started = time.monotonic()
     with imaplib.IMAP4_SSL(mailbox.host) as imap:
         imap.login(mailbox.user, mailbox.password)
         imap.select("INBOX", readonly=True)
         status, data = imap.search(None, "FROM", '"netflix"', "SINCE", since)
         if status != "OK":
             return []
-        ids = data[0].split()[-20:]
+        ids = data[0].split()[-_env_int("OTP_IMAP_LOOKBACK", 10):]
         for message_id in reversed(ids):
-            status, parts = imap.fetch(message_id, "(INTERNALDATE RFC822)")
+            inspected += 1
+            status, parts = imap.fetch(
+                message_id,
+                "(INTERNALDATE BODY.PEEK[HEADER.FIELDS (TO DELIVERED-TO X-ORIGINAL-TO CC SUBJECT)])",
+            )
             if status != "OK" or not parts or not isinstance(parts[0], tuple):
                 continue
             received_at = _internal_date(parts[0][0]) or sent_at
             if received_at < sent_at - EARLY_SLACK:
                 continue
-            message = email.message_from_bytes(parts[0][1])
-            if mailbox.recipient and not _addressed_to(message, mailbox.recipient):
+            header_message = email.message_from_bytes(parts[0][1])
+            if mailbox.recipient and not _addressed_to(header_message, mailbox.recipient):
                 continue
+            code = _extract_code(header_message)
+            if code:
+                candidates.append(OtpCandidate(code, received_at))
+                continue
+            status, full_parts = imap.fetch(message_id, "(RFC822)")
+            fetched += 1
+            if status != "OK" or not full_parts or not isinstance(full_parts[0], tuple):
+                continue
+            message = email.message_from_bytes(full_parts[0][1])
             code = _extract_code(message)
             if code:
                 candidates.append(OtpCandidate(code, received_at))
     candidates.sort(key=lambda item: abs((item.received_at - sent_at).total_seconds()))
-    emit_debug(debug, f"otp_mail_candidates count={len(candidates)}")
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    emit_debug(debug, f"otp_mail_candidates count={len(candidates)} inspected={inspected} fetched={fetched} elapsed_ms={elapsed_ms}")
     return candidates
 
 
@@ -89,9 +107,11 @@ def wait_for_otp_candidates(
     sent_at: datetime,
     *,
     timeout_s: float = 120,
+    poll_interval_s: float | None = None,
     debug: DebugCallback | None = None,
 ) -> list[OtpCandidate]:
     deadline = time.monotonic() + timeout_s
+    poll_interval = poll_interval_s if poll_interval_s is not None else _env_float("OTP_IMAP_POLL_INTERVAL", 2.0)
     while True:
         try:
             candidates = fetch_otp_candidates(mailbox, sent_at, debug=debug)
@@ -100,11 +120,25 @@ def wait_for_otp_candidates(
             candidates = []
         if candidates or time.monotonic() >= deadline:
             return candidates
-        time.sleep(5)
+        time.sleep(max(0.5, poll_interval))
 
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return max(0.5, float(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
 
 
 def _internal_date(fetch_header: bytes) -> datetime | None:

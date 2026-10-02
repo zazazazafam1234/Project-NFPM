@@ -283,6 +283,19 @@ export type AdminInventory = {
     service: string;
     packageName: string | null;
     packageSlug: string | null;
+    /** The rental running now on this slot, if any. */
+    rental: {
+      subscriptionId: string;
+      userId: string;
+      userName: string | null;
+      userEmail: string;
+      packageName: string;
+      pricePaid: number;
+      startedAt: string;
+      expiresAt: string;
+      /** The renter's email is on the Netflix profile (the "ready" email went out). */
+      ready: boolean;
+    } | null;
   }>;
   users: Array<{
     id: string;

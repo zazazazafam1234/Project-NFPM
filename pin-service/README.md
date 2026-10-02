@@ -58,6 +58,15 @@ docker run -d --name fastmovie-pin-service -p 5055:5055 \
 | `PIN_SERVICE_HEADLESS` | `true` | `false` to watch the browser |
 | `PIN_SERVICE_PROFILES_DIR` | `.netflix_profiles` | saved browser sessions, one per master email |
 | `PIN_SERVICE_PROXY` | — | e.g. `socks5://host:1080` |
+| `PIN_SERVICE_PROXY_PREFER_STATIC` | `true` when `PIN_SERVICE_PROXY` is set | use `PIN_SERVICE_PROXY` instead of the proxy list |
+| `PIN_SERVICE_PROXY_LIST_FILE` | — | JSON proxy list; when set, each request randomly uses a low-latency proxy from the list |
+| `PIN_SERVICE_PROXY_PROTOCOLS` | `http,socks5` | protocols accepted from the proxy list |
+| `PIN_SERVICE_PROXY_TOP_N` | `8` | randomize within the N lowest-latency usable proxies |
+| `PIN_SERVICE_PROXY_RETRIES` | `5` with a proxy list, otherwise `1` | retry login with another proxy for timeout/network-like failures |
+| `PIN_SERVICE_PROXY_MAX_LATENCY_MS` | `1500` | ignore proxies slower than this `timeout` value |
+| `PIN_SERVICE_PROXY_COUNTRIES` | `TH,VN,ID,HK,TW,PH,KR,JP,SG` | optional comma-separated country codes |
+| `PIN_SERVICE_PROXY_ALLOW_HOSTING` | `false` | include datacenter/hosting proxies from the list |
+| `PIN_SERVICE_PROXY_BAD_TTL_SECONDS` | `1800` | avoid a failed proxy for this many seconds |
 | `OTP_IMAP_HOST` | `imap.gmail.com` | mailbox for Netflix verification codes |
 | `OTP_IMAP_USER` / `OTP_IMAP_PASSWORD` | — | shared inbox, used when a master email has no App Password |
 

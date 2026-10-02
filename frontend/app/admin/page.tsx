@@ -1514,9 +1514,11 @@ function ProfilesPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
   const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string } | null>(null);
+  const [viewingRentalId, setViewingRentalId] = useState<string | null>(null);
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
   const profiles = inventory?.profiles ?? [];
+  const viewingRental = profiles.find((profile) => profile.id === viewingRentalId) ?? null;
   const profileCounts = inventory?.counts?.profiles ?? { all: 0 };
   const profilePage = inventory?.pagination?.profiles;
   const statusTabs = [
@@ -1585,8 +1587,8 @@ function ProfilesPanel({
     try {
       const { pinRotation } = await expireProfileRental(profileId);
       const message = pinRotation
-        ? `${profileName} หมดเวลาแล้ว · ระบบกำลังเปลี่ยน PIN และจะปล่อย Slot ภายใน 1 นาที`
-        : `${profileName} หมดเวลาแล้ว · ปล่อย Slot แล้ว (ไม่ได้เปลี่ยน PIN อัตโนมัติ กรุณาเปลี่ยนเอง)`;
+        ? `ยกเลิกการเช่า ${profileName} แล้ว · ระบบกำลังลบโปรไฟล์และสร้างใหม่ จะปล่อย Slot ภายในไม่กี่นาที`
+        : `ยกเลิกการเช่า ${profileName} แล้ว · ปล่อย Slot แล้ว (ไม่ได้สร้างโปรไฟล์ใหม่อัตโนมัติ กรุณาทำเอง)`;
       onDone(message);
       window.alert(message);
     } catch (err) {
@@ -1653,9 +1655,24 @@ function ProfilesPanel({
                 const room = (inventory?.masterEmails ?? []).find((a) => a.id === profile.master_email_id);
                 return room ? `${room.profileCount}/${room.maxProfiles}` : "";
               })()}</span>
-              <em className={profile.status === "available" ? styles.green : styles.yellow}>
-                {profile.status}
-              </em>
+              {profile.rental ? (
+                <em
+                  className={`${styles.red} ${styles.rentedBadge}`}
+                  onClick={() => setViewingRentalId(profile.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") setViewingRentalId(profile.id);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title="ดูว่าใครเช่าอยู่"
+                >
+                  โดนเช่า
+                </em>
+              ) : (
+                <em className={profile.status === "available" ? styles.green : styles.yellow}>
+                  {profile.status}
+                </em>
+              )}
               <button
                 disabled={profile.status === "rented" || profile.status === "reserved"}
                 title={profile.status === "rented" ? "Slot นี้มีลูกค้าเช่าอยู่" : undefined}
@@ -1685,13 +1702,13 @@ function ProfilesPanel({
               >
                 แก้ไข
               </button>
-              {profile.status === "rented" && (
+              {(profile.rental || profile.status === "rented") && (
                 <button
                   className={styles.danger}
                   onClick={() => setExpiringProfile({ id: profile.id, name: profile.profile_name })}
                   type="button"
                 >
-                  หมดเวลา
+                  ยกเลิกการเช่า
                 </button>
               )}
               <button
@@ -1907,11 +1924,49 @@ function ProfilesPanel({
       )}
     </AnimatePresence>
     <AnimatePresence>
+      {viewingRental?.rental && (
+        <EditModal title={`ผู้เช่า Slot ${viewingRental.profile_name}`} eyebrow="RENTAL" onClose={() => setViewingRentalId(null)}>
+          <dl className={styles.rentalDetails}>
+            <dt>ผู้เช่า</dt>
+            <dd>{viewingRental.rental.userName || "-"}</dd>
+            <dt>อีเมล</dt>
+            <dd>{viewingRental.rental.userEmail}</dd>
+            <dt>แพ็กเกจ</dt>
+            <dd>{viewingRental.rental.packageName} · {viewingRental.rental.pricePaid} Point</dd>
+            <dt>เริ่มเช่า</dt>
+            <dd>{formatDateTime(viewingRental.rental.startedAt)}</dd>
+            <dt>หมดอายุ</dt>
+            <dd>{formatDateTime(viewingRental.rental.expiresAt)}</dd>
+            <dt>บัญชีแม่</dt>
+            <dd>{viewingRental.masterEmail}</dd>
+            <dt>สถานะ</dt>
+            <dd className={viewingRental.rental.ready ? styles.green : styles.yellow}>
+              {viewingRental.rental.ready ? "พร้อมใช้งาน (เพิ่มอีเมลในโปรไฟล์แล้ว)" : "กำลังเตรียมบัญชี (ยังไม่ได้เพิ่มอีเมล)"}
+            </dd>
+            <dt>รหัสคำสั่งซื้อ</dt>
+            <dd>#{viewingRental.rental.subscriptionId.replace(/-/g, "").slice(0, 8).toUpperCase()}</dd>
+          </dl>
+          <div className={styles.rentalActions}>
+            <button
+              className={styles.danger}
+              onClick={() => {
+                setExpiringProfile({ id: viewingRental.id, name: viewingRental.profile_name });
+                setViewingRentalId(null);
+              }}
+              type="button"
+            >
+              ยกเลิกการเช่า
+            </button>
+          </div>
+        </EditModal>
+      )}
+    </AnimatePresence>
+    <AnimatePresence>
       {expiringProfile && (
         <ConfirmModal
-          title="ให้ Slot หมดเวลาทันที"
-          message={`จบการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ`}
-          confirmLabel="หมดเวลาเลย"
+          title="ยกเลิกการเช่า"
+          message={`ยกเลิกการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ และระบบจะลบโปรไฟล์นี้แล้วสร้างใหม่ (ไม่คืน Point)`}
+          confirmLabel="ยกเลิกการเช่า"
           onClose={() => setExpiringProfile(null)}
           onConfirm={() => void expireProfile(expiringProfile.id, expiringProfile.name)}
         />

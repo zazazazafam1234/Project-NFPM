@@ -53,7 +53,19 @@ const renewable = () => sql`
   )
   AND NOT EXISTS (
     SELECT 1 FROM subscription_events se
-    WHERE se.subscription_id = s.id AND se.event_type IN ('expired_by_admin', 'pin_rotated')
+    WHERE se.subscription_id = s.id AND se.event_type IN ('expired_by_admin', 'pin_rotated', 'profile_recreated')
+  )
+`;
+
+const noActiveRentalOnSameMasterForUser = (userId: string) => sql`
+  NOT EXISTS (
+    SELECT 1
+    FROM subscriptions existing
+    JOIN profiles occupied ON occupied.id = existing.profile_id
+    WHERE existing.user_id = ${userId}
+      AND existing.status IN ('pending', 'active')
+      AND existing.expires_at > NOW()
+      AND occupied.master_email_id = p.master_email_id
   )
 `;
 
@@ -178,6 +190,7 @@ subscriptions.post("/", async (c) => {
                 AND me.status = 'active'
                 AND me.deleted_at IS NULL
                 AND me.master_expired_at > NOW()
+                AND ${noActiveRentalOnSameMasterForUser(userId)}
                 AND NOT EXISTS (
                 SELECT 1
                 FROM subscriptions s
@@ -205,6 +218,7 @@ subscriptions.post("/", async (c) => {
               AND me.status = 'active'
               AND me.deleted_at IS NULL
               AND me.master_expired_at > NOW()
+              AND ${noActiveRentalOnSameMasterForUser(userId)}
               AND NOT EXISTS (
                 SELECT 1
                 FROM subscriptions s
