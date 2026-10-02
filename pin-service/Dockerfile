@@ -13,7 +13,10 @@ COPY pin-service ./pin-service
 
 ENV PIN_SERVICE_HOST=0.0.0.0 \
     PIN_SERVICE_PORT=5055 \
-    PIN_SERVICE_PROFILES_DIR=/data/profiles
+    PIN_SERVICE_PROFILES_DIR=/data/profiles \
+    DISPLAY=:99 \
+    PYTHONUNBUFFERED=1
 VOLUME ["/data/profiles"]
 EXPOSE 5055
-CMD ["xvfb-run", "-a", "--server-args=-screen 0 1920x1080x24", "python", "pin-service/run.py"]
+# Xvfb in the background, the service in the foreground (xvfb-run can hang as PID 1).
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & exec python -u pin-service/run.py"]
