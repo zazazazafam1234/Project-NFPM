@@ -122,3 +122,74 @@
   font-size: 11.5px;
   overflow-wrap: anywhere;
 }
+
+.pickerField {
+  display: grid;
+  gap: 7px;
+  color: var(--c-948c9dff);
+  font-size: 13px;
+}
+.userPicker {
+  display: grid;
+  gap: 6px;
+}
+.userPicker ul {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--c-ffffff15);
+  border-radius: 10px;
+  list-style: none;
+}
+.userPicker li button {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--c-f7f5ffff);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.userPicker li button:hover:not(:disabled) {
+  background: var(--c-ffffff15);
+}
+.userPicker li button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.userPicker small,
+.pickedUser small {
+  color: var(--c-948c9dff);
+}
+.userPicker em {
+  color: var(--c-f0c36fff);
+  font-size: 12px;
+  font-style: normal;
+}
+.pickerEmpty {
+  padding: 8px 10px;
+  color: var(--c-948c9dff);
+}
+.pickedUser {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 10px;
+  color: var(--c-f7f5ffff);
+}
+.pickedUser div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

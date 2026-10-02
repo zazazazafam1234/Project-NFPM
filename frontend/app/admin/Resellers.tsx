@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import {
   PAYOUT_CYCLE_LABEL,
@@ -13,14 +14,17 @@ import {
   fetchAdminResellers,
   removeResellerManager,
   saveResellerSettings,
+  searchResellerCandidates,
   updateAdminReseller,
   type PayoutCycle,
   type ResellerBank,
+  type ResellerCandidate,
   type ResellerManager,
   type ResellerPayout,
   type ResellerStat,
   type ResellerUse,
 } from "../lib/api";
+import { EditModal } from "./EditModal";
 import styles from "./page.module.css";
 import rewardStyles from "./rewards.module.css";
 
@@ -37,11 +41,88 @@ async function run(action: () => Promise<unknown>, success: string, onDone: Noti
   return true;
 }
 
-const blankForm = { user: "", commission: "0.25", maxUses: "", code: "" };
+const blankForm = { commission: "0.25", maxUses: "", code: "" };
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 }
+
+/** Type a name or email, pick one account from the matches. */
+function UserPicker({
+  selected,
+  onSelect,
+  disable,
+}: {
+  selected: ResellerCandidate | null;
+  onSelect: (user: ResellerCandidate | null) => void;
+  /** Why a match cannot be picked (e.g. already a reseller), or null. */
+  disable: (user: ResellerCandidate) => string | null;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ResellerCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      queueMicrotask(() => setResults([]));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      searchResellerCandidates(q)
+        .then((data) => setResults(data.users))
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  if (selected) {
+    return (
+      <div className={rewardStyles.pickedUser}>
+        <div>
+          <b>{selected.name}</b>
+          <small>{selected.email}</small>
+        </div>
+        <button className={styles.secondary} onClick={() => onSelect(null)} type="button">
+          เปลี่ยน
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={rewardStyles.userPicker}>
+      <input
+        autoFocus
+        placeholder="พิมพ์ชื่อหรืออีเมลเพื่อค้นหา"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {query.trim() && (
+        <ul>
+          {results.map((user) => {
+            const reason = disable(user);
+            return (
+              <li key={user.id}>
+                <button disabled={Boolean(reason)} onClick={() => onSelect(user)} type="button">
+                  <b>{user.name}</b>
+                  <small>{user.email}</small>
+                  {reason && <em>{reason}</em>}
+                </button>
+              </li>
+            );
+          })}
+          {!loading && results.length === 0 && <li className={rewardStyles.pickerEmpty}>ไม่พบผู้ใช้</li>}
+          {loading && <li className={rewardStyles.pickerEmpty}>กำลังค้นหา…</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type Confirm = { title: string; message: string; label: string; danger?: boolean; action: () => Promise<void> };
 
 export function ResellersPanel({ onDone }: { onDone: Notify }) {
   const [resellers, setResellers] = useState<ResellerStat[]>([]);
@@ -49,12 +130,17 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
   const [discountPercent, setDiscountPercent] = useState("5");
   const [payoutCycle, setPayoutCycle] = useState<PayoutCycle>("monthly");
   const [payouts, setPayouts] = useState<ResellerPayout[]>([]);
-  const [editing, setEditing] = useState<string | "new" | null>(null);
+  // Modals
+  const [editing, setEditing] = useState<ResellerStat | "new" | null>(null);
   const [form, setForm] = useState(blankForm);
-  const [managerQuery, setManagerQuery] = useState("");
+  const [picked, setPicked] = useState<ResellerCandidate | null>(null);
+  const [appointing, setAppointing] = useState(false);
+  const [pickedManager, setPickedManager] = useState<ResellerCandidate | null>(null);
   const [usesOf, setUsesOf] = useState<{ reseller: ResellerStat; uses: ResellerUse[]; bank: ResellerBank | null } | null>(
     null,
   );
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     fetchAdminResellers()
@@ -71,10 +157,15 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
     queueMicrotask(load);
   }, [load]);
 
-  function edit(reseller: ResellerStat) {
-    setEditing(reseller.id);
+  function openAdd() {
+    setEditing("new");
+    setPicked(null);
+    setForm(blankForm);
+  }
+
+  function openEdit(reseller: ResellerStat) {
+    setEditing(reseller);
     setForm({
-      user: `${reseller.userName} (${reseller.userEmail})`,
       commission: String(reseller.commissionCents / 100),
       maxUses: reseller.maxUses ? String(reseller.maxUses) : "",
       code: reseller.code,
@@ -83,22 +174,24 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
 
   async function save() {
     const maxUses = form.maxUses.trim() ? Number(form.maxUses) : null;
+    const target = editing === "new" ? null : editing;
+    setBusy(true);
     const ok =
-      editing === "new"
+      !target
         ? await run(
             () =>
               addAdminReseller({
-                user: form.user,
+                userId: String(picked?.id),
                 commission: Number(form.commission),
                 maxUses,
                 code: form.code.trim() || undefined,
               }),
-            "เพิ่มตัวแทนจำหน่ายและสร้างโค้ดแล้ว",
+            `เพิ่ม ${picked?.name} เป็นตัวแทนจำหน่ายแล้ว`,
             onDone,
           )
         : await run(
             () =>
-              updateAdminReseller(String(editing), {
+              updateAdminReseller(target.id, {
                 commission: Number(form.commission),
                 maxUses,
                 code: form.code.trim() || undefined,
@@ -106,43 +199,33 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             "บันทึกตัวแทนจำหน่ายแล้ว",
             onDone,
           );
+    setBusy(false);
     if (ok) {
       setEditing(null);
       load();
     }
   }
 
-  async function toggle(reseller: ResellerStat) {
-    const status = reseller.status === "active" ? "inactive" : "active";
-    if (await run(() => updateAdminReseller(reseller.id, { status }), status === "active" ? "เปิดโค้ดแล้ว" : "ปิดโค้ดแล้ว", onDone)) {
+  async function regenerateCode(reseller: ResellerStat) {
+    setBusy(true);
+    const ok = await run(() => updateAdminReseller(reseller.id, { regenerateCode: true }), "สร้างโค้ดใหม่แล้ว", onDone);
+    setBusy(false);
+    if (ok) {
+      setEditing(null);
       load();
     }
   }
 
-  async function remove(reseller: ResellerStat) {
-    if (!window.confirm(`ลบตัวแทน "${reseller.userName}" ใช่ไหม? โค้ด ${reseller.code} จะใช้ไม่ได้อีก`)) return;
-    if (await run(() => deleteAdminReseller(reseller.id), `ลบตัวแทน ${reseller.userName} แล้ว`, onDone)) load();
-  }
-
-  async function cut() {
-    const label = PAYOUT_CYCLE_LABEL[payoutCycle];
-    if (!window.confirm(`ตัดยอดค่าคอมทั้งหมดก่อนรอบ${label}ปัจจุบัน เป็นรายการรอโอนใช่ไหม?`)) return;
-    try {
-      const result = await cutResellerPayouts();
-      onDone(
-        result.count
-          ? `ตัดยอดแล้ว ${result.count} รายการ รวม ฿${bahtFromCents(result.totalCents)} — โอนแล้วกดอนุมัติทีละรายการ`
-          : "ไม่มีค่าคอมที่ถึงรอบตัดยอด",
-      );
+  async function appoint() {
+    if (!pickedManager) return;
+    setBusy(true);
+    const ok = await run(() => addResellerManager(pickedManager.id), `แต่งตั้ง ${pickedManager.name} เป็นคนดูแลตัวแทนแล้ว`, onDone);
+    setBusy(false);
+    if (ok) {
+      setAppointing(false);
+      setPickedManager(null);
       load();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "ตัดยอดไม่สำเร็จ");
     }
-  }
-
-  async function approve(payout: ResellerPayout) {
-    if (!window.confirm(`โอน ฿${bahtFromCents(payout.amountCents)} ให้ ${payout.userName} แล้วใช่ไหม?`)) return;
-    if (await run(() => approveResellerPayout(payout.id), `อนุมัติการโอนให้ ${payout.userName} แล้ว`, onDone)) load();
   }
 
   async function showUses(reseller: ResellerStat) {
@@ -163,17 +246,85 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
     if (ok) load();
   }
 
-  async function addManager() {
-    if (await run(() => addResellerManager(managerQuery), "แต่งตั้งคนดูแลตัวแทนจำหน่ายแล้ว", onDone)) {
-      setManagerQuery("");
+  async function runConfirm() {
+    if (!confirm) return;
+    setBusy(true);
+    try {
+      await confirm.action();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ทำรายการไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+      setConfirm(null);
       load();
     }
   }
 
-  async function dropManager(manager: ResellerManager) {
-    if (!window.confirm(`ถอดยศคนดูแลตัวแทนของ ${manager.name} ใช่ไหม?`)) return;
-    if (await run(() => removeResellerManager(manager.id), `ถอดยศ ${manager.name} แล้ว`, onDone)) load();
-  }
+  const askToggle = (reseller: ResellerStat) =>
+    setConfirm({
+      title: reseller.status === "active" ? "ปิดโค้ดตัวแทน" : "เปิดโค้ดตัวแทน",
+      message:
+        reseller.status === "active"
+          ? `ปิดโค้ด ${reseller.code} ของ ${reseller.userName}? ลูกค้าจะใช้โค้ดนี้ไม่ได้จนกว่าจะเปิดอีกครั้ง`
+          : `เปิดโค้ด ${reseller.code} ของ ${reseller.userName} ให้ใช้ได้อีกครั้ง?`,
+      label: reseller.status === "active" ? "ปิดโค้ด" : "เปิดโค้ด",
+      action: async () => {
+        await updateAdminReseller(reseller.id, { status: reseller.status === "active" ? "inactive" : "active" });
+        onDone(reseller.status === "active" ? "ปิดโค้ดแล้ว" : "เปิดโค้ดแล้ว");
+      },
+    });
+
+  const askRemove = (reseller: ResellerStat) =>
+    setConfirm({
+      title: "ลบตัวแทนจำหน่าย",
+      message: `ลบ ${reseller.userName} ออกจากตัวแทน? โค้ด ${reseller.code} จะใช้ไม่ได้อีก (ประวัติและค่าคอมที่ตัดยอดแล้วยังอยู่)`,
+      label: "ลบตัวแทน",
+      danger: true,
+      action: async () => {
+        await deleteAdminReseller(reseller.id);
+        onDone(`ลบตัวแทน ${reseller.userName} แล้ว`);
+      },
+    });
+
+  const askCut = () =>
+    setConfirm({
+      title: "ตัดยอดค่าคอม",
+      message: `รวมค่าคอมที่เกิดก่อนรอบ${PAYOUT_CYCLE_LABEL[payoutCycle]}ปัจจุบันเป็นรายการรอโอน แยกตามตัวแทน`,
+      label: "ตัดยอด",
+      action: async () => {
+        const result = await cutResellerPayouts();
+        onDone(
+          result.count
+            ? `ตัดยอดแล้ว ${result.count} รายการ รวม ฿${bahtFromCents(result.totalCents)} — โอนแล้วกดอนุมัติทีละรายการ`
+            : "ไม่มีค่าคอมที่ถึงรอบตัดยอด",
+        );
+      },
+    });
+
+  const askApprove = (payout: ResellerPayout) =>
+    setConfirm({
+      title: "ยืนยันการโอนค่าคอม",
+      message: `โอน ฿${bahtFromCents(payout.amountCents)} ให้ ${payout.userName}${
+        payout.bankName ? ` (${payout.bankName} · ${payout.bankAccountName} · ${payout.bankAccountNumber})` : ""
+      } เรียบร้อยแล้ว?`,
+      label: "โอนแล้ว · อนุมัติ",
+      action: async () => {
+        await approveResellerPayout(payout.id);
+        onDone(`อนุมัติการโอนให้ ${payout.userName} แล้ว`);
+      },
+    });
+
+  const askDropManager = (manager: ResellerManager) =>
+    setConfirm({
+      title: "ถอดยศคนดูแลตัวแทน",
+      message: `ถอดยศคนดูแลตัวแทนจำหน่ายของ ${manager.name}?`,
+      label: "ถอดยศ",
+      danger: true,
+      action: async () => {
+        await removeResellerManager(manager.id);
+        onDone(`ถอดยศ ${manager.name} แล้ว`);
+      },
+    });
 
   async function copy(text: string, label: string) {
     try {
@@ -183,6 +334,8 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
       window.prompt(`คัดลอก${label}`, text);
     }
   }
+
+  const editingReseller = editing && editing !== "new" ? editing : null;
 
   return (
     <>
@@ -197,14 +350,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             </p>
           </div>
           <div className={styles.panelTools}>
-            <button
-              className={styles.primary}
-              onClick={() => {
-                setEditing("new");
-                setForm(blankForm);
-              }}
-              type="button"
-            >
+            <button className={styles.primary} onClick={openAdd} type="button">
               เพิ่มตัวแทน
             </button>
           </div>
@@ -232,76 +378,6 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             </button>
           </div>
         </div>
-
-        {editing && (
-          <div className={`${styles.formRows} ${rewardStyles.inlineForm}`}>
-            <label>
-              ผู้ใช้ (ชื่อหรืออีเมล)
-              <input
-                disabled={editing !== "new"}
-                placeholder="เช่น somchai@gmail.com"
-                value={form.user}
-                onChange={(event) => setForm({ ...form, user: event.target.value })}
-              />
-            </label>
-            <label>
-              ค่าคอมต่อลูกค้า 1 คน (บาท)
-              <input
-                inputMode="decimal"
-                value={form.commission}
-                onChange={(event) => setForm({ ...form, commission: event.target.value.replace(/[^\d.]/g, "") })}
-              />
-            </label>
-            <label>
-              ใช้ได้กี่คน (เว้นว่าง = ไม่จำกัด)
-              <input
-                inputMode="numeric"
-                value={form.maxUses}
-                onChange={(event) => setForm({ ...form, maxUses: event.target.value.replace(/\D/g, "") })}
-              />
-            </label>
-            <label>
-              โค้ด (เว้นว่าง = สร้างให้อัตโนมัติ)
-              <input
-                value={form.code}
-                onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })}
-              />
-            </label>
-            <div className={styles.formActions}>
-              <button
-                className={styles.primary}
-                disabled={!form.user.trim() || form.commission.trim() === ""}
-                onClick={() => void save()}
-                type="button"
-              >
-                {editing === "new" ? "เพิ่มตัวแทน" : "บันทึก"}
-              </button>
-              {editing !== "new" && (
-                <button
-                  className={styles.secondary}
-                  onClick={() =>
-                    void run(
-                      () => updateAdminReseller(String(editing), { regenerateCode: true }),
-                      "สร้างโค้ดใหม่แล้ว",
-                      onDone,
-                    ).then((ok) => {
-                      if (ok) {
-                        setEditing(null);
-                        load();
-                      }
-                    })
-                  }
-                  type="button"
-                >
-                  สุ่มโค้ดใหม่
-                </button>
-              )}
-              <button className={styles.secondary} onClick={() => setEditing(null)} type="button">
-                ยกเลิก
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className={rewardStyles.streamerGrid}>
           {resellers.map((reseller) => (
@@ -354,15 +430,15 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
               </dl>
               <footer>
                 <button onClick={() => void showUses(reseller)} type="button">
-                  ดูรายการ
+                  ดูรายละเอียด
                 </button>
-                <button onClick={() => edit(reseller)} type="button">
+                <button onClick={() => openEdit(reseller)} type="button">
                   แก้ไข
                 </button>
-                <button onClick={() => void toggle(reseller)} type="button">
+                <button onClick={() => askToggle(reseller)} type="button">
                   {reseller.status === "active" ? "ปิดโค้ด" : "เปิดโค้ด"}
                 </button>
-                <button className={styles.danger} onClick={() => void remove(reseller)} type="button">
+                <button className={styles.danger} onClick={() => askRemove(reseller)} type="button">
                   ลบ
                 </button>
               </footer>
@@ -370,46 +446,6 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
           ))}
           {resellers.length === 0 && <p className={styles.emptyInline}>ยังไม่มีตัวแทนจำหน่าย</p>}
         </div>
-
-        {usesOf && (
-          <div className={`${styles.formRows} ${rewardStyles.inlineForm}`}>
-            <b>
-              รายการล่าสุดของ {usesOf.reseller.userName} ({usesOf.reseller.code})
-            </b>
-            <p className={styles.muted}>
-              บัญชีรับค่าคอม:{" "}
-              {usesOf.bank
-                ? `${usesOf.bank.bankName} · ${usesOf.bank.accountName} · ${usesOf.bank.accountNumber}`
-                : "ยังไม่กรอก"}
-            </p>
-            <div className={styles.table}>
-              {usesOf.uses.map((use) => (
-                <div key={use.id}>
-                  <b>{use.customer}</b>
-                  <span>
-                    เติม ฿{bahtFromCents(use.baseAmountCents)} · ลด ฿{bahtFromCents(use.discountCents)} · ค่าคอม ฿
-                    {bahtFromCents(use.commissionCents)} · {formatDate(use.createdAt)}
-                  </span>
-                  <em className={use.status === "redeemed" ? styles.green : styles.yellow}>
-                    {use.status === "pending"
-                      ? "รอชำระ"
-                      : use.payoutStatus === "approved"
-                        ? "โอนแล้ว"
-                        : use.payoutStatus === "pending"
-                          ? "รอโอน"
-                          : "ยังไม่ถึงรอบ"}
-                  </em>
-                </div>
-              ))}
-              {usesOf.uses.length === 0 && <p className={styles.emptyInline}>ยังไม่มีลูกค้าใช้โค้ดนี้</p>}
-            </div>
-            <div className={styles.formActions}>
-              <button className={styles.secondary} onClick={() => setUsesOf(null)} type="button">
-                ปิด
-              </button>
-            </div>
-          </div>
-        )}
       </section>
 
       <section className={styles.panel}>
@@ -422,7 +458,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             </p>
           </div>
           <div className={styles.panelTools}>
-            <button className={styles.primary} onClick={() => void cut()} type="button">
+            <button className={styles.primary} onClick={askCut} type="button">
               ตัดยอด
             </button>
           </div>
@@ -443,7 +479,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
                 {payout.status === "approved" ? `โอนแล้ว ${formatDate(payout.approvedAt)}` : "รอโอน"}
               </em>
               {payout.status === "pending" && (
-                <button className={styles.primary} onClick={() => void approve(payout)} type="button">
+                <button className={styles.primary} onClick={() => askApprove(payout)} type="button">
                   โอนแล้ว · อนุมัติ
                 </button>
               )}
@@ -460,14 +496,15 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             <h2>คนดูแลตัวแทนจำหน่าย</h2>
             <p className={styles.muted}>ดูยอดขายของตัวแทนทุกคนได้ที่หน้า /resellers (ไม่มีสิทธิ์แอดมินอื่น)</p>
           </div>
-        </div>
-        <div className={`${styles.formRows} ${rewardStyles.inlineForm}`}>
-          <label>
-            แต่งตั้งจากชื่อหรืออีเมล
-            <input value={managerQuery} onChange={(event) => setManagerQuery(event.target.value)} />
-          </label>
-          <div className={styles.formActions}>
-            <button className={styles.primary} disabled={!managerQuery.trim()} onClick={() => void addManager()} type="button">
+          <div className={styles.panelTools}>
+            <button
+              className={styles.primary}
+              onClick={() => {
+                setAppointing(true);
+                setPickedManager(null);
+              }}
+              type="button"
+            >
               แต่งตั้ง
             </button>
           </div>
@@ -477,7 +514,7 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
             <div key={manager.id}>
               <b>{manager.name}</b>
               <span>{manager.email}</span>
-              <button className={styles.danger} onClick={() => void dropManager(manager)} type="button">
+              <button className={styles.danger} onClick={() => askDropManager(manager)} type="button">
                 ถอดยศ
               </button>
             </div>
@@ -485,6 +522,161 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
           {managers.length === 0 && <p className={styles.emptyInline}>ยังไม่มีคนดูแลตัวแทนจำหน่าย</p>}
         </div>
       </section>
+
+      <AnimatePresence>
+        {editing && (
+          <EditModal
+            eyebrow={editing === "new" ? "ADD RESELLER" : "EDIT RESELLER"}
+            title={editing === "new" ? "เพิ่มตัวแทนจำหน่าย" : `แก้ไข ${editingReseller?.userName}`}
+            onClose={() => setEditing(null)}
+          >
+            <div className={styles.formRows}>
+              {editing === "new" ? (
+                <div className={rewardStyles.pickerField}>
+                  <span>ผู้ใช้</span>
+                  <UserPicker
+                    selected={picked}
+                    onSelect={setPicked}
+                    disable={(user) => (user.isReseller ? "เป็นตัวแทนอยู่แล้ว" : null)}
+                  />
+                </div>
+              ) : (
+                <p className={styles.muted}>{editingReseller?.userEmail}</p>
+              )}
+              <label>
+                ค่าคอมต่อลูกค้า 1 คน (บาท)
+                <input
+                  inputMode="decimal"
+                  value={form.commission}
+                  onChange={(event) => setForm({ ...form, commission: event.target.value.replace(/[^\d.]/g, "") })}
+                />
+              </label>
+              <label>
+                ใช้ได้กี่คน (เว้นว่าง = ไม่จำกัด)
+                <input
+                  inputMode="numeric"
+                  value={form.maxUses}
+                  onChange={(event) => setForm({ ...form, maxUses: event.target.value.replace(/\D/g, "") })}
+                />
+              </label>
+              <label>
+                โค้ด (เว้นว่าง = สร้างให้อัตโนมัติ)
+                <input
+                  value={form.code}
+                  onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  className={styles.primary}
+                  disabled={busy || (editing === "new" && !picked) || form.commission.trim() === ""}
+                  onClick={() => void save()}
+                  type="button"
+                >
+                  {editing === "new" ? "เพิ่มตัวแทน" : "บันทึก"}
+                </button>
+                {editingReseller && (
+                  <button
+                    className={styles.secondary}
+                    disabled={busy}
+                    onClick={() => void regenerateCode(editingReseller)}
+                    type="button"
+                  >
+                    สุ่มโค้ดใหม่
+                  </button>
+                )}
+                <button className={styles.secondary} onClick={() => setEditing(null)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {appointing && (
+          <EditModal eyebrow="RESELLER MANAGER" title="แต่งตั้งคนดูแลตัวแทนจำหน่าย" onClose={() => setAppointing(false)}>
+            <div className={styles.formRows}>
+              <div className={rewardStyles.pickerField}>
+                <span>ผู้ใช้</span>
+                <UserPicker
+                  selected={pickedManager}
+                  onSelect={setPickedManager}
+                  disable={(user) => (user.isResellerManager ? "เป็นคนดูแลอยู่แล้ว" : null)}
+                />
+              </div>
+              <div className={styles.formActions}>
+                <button className={styles.primary} disabled={busy || !pickedManager} onClick={() => void appoint()} type="button">
+                  แต่งตั้ง
+                </button>
+                <button className={styles.secondary} onClick={() => setAppointing(false)} type="button">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {usesOf && (
+          <EditModal
+            eyebrow="RESELLER"
+            title={`${usesOf.reseller.userName} · ${usesOf.reseller.code}`}
+            onClose={() => setUsesOf(null)}
+          >
+            <p className={styles.muted}>
+              บัญชีรับค่าคอม:{" "}
+              {usesOf.bank
+                ? `${usesOf.bank.bankName} · ${usesOf.bank.accountName} · ${usesOf.bank.accountNumber}`
+                : "ยังไม่กรอก"}
+            </p>
+            <div className={styles.table}>
+              {usesOf.uses.map((use) => (
+                <div key={use.id}>
+                  <b>{use.customer}</b>
+                  <span>
+                    เติม ฿{bahtFromCents(use.baseAmountCents)} · ลด ฿{bahtFromCents(use.discountCents)} · ค่าคอม ฿
+                    {bahtFromCents(use.commissionCents)} · {formatDate(use.createdAt)}
+                  </span>
+                  <em className={use.payoutStatus === "approved" ? styles.green : styles.yellow}>
+                    {use.status === "pending"
+                      ? "รอชำระ"
+                      : use.payoutStatus === "approved"
+                        ? "โอนแล้ว"
+                        : use.payoutStatus === "pending"
+                          ? "รอโอน"
+                          : "ยังไม่ถึงรอบ"}
+                  </em>
+                </div>
+              ))}
+              {usesOf.uses.length === 0 && <p className={styles.emptyInline}>ยังไม่มีลูกค้าใช้โค้ดนี้</p>}
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirm && (
+          <EditModal eyebrow="CONFIRM" title={confirm.title} onClose={() => !busy && setConfirm(null)}>
+            <p>{confirm.message}</p>
+            <div className={styles.formActions}>
+              <button
+                className={confirm.danger ? styles.danger : styles.primary}
+                disabled={busy}
+                onClick={() => void runConfirm()}
+                type="button"
+              >
+                {busy ? "กำลังทำรายการ…" : confirm.label}
+              </button>
+              <button className={styles.secondary} disabled={busy} onClick={() => setConfirm(null)} type="button">
+                ยกเลิก
+              </button>
+            </div>
+          </EditModal>
+        )}
+      </AnimatePresence>
     </>
   );
 }

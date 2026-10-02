@@ -1042,7 +1042,20 @@ export function fetchAdminResellers() {
   }>("/admin/resellers");
 }
 
-export function addAdminReseller(body: { user: string; commission: number; maxUses: number | null; code?: string }) {
+export type ResellerCandidate = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  isReseller: boolean;
+  isResellerManager: boolean;
+};
+
+export function searchResellerCandidates(q: string) {
+  return apiFetch<{ users: ResellerCandidate[] }>(`/admin/reseller-user-search?q=${encodeURIComponent(q)}`);
+}
+
+export function addAdminReseller(body: { userId: string; commission: number; maxUses: number | null; code?: string }) {
   return apiFetch<{ id: string; code: string }>("/admin/resellers", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -1079,8 +1092,8 @@ export function approveResellerPayout(id: string) {
   return apiFetch(`/admin/reseller-payouts/${id}/approve`, { method: "POST" });
 }
 
-export function addResellerManager(user: string) {
-  return apiFetch<{ user: ResellerManager }>("/admin/reseller-managers", { method: "POST", body: JSON.stringify({ user }) });
+export function addResellerManager(userId: string) {
+  return apiFetch<{ user: ResellerManager }>("/admin/reseller-managers", { method: "POST", body: JSON.stringify({ userId }) });
 }
 
 export function removeResellerManager(userId: string) {

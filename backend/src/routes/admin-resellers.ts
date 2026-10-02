@@ -30,6 +30,15 @@ function referralLink(code: string) {
   return `${origin}/payment?code=${encodeURIComponent(code)}`;
 }
 
+// The picker sends the chosen user's id; a typed name/email still works as a fallback.
+async function pickUser(userId: string | undefined, query: string | undefined) {
+  if (userId) {
+    const [user] = await sql`SELECT id, name, email FROM "User" WHERE id = ${userId}`;
+    return user ? { user } : { error: "ไม่พบผู้ใช้ที่เลือก" };
+  }
+  return findUser(query);
+}
+
 // Finds one customer account by exact email, else by name; an error message when it is not exactly one.
 async function findUser(query: string | undefined) {
   const value = query?.trim();
@@ -63,6 +72,21 @@ function parseMaxUses(value: unknown): number | null | "invalid" {
   return Number.isInteger(maxUses) && maxUses >= 1 ? maxUses : "invalid";
 }
 
+// Search box of the reseller / manager pickers.
+adminResellers.get("/reseller-user-search", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  if (q.length < 1) return c.json({ users: [] });
+  const users = await sql`
+    SELECT u.id, u.name, u.email, u.image, u.is_reseller_manager AS "isResellerManager",
+      EXISTS (SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL) AS "isReseller"
+    FROM "User" u
+    WHERE u.status = 'active' AND (u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`})
+    ORDER BY (LOWER(u.email) = LOWER(${q}) OR LOWER(u.name) = LOWER(${q})) DESC, u.name
+    LIMIT 10
+  `;
+  return c.json({ users });
+});
+
 adminResellers.get("/resellers", async (c) => {
   const [resellers, managers, discountPercent, payoutCycle, payouts] = await Promise.all([
     resellerStats(),
@@ -87,8 +111,8 @@ adminResellers.get("/resellers/:id/uses", async (c) => {
 });
 
 adminResellers.post("/resellers", async (c) => {
-  const body = await c.req.json<{ user?: string; commission?: number; maxUses?: number | null; code?: string }>();
-  const found = await findUser(body.user);
+  const body = await c.req.json<{ userId?: string; user?: string; commission?: number; maxUses?: number | null; code?: string }>();
+  const found = await pickUser(body.userId, body.user);
   if ("error" in found) return c.json({ message: found.error }, 400);
 
   const commission = body.commission === undefined ? DEFAULT_RESELLER_COMMISSION_CENTS : parseCommission(body.commission);
@@ -217,8 +241,8 @@ adminResellers.put("/reseller-settings", async (c) => {
 });
 
 adminResellers.post("/reseller-managers", async (c) => {
-  const body = await c.req.json<{ user?: string }>();
-  const found = await findUser(body.user);
+  const body = await c.req.json<{ userId?: string; user?: string }>();
+  const found = await pickUser(body.userId, body.user);
   if ("error" in found) return c.json({ message: found.error }, 400);
   await sql`UPDATE "User" SET is_reseller_manager = TRUE, "updatedAt" = NOW() WHERE id = ${found.user.id}`;
   return c.json({ user: found.user }, 201);
