@@ -622,6 +622,19 @@ async function rotate(rental: ExpiredRental, service: Service) {
         ? `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครบ ${MAX_ROTATION_ATTEMPTS} ครั้งแล้ว หยุดลอง (Slot ค้าง reserved รอแอดมิน) reason=${reason}`
         : `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
     );
+    if (attempt >= MAX_ROTATION_ATTEMPTS) {
+      // Netflix may be half done (old profile deleted, new one unlocked): an admin has to look.
+      await alertAdmins([
+        `🚨 ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ (ครบ ${MAX_ROTATION_ATTEMPTS} ครั้ง) — Slot ค้าง reserved`,
+        "",
+        `บัญชีแม่: ${rental.master_email}`,
+        `โปรไฟล์เดิม: ${rental.profile_name} → โปรไฟล์ใหม่: ${newProfileName} (PIN ${newPin})`,
+        `สาเหตุ: ${reason.slice(0, 200)}`,
+        "",
+        `กรุณาเช็กใน Netflix: ลบ ${rental.profile_name} แล้วหรือยัง และ ${newProfileName} ถูกสร้างแล้วแต่ยังไม่มี PIN หรือไม่`,
+        "แก้เสร็จแล้วให้ระบบลองต่อได้ (จะใช้ชื่อและ PIN ใหม่เดิม) โดยล้างตัวนับ profile_reset_failed ของรายการนี้",
+      ]);
+    }
     return;
   }
 
