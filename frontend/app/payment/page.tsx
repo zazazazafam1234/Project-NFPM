@@ -429,7 +429,7 @@ export default function TopUpPage() {
               <span className={styles.totalLabel}>ยอดที่ต้องโอน</span>
               <strong>฿{formatBaht(quote.chargeCents / 100)}</strong>
               <small className={styles.summaryNote}>
-                ตอนสร้าง QR จะมีเศษสตางค์ต่อท้าย (เช่น .37) เพื่อยืนยันการโอนอัตโนมัติ · เศษนี้คืนเป็นเงินส่วนลดให้คุณ
+                ตอนสร้าง QR จะบวกเศษสตางค์เล็กน้อย (เช่น .01) เพื่อยืนยันการโอนอัตโนมัติ · เศษนี้คืนเป็นเงินส่วนลดให้คุณ
 
               </small>
             </div>

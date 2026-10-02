@@ -165,17 +165,25 @@ async function expireOldTopUps(db = sql) {
   await voidUnpaidResellerRedemptions(db);
 }
 
-// Picks a satang ref not used by another pending top-up that charges the same amount.
+/**
+ * Picks the satang ref added to the transfer so the LINE message can be matched to this
+ * QR. Matching is by the exact transfer amount, so the amount (charge + ref) must not be
+ * reserved by another QR on the same account. The smallest free ref wins — .01–.09 first —
+ * and refs that keep the amount in the same baht (฿9.50 → ฿9.51, not ฿10.21) come before
+ * ones that cross into the next baht.
+ */
 async function nextAvailableRefDecimal(chargeCents: number, paymentAccountId: string | null, db = sql) {
+  // Two QRs created at once must not pick the same amount.
+  await db`SELECT pg_advisory_xact_lock(hashtext(${`topup_ref:${paymentAccountId ?? "env"}`}))`;
   const rows = await db`
-    SELECT ref_decimal
+    SELECT payable_amount_cents
     FROM point_topups
     WHERE status IN ('pending', 'paid')
       AND (
         (${paymentAccountId}::uuid IS NULL AND payment_account_id IS NULL)
         OR payment_account_id = ${paymentAccountId}::uuid
       )
-      AND payable_amount_cents - ref_decimal = ${chargeCents}
+      AND payable_amount_cents BETWEEN ${chargeCents + 1} AND ${chargeCents + 99}
       AND (
         expires_at >= NOW()
         -- Admin-confirmed without a LINE message yet: keep the amount reserved so a
@@ -183,13 +191,15 @@ async function nextAvailableRefDecimal(chargeCents: number, paymentAccountId: st
         OR (confirmed_via = 'admin' AND paid_at > NOW() - make_interval(hours => ${ADMIN_CONFIRM_LINK_HOURS})
           AND NOT EXISTS (SELECT 1 FROM line_transfer_events e WHERE e.matched_topup_id = point_topups.id))
       )
-    ORDER BY ref_decimal
   `;
-  const used = new Set(rows.map((row) => Number(row.ref_decimal)));
-  const start = Math.floor(Math.random() * 99) + 1;
-  for (let offset = 0; offset < 99; offset++) {
-    const ref = ((start + offset - 1) % 99) + 1;
-    if (!used.has(ref)) return ref;
+  const taken = new Set(rows.map((row) => Number(row.payable_amount_cents)));
+  const sameBaht = 99 - (chargeCents % 100);
+  const order = [
+    ...Array.from({ length: 99 }, (_, i) => i + 1).filter((ref) => ref <= sameBaht),
+    ...Array.from({ length: 99 }, (_, i) => i + 1).filter((ref) => ref > sameBaht),
+  ];
+  for (const ref of order) {
+    if (!taken.has(chargeCents + ref)) return ref;
   }
   throw new Error("ยอดเติมนี้มีรายการรอชำระเต็มแล้ว กรุณาลองใหม่ภายหลัง");
 }
