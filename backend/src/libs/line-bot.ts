@@ -130,3 +130,50 @@ export async function notifyTopUpCheck(topUpId: string) {
     console.error("[line-bot] top-up check alert failed", err instanceof Error ? err.message : err);
   }
 }
+
+// Alert for a credited top-up, with what the receiving account has taken in; failures are logged, never thrown.
+export async function notifyTopUpPaid(topUpId: string) {
+  try {
+    const [row] = await sql`
+      SELECT t.id, t.points, t.matched_amount_cents, t.discount_cents, t.paid_at, t.confirmed_via,
+        t.payment_account_id, u.name, u.email, pa.name AS account_name
+      FROM point_topups t
+      JOIN "User" u ON u.id = t.user_id
+      LEFT JOIN payment_accounts pa ON pa.id = t.payment_account_id
+      WHERE t.id = ${topUpId}::uuid AND t.status = 'paid'
+    `;
+    if (!row) return;
+    // Bangkok "today" so the daily total matches the bank statement day.
+    const [totals] = await sql`
+      SELECT
+        COALESCE(SUM(matched_amount_cents) FILTER (
+          WHERE (paid_at AT TIME ZONE 'Asia/Bangkok')::date = (NOW() AT TIME ZONE 'Asia/Bangkok')::date
+        ), 0)::bigint AS today_cents,
+        COUNT(*) FILTER (
+          WHERE (paid_at AT TIME ZONE 'Asia/Bangkok')::date = (NOW() AT TIME ZONE 'Asia/Bangkok')::date
+        )::int AS today_count,
+        COALESCE(SUM(matched_amount_cents), 0)::bigint AS all_cents
+      FROM point_topups
+      WHERE status = 'paid'
+        AND payment_account_id IS NOT DISTINCT FROM ${row.payment_account_id}::uuid
+    `;
+    const baht = (cents: unknown) =>
+      (Number(cents) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const text = [
+      "💰 ลูกค้าเติมเงินสำเร็จ",
+      "",
+      `ลูกค้า: ${row.name} (${row.email})`,
+      `ยอดโอน: ฿${baht(row.matched_amount_cents)} · ได้ ${Number(row.points).toLocaleString()} Point`,
+      ...(Number(row.discount_cents) > 0 ? [`ส่วนลด: ฿${baht(row.discount_cents)}`] : []),
+      `ยืนยันโดย: ${row.confirmed_via === "admin" ? "แอดมิน" : "อัตโนมัติ (LINE)"} · ${bangkok(row.paid_at)}`,
+      "",
+      `บัญชีรับเงิน: ${row.account_name ?? "-"}`,
+      `ยอดรวมวันนี้: ฿${baht(totals.today_cents)} (${totals.today_count} รายการ)`,
+      `ยอดรวมทั้งหมด: ฿${baht(totals.all_cents)}`,
+    ].join("\n");
+    const result = await pushToGroups(text);
+    console.log(`[line-bot] top-up paid alert topup=${topUpId} sent=${result.sent} failed=${result.failed}`);
+  } catch (err) {
+    console.error("[line-bot] top-up paid alert failed", err instanceof Error ? err.message : err);
+  }
+}

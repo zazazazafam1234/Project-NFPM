@@ -3,7 +3,7 @@ import sql from "./db";
 import { decryptSecret } from "./crypto";
 import { buildPromptPayPayload } from "./promptpay";
 import { getMinTopupPoints, MAX_TOPUP_POINTS } from "./settings";
-import { notifyTopUpCheck } from "./libs/line-bot";
+import { notifyTopUpCheck, notifyTopUpPaid } from "./libs/line-bot";
 import { bestTopupPromotion, checkStreamerCode, creditDiscount, rewardCents, voidUnpaidRedemptions } from "./rewards";
 
 const DEFAULT_EXPIRES_MINUTES = 15;
@@ -643,7 +643,7 @@ export async function confirmTopUpByAmount({
     return { matched: false, reason: "invalid_amount" };
   }
 
-  return sql.begin(async (db) => {
+  const result = await sql.begin(async (db) => {
     await expireOldTopUps(db);
 
     // Lock the transfer first: an admin may be matching this same message.
@@ -705,6 +705,9 @@ export async function confirmTopUpByAmount({
       amount: centsToAmount(amountCents),
     };
   });
+  // After the commit, so the alert's totals include this payment.
+  if (result.matched && result.topUpId) void notifyTopUpPaid(result.topUpId);
+  return result;
 }
 
 /**
@@ -721,7 +724,7 @@ export async function confirmTopUpByAdmin({
   adminUserId: string | null;
   transferEventId?: string | null;
 }) {
-  return sql.begin(async (db) => {
+  const result = await sql.begin(async (db) => {
     let amountCents: number | null = null;
     let lineMessage: unknown = { confirmedBy: "admin", adminUserId };
     if (transferEventId) {
@@ -759,4 +762,6 @@ export async function confirmTopUpByAdmin({
     `;
     return { topUpId: paid.id, userId: paid.user_id, points: Number(paid.points), userPoints };
   });
+  void notifyTopUpPaid(result.topUpId);
+  return result;
 }
