@@ -1,12 +1,20 @@
 import { Hono } from "hono";
 import sql from "../db";
+import { getAdminSession } from "../adminAuth";
+import { pushToGroups } from "../libs/line-bot";
 import {
   DEFAULT_RESELLER_COMMISSION_CENTS,
+  approveResellerPayout,
+  cutResellerPayouts,
+  getPayoutCycle,
   getResellerDiscountPercent,
+  listResellerPayouts,
   newResellerCode,
   referralCodeTaken,
+  resellerBank,
   resellerRecentUses,
   resellerStats,
+  setPayoutCycle,
   setResellerDiscountPercent,
 } from "../resellers";
 
@@ -56,20 +64,26 @@ function parseMaxUses(value: unknown): number | null | "invalid" {
 }
 
 adminResellers.get("/resellers", async (c) => {
-  const [resellers, managers, discountPercent] = await Promise.all([
+  const [resellers, managers, discountPercent, payoutCycle, payouts] = await Promise.all([
     resellerStats(),
     sql`SELECT id, name, email FROM "User" WHERE is_reseller_manager ORDER BY name`,
     getResellerDiscountPercent(),
+    getPayoutCycle(),
+    listResellerPayouts({ fullAccount: true }),
   ]);
   return c.json({
     discountPercent,
+    payoutCycle,
     resellers: resellers.map((row) => ({ ...row, referralLink: referralLink(String(row.code)) })),
     managers,
+    payouts,
   });
 });
 
 adminResellers.get("/resellers/:id/uses", async (c) => {
-  return c.json({ uses: await resellerRecentUses(c.req.param("id")) });
+  const id = c.req.param("id");
+  const [uses, bank] = await Promise.all([resellerRecentUses(id), resellerBank(id)]);
+  return c.json({ uses, bank });
 });
 
 adminResellers.post("/resellers", async (c) => {
@@ -152,28 +166,54 @@ adminResellers.delete("/resellers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// Admin transferred the commission by hand: everything earned so far is marked paid.
-adminResellers.post("/resellers/:id/payout", async (c) => {
-  const [paid] = await sql`
-    WITH paid AS (
-      UPDATE reseller_redemptions
-      SET paid_out_at = NOW()
-      WHERE reseller_id = ${c.req.param("id")}::uuid AND status = 'redeemed' AND paid_out_at IS NULL
-      RETURNING commission_cents
-    )
-    SELECT COUNT(*)::int AS uses, COALESCE(SUM(commission_cents), 0)::bigint AS cents FROM paid
+// Cuts commission earned before the current weekly/monthly cycle into pending payouts.
+adminResellers.post("/reseller-payouts/cut", async (c) => {
+  const admin = await getAdminSession(c);
+  const result = await cutResellerPayouts(admin?.id ?? null);
+  return c.json({
+    cycle: result.cycle,
+    cutoff: result.cutoff,
+    count: result.payouts.length,
+    totalCents: result.payouts.reduce((sum, payout) => sum + payout.amountCents, 0),
+  });
+});
+
+// The admin has transferred the payout to the reseller's bank account.
+adminResellers.post("/reseller-payouts/:id/approve", async (c) => {
+  const admin = await getAdminSession(c);
+  const payout = await approveResellerPayout(c.req.param("id"), admin?.id ?? null);
+  if (!payout) return c.json({ message: "ไม่พบรายการ หรืออนุมัติไปแล้ว" }, 404);
+  const [row] = await sql`
+    SELECT u.name, u.email FROM reseller_payouts p JOIN resellers r ON r.id = p.reseller_id
+    JOIN "User" u ON u.id = r.user_id WHERE p.id = ${payout.id}
   `;
-  return c.json({ uses: paid.uses, paidCents: Number(paid.cents) });
+  void pushToGroups(
+    [
+      "✅ โอนค่าคอมตัวแทนแล้ว",
+      `ตัวแทน: ${row?.name} (${row?.email})`,
+      `ยอด: ฿${(Number(payout.amount_cents) / 100).toFixed(2)}`,
+      `อนุมัติโดย: ${admin?.name ?? "admin"}`,
+    ].join("\n"),
+  ).catch(() => {});
+  return c.json({ ok: true });
 });
 
 adminResellers.put("/reseller-settings", async (c) => {
-  const body = await c.req.json<{ discountPercent?: number }>();
-  const percent = Number(body.discountPercent);
-  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-    return c.json({ message: "ส่วนลดต้องอยู่ระหว่าง 0-100%" }, 400);
+  const body = await c.req.json<{ discountPercent?: number; payoutCycle?: string }>();
+  if (body.discountPercent !== undefined) {
+    const percent = Number(body.discountPercent);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      return c.json({ message: "ส่วนลดต้องอยู่ระหว่าง 0-100%" }, 400);
+    }
+    await setResellerDiscountPercent(Math.round(percent * 100) / 100);
   }
-  await setResellerDiscountPercent(Math.round(percent * 100) / 100);
-  return c.json({ discountPercent: await getResellerDiscountPercent() });
+  if (body.payoutCycle !== undefined) {
+    if (body.payoutCycle !== "weekly" && body.payoutCycle !== "monthly") {
+      return c.json({ message: "รอบตัดยอดต้องเป็นรายสัปดาห์หรือรายเดือน" }, 400);
+    }
+    await setPayoutCycle(body.payoutCycle);
+  }
+  return c.json({ discountPercent: await getResellerDiscountPercent(), payoutCycle: await getPayoutCycle() });
 });
 
 adminResellers.post("/reseller-managers", async (c) => {

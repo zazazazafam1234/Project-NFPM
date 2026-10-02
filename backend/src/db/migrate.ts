@@ -612,7 +612,10 @@ await sql`
 // ─── Resellers ───
 // A reseller is a customer account with its own code. Each customer may use a given
 // reseller's code once: the top-up gets reseller_discount_percent off and the reseller
-// earns commission_cents once the top-up is paid. Reseller managers see every reseller.
+// earns commission_cents once the top-up is paid (never as points). An admin cuts the
+// earned commission into payouts per reseller_payout_cycle (weekly/monthly), transfers
+// it to the reseller's bank account and approves the payout. Reseller managers see
+// every reseller.
 await sql`
   CREATE TABLE IF NOT EXISTS resellers (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -621,6 +624,10 @@ await sql`
     commission_cents   INTEGER NOT NULL DEFAULT 25 CHECK (commission_cents >= 0),
     max_uses           INTEGER CHECK (max_uses IS NULL OR max_uses > 0),
     status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    bank_name          TEXT,
+    bank_account_name  TEXT,
+    bank_account_number_ciphertext TEXT,
+    bank_updated_at    TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at         TIMESTAMPTZ
@@ -628,6 +635,24 @@ await sql`
 `;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_code_unique ON resellers (UPPER(code)) WHERE deleted_at IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS resellers_user_unique ON resellers (user_id) WHERE deleted_at IS NULL`;
+await sql`
+  CREATE TABLE IF NOT EXISTS reseller_payouts (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reseller_id        UUID NOT NULL REFERENCES resellers(id) ON DELETE CASCADE,
+    period_end         TIMESTAMPTZ NOT NULL,
+    customers          INTEGER NOT NULL,
+    amount_cents       INTEGER NOT NULL CHECK (amount_cents >= 0),
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
+    bank_name          TEXT,
+    bank_account_name  TEXT,
+    bank_account_number_ciphertext TEXT,
+    created_by         TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_by        TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+    approved_at        TIMESTAMPTZ
+  )
+`;
+await sql`CREATE INDEX IF NOT EXISTS reseller_payouts_status_idx ON reseller_payouts (status, created_at DESC)`;
 await sql`
   CREATE TABLE IF NOT EXISTS reseller_redemptions (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -640,7 +665,7 @@ await sql`
     commission_cents   INTEGER NOT NULL DEFAULT 0,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     redeemed_at        TIMESTAMPTZ,
-    paid_out_at        TIMESTAMPTZ
+    payout_id          UUID REFERENCES reseller_payouts(id) ON DELETE SET NULL
   )
 `;
 await sql`
@@ -651,7 +676,7 @@ await sql`CREATE INDEX IF NOT EXISTS reseller_redemptions_reseller_idx ON resell
 await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS is_reseller_manager BOOLEAN NOT NULL DEFAULT FALSE`;
 await sql`
   INSERT INTO app_settings (key, value)
-  VALUES ('reseller_discount_percent', '5'::jsonb)
+  VALUES ('reseller_discount_percent', '5'::jsonb), ('reseller_payout_cycle', '"monthly"'::jsonb)
   ON CONFLICT (key) DO NOTHING
 `;
 

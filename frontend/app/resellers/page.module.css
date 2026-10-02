@@ -103,3 +103,12 @@
   font-size: 18px;
   font-weight: 700;
 }
+.inlineButton {
+  margin-left: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--c-ffffff1d);
+  border-radius: 7px;
+  color: var(--c-bca8e9ff);
+  background: transparent;
+  cursor: pointer;
+}

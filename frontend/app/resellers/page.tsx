@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { ResellerBankForm } from "../components/ResellerBankForm";
 import { ThemeToggle } from "../components/ThemeToggle";
 import {
+  PAYOUT_CYCLE_LABEL,
   bahtFromCents,
   fetchMyReseller,
   fetchResellerTop,
@@ -26,32 +28,43 @@ function Stats({ stat }: { stat: ResellerStat }) {
   return (
     <dl className={styles.stats}>
       <div>
-        <dt>ลูกค้าที่ใช้โค้ด</dt>
+        <dt>ยอดขาย</dt>
         <dd>
           {stat.customers}
           {stat.maxUses ? ` / ${stat.maxUses}` : ""} คน
         </dd>
       </div>
       <div>
-        <dt>ยอดขาย (ยอดเติม)</dt>
-        <dd>฿{bahtFromCents(stat.salesCents)}</dd>
-      </div>
-      <div>
         <dt>ค่าคอมทั้งหมด</dt>
         <dd>฿{bahtFromCents(stat.commissionEarnedCents)}</dd>
       </div>
       <div>
-        <dt>ค่าคอมค้างจ่าย</dt>
-        <dd>฿{bahtFromCents(stat.commissionUnpaidCents)}</dd>
+        <dt>ยังไม่ถึงรอบตัดยอด</dt>
+        <dd>฿{bahtFromCents(stat.commissionOpenCents)}</dd>
+      </div>
+      <div>
+        <dt>รอโอน</dt>
+        <dd>฿{bahtFromCents(stat.commissionPendingCents)}</dd>
+      </div>
+      <div>
+        <dt>โอนแล้ว</dt>
+        <dd>฿{bahtFromCents(stat.commissionPaidCents)}</dd>
       </div>
     </dl>
   );
 }
 
+function commissionStatus(use: { status: string; payoutStatus: string | null }) {
+  if (use.status === "pending") return "รอชำระ";
+  if (use.payoutStatus === "approved") return "โอนแล้ว";
+  return use.payoutStatus === "pending" ? "รอโอน" : "ยังไม่ถึงรอบ";
+}
+
 export default function ResellersPage() {
-  const { user, isLoading } = useSession();
+  const { user, isLoading, refreshSession } = useSession();
   const [top, setTop] = useState<ResellerTopEntry[]>([]);
   const [mine, setMine] = useState<MyResellerView | null>(null);
+  const [editingBank, setEditingBank] = useState(false);
 
   useEffect(() => {
     fetchResellerTop()
@@ -59,11 +72,15 @@ export default function ResellersPage() {
       .catch(() => setTop([]));
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
+  function loadMine() {
     fetchMyReseller()
       .then(setMine)
       .catch(() => setMine(null));
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    loadMine();
   }, [user]);
 
   async function copy(text: string) {
@@ -100,9 +117,7 @@ export default function ResellersPage() {
               <li key={entry.rank}>
                 <span className={styles.medal}>{MEDALS[entry.rank - 1]}</span>
                 <b>อันดับ {entry.rank}</b>
-                <span>
-                  {entry.customers.toLocaleString()} ลูกค้า · ยอดขาย ฿{bahtFromCents(entry.salesCents)}
-                </span>
+                <span>ยอดขาย {entry.customers.toLocaleString()} คน</span>
               </li>
             ))}
             {top.length === 0 && <li className={styles.empty}>ยังไม่มียอดขาย</li>}
@@ -134,10 +149,48 @@ export default function ResellersPage() {
               )}
             </div>
             <p className={styles.note}>
-              ลูกค้าได้ส่วนลด {mine?.discountPercent}% · คุณได้ค่าคอม ฿{bahtFromCents(reseller.commissionCents)} ต่อลูกค้า 1 คน
+              ลูกค้าได้ส่วนลด {mine?.discountPercent}% · คุณได้ค่าคอม ฿{bahtFromCents(reseller.commissionCents)} ต่อลูกค้า 1 คน ·
+              ตัดยอด{mine ? PAYOUT_CYCLE_LABEL[mine.payoutCycle] : ""} แล้วโอนเข้าบัญชีของคุณ
               {reseller.status !== "active" && " · โค้ดถูกปิดอยู่"}
             </p>
             <Stats stat={reseller} />
+
+            <h3>บัญชีรับค่าคอม</h3>
+            {reseller.bank && !editingBank ? (
+              <p className={styles.note}>
+                {reseller.bank.bankName} · {reseller.bank.accountName} · {reseller.bank.accountNumber}{" "}
+                <button className={styles.inlineButton} onClick={() => setEditingBank(true)} type="button">
+                  แก้ไข
+                </button>
+              </p>
+            ) : (
+              <ResellerBankForm
+                banks={mine?.banks ?? []}
+                current={reseller.bank}
+                onSaved={() => {
+                  setEditingBank(false);
+                  loadMine();
+                  void refreshSession();
+                }}
+              />
+            )}
+
+            <h3>ประวัติการโอนค่าคอม</h3>
+            <ul className={styles.uses}>
+              {reseller.payouts.map((payout) => (
+                <li key={payout.id}>
+                  <b>฿{bahtFromCents(payout.amountCents)}</b>
+                  <span>
+                    {payout.customers} คน · รอบถึง {formatDate(payout.periodEnd)}
+                    {payout.bankAccountNumber ? ` · เข้าบัญชี ${payout.bankAccountNumber}` : ""}
+                  </span>
+                  <em data-status={payout.status === "approved" ? "redeemed" : "pending"}>
+                    {payout.status === "approved" ? `โอนแล้ว ${formatDate(payout.approvedAt)}` : "รอโอน"}
+                  </em>
+                </li>
+              ))}
+              {reseller.payouts.length === 0 && <li className={styles.empty}>ยังไม่มีการตัดยอด</li>}
+            </ul>
             <h3>รายการล่าสุด</h3>
             <ul className={styles.uses}>
               {reseller.uses.map((use) => (
@@ -147,9 +200,7 @@ export default function ResellersPage() {
                     เติม ฿{bahtFromCents(use.baseAmountCents)} · ค่าคอม ฿{bahtFromCents(use.commissionCents)} ·{" "}
                     {formatDate(use.createdAt)}
                   </span>
-                  <em data-status={use.status}>
-                    {use.status === "pending" ? "รอชำระ" : use.paidOutAt ? "จ่ายแล้ว" : "ค้างจ่าย"}
-                  </em>
+                  <em data-status={use.payoutStatus === "approved" ? "redeemed" : "pending"}>{commissionStatus(use)}</em>
                 </li>
               ))}
               {reseller.uses.length === 0 && <li className={styles.empty}>ยังไม่มีลูกค้าใช้โค้ด</li>}
@@ -168,8 +219,8 @@ export default function ResellersPage() {
                     {stat.userName} · {stat.code}
                   </b>
                   <span>
-                    {stat.customers} ลูกค้า · ยอดขาย ฿{bahtFromCents(stat.salesCents)} · ค่าคอม ฿
-                    {bahtFromCents(stat.commissionEarnedCents)} (ค้าง ฿{bahtFromCents(stat.commissionUnpaidCents)})
+                    ยอดขาย {stat.customers} คน · ค่าคอมทั้งหมด ฿{bahtFromCents(stat.commissionEarnedCents)} (รอโอน ฿
+                    {bahtFromCents(stat.commissionPendingCents)} · ยังไม่ถึงรอบ ฿{bahtFromCents(stat.commissionOpenCents)})
                   </span>
                   <em data-status={stat.status === "active" ? "redeemed" : "pending"}>
                     {stat.status === "active" ? "เปิด" : "ปิด"}

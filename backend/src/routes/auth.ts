@@ -77,7 +77,15 @@ auth.get("/session", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ user: null });
 
-  const [user] = await sql`SELECT * FROM "User" WHERE id = ${userId} AND status = 'active'`;
+  const [user] = await sql`
+    SELECT u.*,
+      EXISTS (
+        SELECT 1 FROM resellers r
+        WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.bank_account_number_ciphertext IS NULL
+      ) AS reseller_needs_bank
+    FROM "User" u
+    WHERE u.id = ${userId} AND u.status = 'active'
+  `;
   if (!user) return c.json({ user: null });
 
   return c.json({
@@ -90,6 +98,8 @@ auth.get("/session", async (c) => {
       discountCents: user.discount_cents,
       role: user.role,
       status: user.status,
+      // Appointed as a reseller but no bank account yet: the site asks for it.
+      resellerNeedsBank: user.reseller_needs_bank,
     },
   });
 });

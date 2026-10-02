@@ -8,6 +8,8 @@ export type User = {
   discountCents?: number;
   role: "user" | "admin";
   status?: "active" | "suspended";
+  /** Appointed as a reseller without a bank account yet: the bank popup asks for it. */
+  resellerNeedsBank?: boolean;
 };
 
 /** Whole baht of the discount wallet that come off a price (1 baht = 1 Point). */
@@ -980,13 +982,18 @@ export type ResellerStat = {
   userId: string;
   userName: string;
   userEmail: string;
-  /** Customers whose top-up with this code was paid. */
+  /** ยอดขาย: customers whose top-up with this code was paid. */
   customers: number;
   pending: number;
-  salesCents: number;
+  topupCents: number;
   discountCents: number;
   commissionEarnedCents: number;
-  commissionUnpaidCents: number;
+  /** Not cut into a payout yet. */
+  commissionOpenCents: number;
+  /** Cut, waiting for the admin's transfer. */
+  commissionPendingCents: number;
+  commissionPaidCents: number;
+  hasBank: boolean;
   referralLink?: string;
 };
 
@@ -998,14 +1005,41 @@ export type ResellerUse = {
   commissionCents: number;
   createdAt: string;
   redeemedAt: string | null;
-  paidOutAt: string | null;
+  payoutStatus: "pending" | "approved" | null;
   customer: string;
 };
+
+export type ResellerBank = { bankName: string; accountName: string; accountNumber: string };
+
+export type ResellerPayout = {
+  id: string;
+  resellerId: string;
+  userName: string;
+  userEmail: string;
+  code: string;
+  periodEnd: string;
+  customers: number;
+  amountCents: number;
+  status: "pending" | "approved";
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+};
+
+export type PayoutCycle = "weekly" | "monthly";
 
 export type ResellerManager = { id: string; name: string; email: string };
 
 export function fetchAdminResellers() {
-  return apiFetch<{ discountPercent: number; resellers: ResellerStat[]; managers: ResellerManager[] }>("/admin/resellers");
+  return apiFetch<{
+    discountPercent: number;
+    payoutCycle: PayoutCycle;
+    resellers: ResellerStat[];
+    managers: ResellerManager[];
+    payouts: ResellerPayout[];
+  }>("/admin/resellers");
 }
 
 export function addAdminReseller(body: { user: string; commission: number; maxUses: number | null; code?: string }) {
@@ -1023,19 +1057,26 @@ export function deleteAdminReseller(id: string) {
   return apiFetch(`/admin/resellers/${id}`, { method: "DELETE" });
 }
 
-export function payoutAdminReseller(id: string) {
-  return apiFetch<{ uses: number; paidCents: number }>(`/admin/resellers/${id}/payout`, { method: "POST" });
-}
-
 export function fetchAdminResellerUses(id: string) {
-  return apiFetch<{ uses: ResellerUse[] }>(`/admin/resellers/${id}/uses`);
+  return apiFetch<{ uses: ResellerUse[]; bank: ResellerBank | null }>(`/admin/resellers/${id}/uses`);
 }
 
-export function saveResellerDiscountPercent(discountPercent: number) {
-  return apiFetch<{ discountPercent: number }>("/admin/reseller-settings", {
+export function saveResellerSettings(body: { discountPercent?: number; payoutCycle?: PayoutCycle }) {
+  return apiFetch<{ discountPercent: number; payoutCycle: PayoutCycle }>("/admin/reseller-settings", {
     method: "PUT",
-    body: JSON.stringify({ discountPercent }),
+    body: JSON.stringify(body),
   });
+}
+
+export function cutResellerPayouts() {
+  return apiFetch<{ cycle: PayoutCycle; cutoff: string; count: number; totalCents: number }>(
+    "/admin/reseller-payouts/cut",
+    { method: "POST" },
+  );
+}
+
+export function approveResellerPayout(id: string) {
+  return apiFetch(`/admin/reseller-payouts/${id}/approve`, { method: "POST" });
 }
 
 export function addResellerManager(user: string) {
@@ -1046,7 +1087,7 @@ export function removeResellerManager(userId: string) {
   return apiFetch(`/admin/reseller-managers/${userId}`, { method: "DELETE" });
 }
 
-export type ResellerTopEntry = { rank: number; customers: number; salesCents: number };
+export type ResellerTopEntry = { rank: number; customers: number };
 
 export function fetchResellerTop() {
   return apiFetch<{ top: ResellerTopEntry[] }>("/resellers/top");
@@ -1054,14 +1095,24 @@ export function fetchResellerTop() {
 
 export type MyResellerView = {
   discountPercent: number;
+  payoutCycle: PayoutCycle;
+  banks: string[];
   isManager: boolean;
-  reseller: (ResellerStat & { uses: ResellerUse[] }) | null;
+  reseller:
+    | (ResellerStat & { uses: ResellerUse[]; payouts: ResellerPayout[]; bank: ResellerBank | null })
+    | null;
   all: ResellerStat[] | null;
 };
 
 export function fetchMyReseller() {
   return apiFetch<MyResellerView>("/resellers/me");
 }
+
+export function saveMyResellerBank(body: ResellerBank) {
+  return apiFetch("/resellers/me/bank", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export const PAYOUT_CYCLE_LABEL: Record<PayoutCycle, string> = { weekly: "รายสัปดาห์", monthly: "รายเดือน" };
 
 export function bahtFromCents(cents: number) {
   return (cents / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

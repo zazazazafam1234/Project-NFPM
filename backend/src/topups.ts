@@ -274,7 +274,8 @@ export async function createPromptPayTopUp({
     const promotionCents = promotion?.rewardCents ?? 0;
     const streamerCents = codeCheck?.ok ? rewardCents(codeCheck.streamer, baseAmountCents) : 0;
     const resellerCents = resellerCheck?.ok ? resellerDiscountCents(baseAmountCents, resellerCheck.percent) : 0;
-    const discountCents = Math.min(promotionCents + streamerCents + resellerCents, baseAmountCents - 100); // pay at least ฿1
+    // Discounts stack, but the transfer never drops below the minimum top-up set by admins.
+    const discountCents = Math.max(0, Math.min(promotionCents + streamerCents + resellerCents, baseAmountCents - minPoints * 100));
     const chargeCents = baseAmountCents - discountCents;
 
     const refDecimal = await nextAvailableRefDecimal(chargeCents, paymentAccount.id, db);

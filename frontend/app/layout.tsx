@@ -4,6 +4,7 @@ import "./theme.css";
 import "./globals.css";
 import { PageTracker } from "./components/PageTracker";
 import { SupportButton } from "./components/SupportButton";
+import { ResellerBankPrompt } from "./components/ResellerBankForm";
 import { SessionProvider } from "./providers";
 
 const notoSansThai = Noto_Sans_Thai({
@@ -38,7 +39,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          {children}
+          <ResellerBankPrompt />
+        </SessionProvider>
         <PageTracker />
         <SupportButton />
       </body>
