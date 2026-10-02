@@ -260,6 +260,7 @@ def create_app() -> Flask:
                 headless=headless,
                 proxy_server=selected_proxy,
                 timeout_ms=timeout_ms,
+                otp_code_provider=_login_otp_provider(email, mailbox_password, debug, lengths=(6,)),
                 debug=debug,
             )
 
@@ -287,7 +288,8 @@ def _log(request_id: str, message: str) -> None:
     print(f"[{datetime.now().isoformat(timespec='seconds')}] [pin-service:{request_id}] {message}", flush=True)
 
 
-def _login_otp_provider(email: str, mailbox_password: str | None, debug):
+def _login_otp_provider(email: str, mailbox_password: str | None, debug, *, lengths: tuple[int, ...] = (4,)):
+    """Codes from the master mailbox: 4 digits for sign-in, 6 for account-change checks."""
     mailbox = mailbox_for(email, mailbox_password)
     if not mailbox:
         return None
@@ -299,7 +301,7 @@ def _login_otp_provider(email: str, mailbox_password: str | None, debug):
         codes: list[str] = []
         seen: set[str] = set()
         for candidate in candidates:
-            if len(candidate.code) != 4 or candidate.code in seen:
+            if len(candidate.code) not in lengths or candidate.code in seen:
                 continue
             seen.add(candidate.code)
             codes.append(candidate.code)

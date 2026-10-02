@@ -70,8 +70,8 @@ const topUpStatusLabel: Record<string, string> = {
 const SUBSCRIPTION_STATUS: Record<string, string> = {
   expired: "หมดอายุ",
   cancelled: "ยกเลิก",
-  refunded: "คืนเงิน",
-  pending: "รอดำเนินการ",
+  refunded: "คืน Point แล้ว",
+  pending: "กำลังเตรียมบัญชี",
 };
 
 export default function ProfilePage() {
@@ -261,7 +261,8 @@ export default function ProfilePage() {
               <div className={styles.listWrapper}>
               <ul className={styles.list}>
                 {subscriptions.map((s) => {
-                  const expiry = formatExpiry(s.expiresAt);
+                  // Pending (being prepared) or refunded orders have no running time to show.
+                  const expiry = s.status === "pending" || s.status === "refunded" ? null : formatExpiry(s.expiresAt);
                   return (
                     <li
                       key={s.id}

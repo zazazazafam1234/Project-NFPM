@@ -11,6 +11,7 @@ from netflix_login_checker.core import (
     MANAGE_PROFILES_URL,
     PLAYWRIGHT_IMPORT_ERROR,
     DebugCallback,
+    LoginOtpProvider,
     PlaywrightError,
     PlaywrightTimeoutError,
     _has_running_asyncio_loop,
@@ -27,7 +28,6 @@ from netflix_login_checker.core import (
     wait_for_short_network_idle,
 )
 from netflix_login_checker.post_login_workflow import (
-    _choose_password_verification,
     _clean_pin,
     _clean_profile_name,
     _click_add_profile,
@@ -39,9 +39,9 @@ from netflix_login_checker.post_login_workflow import (
     _is_profile_settings_page,
     _save_new_profile,
     _save_profile_lock_pin,
-    _submit_account_password,
     _wait_and_fill_new_profile_name,
     _wait_for_profile_guid,
+    verify_identity_for_profile_lock,
 )
 
 
@@ -75,6 +75,7 @@ def _reset_profile_impl(
     timeout_ms: int = 30000,
     slow_mo_ms: int = 0,
     proxy_server: str | None = None,
+    otp_code_provider: LoginOtpProvider | None = None,
     debug: DebugCallback | None = None,
 ) -> ResetProfileResult:
     replacement_name = _clean_profile_name(new_profile_name) or _generate_profile_name()
@@ -143,8 +144,18 @@ def _reset_profile_impl(
             wait_for_short_network_idle(page, debug=debug)
 
             step("lock_new_profile")
-            if not _lock_profile(page, replacement_name, replacement_pin, account_password, account_pin, timeout_ms=timeout_ms, debug=debug):
-                return result(False, "new_profile_lock_not_created", page.url)
+            locked = _lock_profile(
+                page,
+                replacement_name,
+                replacement_pin,
+                account_password,
+                account_pin,
+                otp_code_provider=otp_code_provider,
+                timeout_ms=timeout_ms,
+                debug=debug,
+            )
+            if locked != "ok":
+                return result(False, f"new_profile_lock_not_created: {locked}", page.url)
 
             return result(True, "profile_recreated", page.url)
         except PlaywrightError as exc:
@@ -263,9 +274,11 @@ def _lock_profile(
     account_password: str,
     account_pin: str | None,
     *,
+    otp_code_provider: LoginOtpProvider | None,
     timeout_ms: int,
     debug: DebugCallback | None,
-) -> bool:
+) -> str:
+    """Returns "ok" once the new profile has its lock PIN, otherwise a failure reason."""
     profile_guid = _wait_for_profile_guid(page, profile_name, timeout_ms=timeout_ms)
     _ensure_manage_profiles_mode(page, debug=debug)
     if profile_guid and _click_profile_tile_for_settings(page, profile_guid, profile_name):
@@ -274,9 +287,9 @@ def _lock_profile(
         page.goto(f"https://www.netflix.com/settings/{profile_guid}?referrer=ManageProfiles", wait_until="domcontentloaded")
         wait_for_short_network_idle(page, debug=debug)
     if not _is_profile_settings_page(page):
-        return False
+        return "profile_settings_page_not_opened"
     if _handle_account_pin_prompt(page, account_pin, debug=debug) != "ok":
-        return False
+        return "account_pin_required"
     if not force_click_first(
         page,
         (
@@ -285,16 +298,20 @@ def _lock_profile(
         ),
         timeout_ms=5000,
     ):
-        return False
+        return "profile_lock_button_not_found"
     wait_for_short_network_idle(page, debug=debug)
     if not force_click_first(page, ('[data-uia="profile-lock-off+add-button"]',), timeout_ms=7000):
-        return False
-    if not _choose_password_verification(page, debug=debug):
-        return False
-    if not _submit_account_password(page, account_password):
-        return False
+        return "create_profile_lock_button_not_found"
+    verified = verify_identity_for_profile_lock(
+        page,
+        account_password,
+        otp_code_provider=otp_code_provider,
+        debug=debug,
+    )
+    if verified != "ok":
+        return verified
     wait_for_short_network_idle(page, debug=debug)
     if not _save_profile_lock_pin(page, profile_pin):
-        return False
+        return "profile_lock_pin_not_saved"
     wait_for_short_network_idle(page, debug=debug)
-    return True
+    return "ok"

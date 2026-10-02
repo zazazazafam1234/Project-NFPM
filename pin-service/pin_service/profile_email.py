@@ -176,11 +176,13 @@ def _update_profile_email_impl(
                 timeout_ms=max(timeout_ms, 240000),
             )
             if outcome != "ok":
+                capture_page_debug(page, debug=debug, label=f"profile_email_{action}_failed", profile_dir=profile_dir)
                 return result(False, outcome, page.url)
 
             step("save_profile")
             if not _save_edit_profile(page, debug=debug):
                 error = has_visible_error(page)
+                capture_page_debug(page, debug=debug, label="profile_email_save_failed", profile_dir=profile_dir)
                 return result(False, f"profile_not_saved{': ' + error if error else ''}", page.url)
             return result(True, "email_added" if action == "add" else "email_removed", page.url)
         except PlaywrightError as exc:

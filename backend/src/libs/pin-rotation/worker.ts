@@ -5,10 +5,14 @@ import { sendPlainEmail } from "../gmail/mailsender";
 import { pushToGroups } from "../line-bot";
 
 /**
- * After a purchase the customer's email is added to the rented Netflix profile
- * (pin-service POST /profile-email, action "add"); the email now on the profile
- * is kept in profiles.metadata.profileEmail. Only then is the customer emailed the
- * profile PIN with "ready to use" — the master account is never sent to customers.
+ * A purchase starts as a "pending" rental that holds the slot (PREPARE_HOLD_MINUTES
+ * on top of the package) without counting the customer's time. The customer's email
+ * is added to the rented Netflix profile (pin-service POST /profile-email, action
+ * "add"; the email now on the profile is kept in profiles.metadata.profileEmail).
+ * Only then does the rental turn "active" with its time starting from that moment,
+ * and the customer is emailed the profile PIN with "ready to use" — the master
+ * account is never sent to customers. If Netflix rejects the email (it already
+ * belongs to a Netflix account), the rental is refunded and the slot released.
  *
  * When a rental ends the slot is held and the customer gets RENEW_GRACE_HOURS to
  * renew with the same profile and PIN (emailed a renew link). After that — or right
@@ -22,6 +26,8 @@ export const RENEW_GRACE_HOURS = 12;
 const CHECK_INTERVAL_MS = 60 * 1000;
 export const MAX_ROTATION_ATTEMPTS = 3;
 const MAX_EMAIL_ATTEMPTS = 3;
+/** How long a pending purchase may hold its slot while the email is being added. */
+export const PREPARE_HOLD_MINUTES = 24 * 60;
 const SUPPORT_DISCORD_URL = process.env.SUPPORT_DISCORD_URL ?? "https://discord.gg/9guggS5EXD";
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -273,7 +279,7 @@ type EmailJob = Omit<ExpiredRental, "profile_deleted"> & {
   profile_pin_ciphertext: string | null;
 };
 
-// Running rentals whose profile does not carry the customer's email yet.
+// Purchases waiting for the customer's email to be added to their profile.
 async function findRentalsNeedingEmail() {
   return sql<EmailJob[]>`
     SELECT
@@ -297,12 +303,10 @@ async function findRentalsNeedingEmail() {
     JOIN packages pkg ON pkg.id = s.package_id
     JOIN profiles p ON p.id = s.profile_id
     JOIN master_emails me ON me.id = p.master_email_id
-    WHERE s.status = 'active'
+    WHERE s.status = 'pending'
       AND s.started_at <= NOW()
-      AND s.expires_at > NOW()
       AND p.deleted_at IS NULL
       AND me.deleted_at IS NULL
-      AND LOWER(COALESCE(p.metadata->>'profileEmail', '')) <> LOWER(u.email)
     ORDER BY s.started_at
   `;
 }
@@ -326,10 +330,121 @@ async function addProfileEmail(job: EmailJob, service: Service) {
     await logEvent(job.subscription_id, "profile_email_added", `Added ${job.user_email} to profile ${job.profile_name} (${reason})`);
     console.log(`[profile-email] ✅ เพิ่มอีเมล ${job.user_email} ในโปรไฟล์ ${job.profile_name} แล้ว`);
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (reason.startsWith("email_rejected")) {
+      await refundRejectedEmail(job, reason);
+      return;
+    }
     await recordAddFailure(job, attempt, err);
     return;
   }
-  await sendReadyEmail(job);
+
+  // The customer's time starts now that the profile is ready.
+  const [activated] = await sql<{ started_at: Date; expires_at: Date }[]>`
+    UPDATE subscriptions s
+    SET status = 'active',
+        started_at = NOW(),
+        expires_at = NOW() + make_interval(mins => pkg.duration_minutes),
+        updated_at = NOW()
+    FROM packages pkg
+    WHERE s.id = ${job.subscription_id}::uuid AND s.status = 'pending' AND pkg.id = s.package_id
+    RETURNING s.started_at, s.expires_at
+  `;
+  if (!activated) return; // cancelled meanwhile
+  await sql`
+    UPDATE profiles SET profile_expires_at = ${activated.expires_at}, updated_at = NOW()
+    WHERE id = ${job.profile_id}::uuid
+  `;
+  await sendReadyEmail({ ...job, started_at: activated.started_at, expires_at: activated.expires_at });
+}
+
+/**
+ * Cancels a pending purchase and gives everything back: points, any discount used,
+ * and the slot (its Netflix profile never got the customer's email, so no reset).
+ * Returns null when the rental is no longer pending.
+ */
+export async function refundPendingRental(subscriptionId: string, actorUserId: string | null, message: string) {
+  return sql.begin(async (tx) => {
+    const [rental] = await tx`
+      UPDATE subscriptions
+      SET status = 'refunded', cancelled_at = started_at, updated_at = NOW()
+      WHERE id = ${subscriptionId}::uuid AND status = 'pending'
+      RETURNING id, user_id, profile_id, price_paid, metadata
+    `;
+    if (!rental) return null;
+    const pricePaid = Number(rental.price_paid);
+    const discountPoints = Number(rental.metadata?.discountPoints ?? 0);
+
+    const [user] = await tx`
+      UPDATE "User"
+      SET points = points + ${pricePaid},
+          discount_cents = discount_cents + ${discountPoints * 100},
+          "updatedAt" = NOW()
+      WHERE id = ${rental.user_id}
+      RETURNING points, discount_cents
+    `;
+    if (pricePaid > 0) {
+      await tx`
+        INSERT INTO "Transaction" (id, "userId", type, amount, description, "createdAt")
+        VALUES (${crypto.randomUUID()}, ${rental.user_id}, 'refund', ${pricePaid}, 'คืน Point — ยกเลิกคำสั่งซื้อ', NOW())
+      `;
+    }
+    if (discountPoints > 0) {
+      await tx`
+        INSERT INTO discount_ledger (user_id, amount_cents, balance_cents, kind, reason, subscription_id)
+        VALUES (${rental.user_id}, ${discountPoints * 100}, ${user.discount_cents}, 'purchase', 'คืนส่วนลด — ยกเลิกคำสั่งซื้อ', ${rental.id})
+      `;
+    }
+    await tx`
+      UPDATE profiles p
+      SET status = 'available', profile_expires_at = me.master_expired_at, updated_at = NOW()
+      FROM master_emails me
+      WHERE p.id = ${rental.profile_id}::uuid AND me.id = p.master_email_id AND p.deleted_at IS NULL
+    `;
+    await tx`
+      INSERT INTO subscription_events (subscription_id, actor_user_id, event_type, message)
+      VALUES (${rental.id}, ${actorUserId}, 'refunded', ${message.slice(0, 500)})
+    `;
+    return { pricePaid, discountPoints, points: Number(user.points) };
+  });
+}
+
+// Netflix refused the customer's email (it already belongs to a Netflix account): refund and tell them.
+async function refundRejectedEmail(job: EmailJob, reason: string) {
+  const refund = await refundPendingRental(job.subscription_id, null, `Profile email rejected by Netflix: ${reason}`);
+  if (!refund) return;
+  const ref = orderRef(job.subscription_id);
+  console.log(`[profile-email] ↩️ Netflix ไม่รับอีเมล ${job.user_email} คืน ${refund.pricePaid} Point และปล่อย Slot ${job.profile_name} แล้ว`);
+
+  const text = [
+    "ขออภัยครับ ระบบเพิ่มอีเมลของคุณในโปรไฟล์ Netflix ไม่ได้",
+    "",
+    `อีเมล ${job.user_email} น่าจะมีบัญชี Netflix อยู่แล้ว หรือถูกใช้กับโปรไฟล์อื่นอยู่ Netflix จึงไม่อนุญาตให้เพิ่ม`,
+    "",
+    `รหัสคำสั่งซื้อ: ${ref}`,
+    `แพ็กเกจ: ${job.package_name}`,
+    `คืน Point แล้ว: ${refund.pricePaid} Point${refund.discountPoints ? ` และส่วนลด ${refund.discountPoints} Point` : ""}`,
+    "ระบบยังไม่ได้นับเวลาใช้งานของคำสั่งซื้อนี้",
+    "",
+    "หากต้องการใช้งาน กรุณาสมัครเว็บไซต์ด้วยอีเมลที่ไม่เคยใช้กับ Netflix แล้วสั่งซื้อใหม่",
+    `หากมีคำถาม ติดต่อทีมงานทาง Discord: ${SUPPORT_DISCORD_URL}`,
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  try {
+    await sendPlainEmail({ to: job.user_email, subject: `อีเมลนี้มี Netflix อยู่แล้ว — คืน Point แล้ว (${ref})`, text });
+  } catch (err) {
+    console.error(`[profile-email] ❌ ส่งเมลแจ้งคืน Point ไม่สำเร็จ to=${job.user_email}`, err instanceof Error ? err.message : err);
+  }
+  await alertAdmins([
+    "↩️ Netflix ไม่รับอีเมลลูกค้า — คืน Point อัตโนมัติแล้ว",
+    "",
+    `คำสั่งซื้อ: ${ref}`,
+    `ลูกค้า: ${job.user_email}`,
+    `คืน: ${refund.pricePaid} Point${refund.discountPoints ? ` + ส่วนลด ${refund.discountPoints}` : ""}`,
+    `บัญชีแม่: ${job.master_email} · โปรไฟล์: ${job.profile_name} (ปล่อยขายต่อแล้ว)`,
+    `สาเหตุ: ${reason.slice(0, 200)}`,
+  ]);
 }
 
 async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
@@ -585,6 +700,16 @@ export function pinRotationEnabled() {
  * Returns how many rentals were ended.
  */
 export async function expireProfileRentalNow(profileId: string, actorUserId: string | null) {
+  // A purchase still being prepared never started: it is refunded and the slot freed.
+  const pending = await sql<{ id: string }[]>`
+    SELECT id FROM subscriptions
+    WHERE profile_id = ${profileId}::uuid AND status = 'pending' AND started_at <= NOW()
+  `;
+  let refunded = 0;
+  for (const { id } of pending) {
+    if (await refundPendingRental(id, actorUserId, "Pending purchase cancelled by an admin")) refunded += 1;
+  }
+
   const ended = await sql.begin(async (tx) => {
     // Renewals that have not started yet are cancelled outright.
     const cancelled = await tx`
@@ -596,7 +721,7 @@ export async function expireProfileRentalNow(profileId: string, actorUserId: str
     const current = await tx`
       UPDATE subscriptions
       SET expires_at = GREATEST(NOW(), started_at + INTERVAL '1 millisecond'), updated_at = NOW()
-      WHERE profile_id = ${profileId}::uuid AND status IN ('pending', 'active') AND expires_at > NOW()
+      WHERE profile_id = ${profileId}::uuid AND status = 'active' AND expires_at > NOW()
       RETURNING id
     `;
     const ids = [...cancelled, ...current].map((row) => row.id as string);
@@ -608,10 +733,10 @@ export async function expireProfileRentalNow(profileId: string, actorUserId: str
     }
     return ids.length;
   });
-  if (ended === 0 || pinRotationEnabled()) return ended;
+  if (ended === 0 || pinRotationEnabled()) return ended + refunded;
 
   for (const rental of await findExpiredRentals(profileId)) await releaseWithoutRotation(rental);
-  return ended;
+  return ended + refunded;
 }
 
 /** Runs the worker now (e.g. right after a purchase) instead of waiting for the next minute. */

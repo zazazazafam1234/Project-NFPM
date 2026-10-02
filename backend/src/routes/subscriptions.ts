@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { getSessionUserId } from "../session";
-import { RENEW_GRACE_HOURS, runPinWorkerSoon } from "../libs/pin-rotation/worker";
+import { PREPARE_HOLD_MINUTES, RENEW_GRACE_HOURS, pinRotationEnabled, runPinWorkerSoon } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
 
@@ -157,7 +157,10 @@ subscriptions.post("/", async (c) => {
       if (!pkg) throw new Error("ไม่พบแพ็กเกจที่เลือก");
 
       const now = new Date();
-      const expiresAt = addMinutes(now, pkg.duration_minutes);
+      // With the pin-service the rental waits as "pending" (time not counted) until the
+      // customer's email is on the profile; expiresAt only holds the slot meanwhile.
+      const prepare = pinRotationEnabled();
+      const expiresAt = addMinutes(now, pkg.duration_minutes + (prepare ? PREPARE_HOLD_MINUTES : 0));
 
       const [user] = await sql`
         SELECT id, email, points, discount_cents, status
@@ -257,7 +260,7 @@ subscriptions.post("/", async (c) => {
           user_id, profile_id, package_id, status, payment_method, price_paid, started_at, expires_at, metadata
         )
         VALUES (
-          ${userId}, ${profile.id}, ${pkg.id}, 'active', ${paymentMethod}, ${pricePaid},
+          ${userId}, ${profile.id}, ${pkg.id}, ${prepare ? "pending" : "active"}::subscription_status, ${paymentMethod}, ${pricePaid},
           ${now.toISOString()}, ${expiresAt.toISOString()}, ${sql.json({ discountPoints })}
         )
         RETURNING id, started_at, expires_at, status

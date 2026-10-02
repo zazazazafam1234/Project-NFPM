@@ -11,6 +11,7 @@ from .core import (
     DEFAULT_SESSION_URL,
     MANAGE_PROFILES_URL,
     DebugCallback,
+    LoginOtpProvider,
     PLAYWRIGHT_IMPORT_ERROR,
     PlaywrightError,
     PlaywrightTimeoutError,
@@ -22,6 +23,7 @@ from .core import (
     fill_input_and_verify,
     first_visible,
     force_click_first,
+    has_visible_error,
     looks_logged_in,
     resolve_profile_dir,
     sync_playwright,
@@ -62,6 +64,7 @@ def _run_post_login_workflow_impl(
     timeout_ms: int = 30000,
     slow_mo_ms: int = 0,
     proxy_server: str | None = None,
+    otp_code_provider: LoginOtpProvider | None = None,
     debug: DebugCallback | None = None,
 ) -> WorkflowResult:
     """Create a Netflix profile and lock it after login has succeeded."""
@@ -229,27 +232,18 @@ def _run_post_login_workflow_impl(
                     steps,
                 )
 
-            step("choose_password_verification")
-            if _is_profile_lock_pin_entry(page):
-                emit_debug(debug, "already_on_profile_lock_pin_entry")
-            elif not _choose_password_verification(page, debug=debug):
+            step("verify_identity")
+            verified = verify_identity_for_profile_lock(
+                page,
+                account_password,
+                otp_code_provider=otp_code_provider,
+                allow_manual_otp=not headless,
+                debug=debug,
+            )
+            if verified != "ok":
                 return WorkflowResult(
                     False,
-                    "password_verification_button_not_found",
-                    page.url,
-                    generated_profile_name,
-                    generated_lock_pin,
-                    str(profile_dir),
-                    steps,
-                )
-
-            step("submit_account_password")
-            if _is_profile_lock_pin_entry(page):
-                emit_debug(debug, "skip_account_password_already_on_pin_entry")
-            elif not _submit_account_password(page, account_password):
-                return WorkflowResult(
-                    False,
-                    "account_password_prompt_not_filled",
+                    verified,
                     page.url,
                     generated_profile_name,
                     generated_lock_pin,
@@ -543,6 +537,109 @@ def _is_profile_settings_page(page) -> bool:
         ),
         timeout_ms=1500,
     ) is not None
+
+
+MFA_PASSWORD_BUTTON = '[data-uia="account-mfa-button-PASSWORD"] button'
+MFA_OTP_EMAIL_BUTTON = '[data-uia="account-mfa-button-OTP_EMAIL"] button'
+CHALLENGE_PASSWORD_INPUTS = (
+    'input[name="challengePassword"][data-uia="collect-password-input-modal-entry"]',
+    '[data-uia="collect-password-input-modal-entry"]',
+    'input[name="challengePassword"]',
+)
+CHALLENGE_OTP_INPUT = '[data-uia="collect-otp-input-entry"]'
+CHALLENGE_SUBMIT = '[data-uia="collect-input-submit-cta"]'
+
+
+def verify_identity_for_profile_lock(
+    page,
+    account_password: str,
+    *,
+    otp_code_provider: LoginOtpProvider | None = None,
+    allow_manual_otp: bool = False,
+    debug: DebugCallback | None = None,
+    timeout_ms: int = 180000,
+) -> str:
+    """Gets from "add profile lock" to the PIN entry page.
+
+    Netflix asks for the account password or, when it only offers it, a code
+    mailed to the account ("ส่งรหัสทางอีเมล"). Codes come from
+    `otp_code_provider`; without one, a headed browser waits for a person to
+    type the code. Returns "ok" or a failure reason.
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    password_submitted = False
+    tried_codes: set[str] = set()
+    waiting_for_manual = False
+
+    while time.monotonic() < deadline:
+        if _is_profile_lock_pin_entry(page):
+            return "ok"
+
+        if first_visible(page, (CHALLENGE_OTP_INPUT,), timeout_ms=300):
+            if otp_code_provider:
+                try:
+                    codes = [str(code) for code in otp_code_provider() if str(code) not in tried_codes]
+                except Exception as exc:  # provider owns mailbox IO
+                    return f"profile_lock_otp_provider_error: {exc}"
+                if not codes:
+                    return "profile_lock_otp_not_received"
+                for code in codes:
+                    tried_codes.add(code)
+                    emit_debug(debug, f"profile_lock_otp_try length={len(code)}")
+                    if _submit_challenge_otp(page, code):
+                        break
+                continue
+            if not allow_manual_otp:
+                return "profile_lock_otp_required"
+            if not waiting_for_manual:
+                waiting_for_manual = True
+                emit_debug(debug, "profile_lock_otp_waiting_manual กรุณากรอกรหัสจากอีเมลในหน้าต่าง browser แล้วกดส่ง")
+            page.wait_for_timeout(1000)
+            continue
+
+        if first_visible(page, CHALLENGE_PASSWORD_INPUTS, timeout_ms=300):
+            if password_submitted:
+                error = has_visible_error(page)
+                if error:
+                    return f"account_password_rejected: {error}"
+                page.wait_for_timeout(500)
+                continue
+            emit_debug(debug, "profile_lock_submit_account_password")
+            if not _submit_account_password(page, account_password):
+                return "account_password_prompt_not_filled"
+            password_submitted = True
+            wait_for_short_network_idle(page, debug=debug)
+            continue
+
+        if force_click_first(page, (MFA_PASSWORD_BUTTON,), timeout_ms=300):
+            emit_debug(debug, "profile_lock_choose_password")
+            wait_for_short_network_idle(page, debug=debug)
+            continue
+
+        if force_click_first(page, (MFA_OTP_EMAIL_BUTTON,), timeout_ms=300):
+            emit_debug(debug, "profile_lock_choose_email_otp")
+            wait_for_short_network_idle(page, debug=debug)
+            continue
+
+        page.wait_for_timeout(300)
+
+    return "profile_lock_otp_timeout" if waiting_for_manual else "profile_lock_pin_entry_not_reached"
+
+
+def _submit_challenge_otp(page, code: str) -> bool:
+    """True once Netflix leaves the code entry page."""
+    if not fill_input_and_verify(page, (CHALLENGE_OTP_INPUT,), code, timeout_ms=5000, require_interactable=False):
+        return False
+    if not force_click_first(page, (CHALLENGE_SUBMIT, 'button[type="submit"]'), timeout_ms=2000):
+        return False
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not first_visible(page, (CHALLENGE_OTP_INPUT,), timeout_ms=300):
+            return True
+        if has_visible_error(page):
+            return False
+        page.wait_for_timeout(300)
+    return False
 
 
 def _choose_password_verification(page, *, debug: DebugCallback | None) -> bool:

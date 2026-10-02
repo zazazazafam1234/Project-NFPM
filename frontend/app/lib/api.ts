@@ -286,6 +286,8 @@ export type AdminInventory = {
     /** The rental running now on this slot, if any. */
     rental: {
       subscriptionId: string;
+      /** "pending" while the email is being added: time is not counted and cancelling refunds. */
+      status: "pending" | "active";
       userId: string;
       userName: string | null;
       userEmail: string;

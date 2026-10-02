@@ -425,6 +425,7 @@ admin.get("/inventory", async (c) => {
       LEFT JOIN LATERAL (
         SELECT json_build_object(
           'subscriptionId', s.id,
+          'status', s.status,
           'userId', u.id,
           'userName', u.name,
           'userEmail', u.email,

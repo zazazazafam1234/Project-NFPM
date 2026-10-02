@@ -1513,7 +1513,7 @@ function ProfilesPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
-  const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string } | null>(null);
+  const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string; pending?: boolean } | null>(null);
   const [viewingRentalId, setViewingRentalId] = useState<string | null>(null);
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
@@ -1582,11 +1582,13 @@ function ProfilesPanel({
     );
   }
 
-  async function expireProfile(profileId: string, profileName: string) {
+  async function expireProfile(profileId: string, profileName: string, pending = false) {
     setExpiringProfile(null);
     try {
       const { pinRotation } = await expireProfileRental(profileId);
-      const message = pinRotation
+      const message = pending
+        ? `ยกเลิกคำสั่งซื้อ ${profileName} แล้ว · คืน Point ให้ลูกค้าและปล่อย Slot ขายต่อแล้ว`
+        : pinRotation
         ? `ยกเลิกการเช่า ${profileName} แล้ว · ระบบกำลังลบโปรไฟล์และสร้างใหม่ จะปล่อย Slot ภายในไม่กี่นาที`
         : `ยกเลิกการเช่า ${profileName} แล้ว · ปล่อย Slot แล้ว (ไม่ได้สร้างโปรไฟล์ใหม่อัตโนมัติ กรุณาทำเอง)`;
       onDone(message);
@@ -1705,7 +1707,13 @@ function ProfilesPanel({
               {(profile.rental || profile.status === "rented") && (
                 <button
                   className={styles.danger}
-                  onClick={() => setExpiringProfile({ id: profile.id, name: profile.profile_name })}
+                  onClick={() =>
+                    setExpiringProfile({
+                      id: profile.id,
+                      name: profile.profile_name,
+                      pending: profile.rental?.status === "pending",
+                    })
+                  }
                   type="button"
                 >
                   ยกเลิกการเช่า
@@ -1933,10 +1941,14 @@ function ProfilesPanel({
             <dd>{viewingRental.rental.userEmail}</dd>
             <dt>แพ็กเกจ</dt>
             <dd>{viewingRental.rental.packageName} · {viewingRental.rental.pricePaid} Point</dd>
-            <dt>เริ่มเช่า</dt>
+            <dt>{viewingRental.rental.status === "pending" ? "สั่งซื้อเมื่อ" : "เริ่มเช่า"}</dt>
             <dd>{formatDateTime(viewingRental.rental.startedAt)}</dd>
             <dt>หมดอายุ</dt>
-            <dd>{formatDateTime(viewingRental.rental.expiresAt)}</dd>
+            <dd>
+              {viewingRental.rental.status === "pending"
+                ? "ยังไม่เริ่มนับเวลา (เริ่มนับเมื่อเพิ่มอีเมลสำเร็จ)"
+                : formatDateTime(viewingRental.rental.expiresAt)}
+            </dd>
             <dt>บัญชีแม่</dt>
             <dd>{viewingRental.masterEmail}</dd>
             <dt>สถานะ</dt>
@@ -1950,7 +1962,11 @@ function ProfilesPanel({
             <button
               className={styles.danger}
               onClick={() => {
-                setExpiringProfile({ id: viewingRental.id, name: viewingRental.profile_name });
+                setExpiringProfile({
+                  id: viewingRental.id,
+                  name: viewingRental.profile_name,
+                  pending: viewingRental.rental?.status === "pending",
+                });
                 setViewingRentalId(null);
               }}
               type="button"
@@ -1965,10 +1981,14 @@ function ProfilesPanel({
       {expiringProfile && (
         <ConfirmModal
           title="ยกเลิกการเช่า"
-          message={`ยกเลิกการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ และระบบจะลบโปรไฟล์นี้แล้วสร้างใหม่ (ไม่คืน Point)`}
+          message={
+            expiringProfile.pending
+              ? `ยกเลิกคำสั่งซื้อ ${expiringProfile.name} ที่ยังเตรียมบัญชีไม่เสร็จใช่ไหม? ระบบจะคืน Point ให้ลูกค้าและปล่อย Slot ขายต่อทันที`
+              : `ยกเลิกการเช่าของ ${expiringProfile.name} ตอนนี้เลยใช่ไหม? ลูกค้าจะได้รับอีเมลแจ้งหมดอายุ และระบบจะลบโปรไฟล์นี้แล้วสร้างใหม่ (ไม่คืน Point)`
+          }
           confirmLabel="ยกเลิกการเช่า"
           onClose={() => setExpiringProfile(null)}
-          onConfirm={() => void expireProfile(expiringProfile.id, expiringProfile.name)}
+          onConfirm={() => void expireProfile(expiringProfile.id, expiringProfile.name, expiringProfile.pending)}
         />
       )}
     </AnimatePresence>
