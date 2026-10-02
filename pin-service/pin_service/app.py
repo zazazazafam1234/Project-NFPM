@@ -38,7 +38,7 @@ from netflix_login_checker.core import DEFAULT_PROFILES_DIR, login_netflix, shor
 
 from .change_pin import change_profile_pin
 from .otp_mail import mailbox_for, now_utc, wait_for_otp_candidates
-from .profile_email import update_profile_email
+from .profile_email import COOKIES_CLEARED_PREFIX, update_profile_email
 from .reset_profile import reset_profile
 
 # One browser at a time: jobs for the same master account share a browser profile.
@@ -165,36 +165,42 @@ def create_app() -> Flask:
         )
 
         with _browser_lock:
-            login, selected_proxy = _login_with_proxy_retries(
-                email=email,
-                password=password,
-                headless=headless,
-                profiles_dir=profiles_dir,
-                static_proxy=proxy_server,
-                proxy_candidates=proxy_candidates,
-                max_attempts=proxy_retries,
-                bad_ttl_s=proxy_bad_ttl_s,
-                timeout_ms=timeout_ms,
-                otp_code_provider=_login_otp_provider(email, mailbox_password, debug),
-                debug=debug,
-            )
-            if not login.success:
-                return _response(False, f"login_failed: {login.reason}", 502, profileName=profile_name)
+            # Attempt 2 runs only after Netflix's generic error made attempt 1 clear its cookies.
+            for attempt in (1, 2):
+                login, selected_proxy = _login_with_proxy_retries(
+                    email=email,
+                    password=password,
+                    headless=headless,
+                    profiles_dir=profiles_dir,
+                    static_proxy=proxy_server,
+                    proxy_candidates=proxy_candidates,
+                    max_attempts=proxy_retries,
+                    bad_ttl_s=proxy_bad_ttl_s,
+                    timeout_ms=timeout_ms,
+                    otp_code_provider=_login_otp_provider(email, mailbox_password, debug),
+                    debug=debug,
+                )
+                if not login.success:
+                    return _response(False, f"login_failed: {login.reason}", 502, profileName=profile_name)
 
-            outcome = update_profile_email(
-                action=action,
-                email=email,
-                account_password=password,
-                account_pin=account_pin,
-                profile_name=profile_name,
-                customer_email=customer_email,
-                mailbox_password=mailbox_password,
-                profiles_dir=profiles_dir,
-                headless=headless,
-                proxy_server=selected_proxy,
-                timeout_ms=timeout_ms,
-                debug=debug,
-            )
+                outcome = update_profile_email(
+                    action=action,
+                    email=email,
+                    account_password=password,
+                    account_pin=account_pin,
+                    profile_name=profile_name,
+                    customer_email=customer_email,
+                    mailbox_password=mailbox_password,
+                    clear_cookies_on_error=attempt == 1,
+                    profiles_dir=profiles_dir,
+                    headless=headless,
+                    proxy_server=selected_proxy,
+                    timeout_ms=timeout_ms,
+                    debug=debug,
+                )
+                if not outcome.reason.startswith(COOKIES_CLEARED_PREFIX):
+                    break
+                debug("profile_email_retry_after_clear_cookies")
 
         payload = asdict(outcome)
         return _response(
