@@ -529,3 +529,42 @@
   align-self: flex-start;
   margin-top: 10px;
 }
+.resellerCard {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-9877fb55);
+  border-radius: 12px;
+  background: var(--c-7953ed22);
+}
+.resellerCard small {
+  color: var(--c-c4a8ffff);
+  font-size: 11px;
+  font-weight: 700;
+}
+.resellerCard code {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+.resellerCard div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.resellerCard button {
+  padding: 6px 10px;
+  border: 1px solid var(--c-9877fb55);
+  border-radius: 8px;
+  color: var(--c-c4a8ffff);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.resellerCard a {
+  color: var(--c-c4a8ffff);
+  font-size: 12px;
+  text-decoration: none;
+}

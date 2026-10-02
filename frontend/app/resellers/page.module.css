@@ -175,3 +175,8 @@
   margin: 0;
   color: var(--c-ef6872ff);
 }
+.bigCode {
+  font-size: 26px !important;
+  font-weight: 800;
+  letter-spacing: 3px !important;
+}

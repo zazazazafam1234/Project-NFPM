@@ -1008,7 +1008,10 @@ export type ResellerUse = {
   createdAt: string;
   redeemedAt: string | null;
   payoutStatus: "pending" | "approved" | null;
+  /** Masked email, e.g. so***@gmail.com. */
   customer: string;
+  /** Customer's first name. */
+  customerName: string | null;
 };
 
 export type ResellerBank = { bankName: string; accountName: string; accountNumber: string };

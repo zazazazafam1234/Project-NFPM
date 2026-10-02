@@ -125,10 +125,13 @@ export default function ResellersPage() {
     loadMine();
   }, [user]);
 
-  async function copy(text: string) {
+  const [copied, setCopied] = useState("");
+
+  async function copy(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text);
-      window.alert("คัดลอกแล้ว");
+      setCopied(label);
+      window.setTimeout(() => setCopied(""), 2000);
     } catch {
       window.prompt("คัดลอก", text);
     }
@@ -151,21 +154,6 @@ export default function ResellersPage() {
       </header>
 
       <section className={styles.content}>
-        <div className={styles.card}>
-          <p className={profileStyles.eyebrow}>TOP RESELLERS</p>
-          <h1>ตัวแทนจำหน่ายยอดเยี่ยม</h1>
-          <ol className={styles.top}>
-            {top.map((entry) => (
-              <li key={entry.rank}>
-                <span className={styles.medal}>{MEDALS[entry.rank - 1]}</span>
-                <b>อันดับ {entry.rank}</b>
-                <span>ยอดขาย {entry.customers.toLocaleString()} คน</span>
-              </li>
-            ))}
-            {top.length === 0 && <li className={styles.empty}>ยังไม่มียอดขาย</li>}
-          </ol>
-        </div>
-
         {!isLoading && !user && (
           <div className={styles.card}>
             <p>เข้าสู่ระบบเพื่อดูยอดขายของคุณ หากคุณเป็นตัวแทนจำหน่าย</p>
@@ -177,16 +165,16 @@ export default function ResellersPage() {
 
         {reseller && (
           <div className={styles.card}>
-            <p className={profileStyles.eyebrow}>MY SALES</p>
-            <h2>ยอดขายของฉัน</h2>
+            <p className={profileStyles.eyebrow}>MY RESELLER CODE</p>
+            <h2>โค้ดตัวแทนของฉัน</h2>
             <div className={styles.codeRow}>
-              <code>{reseller.code}</code>
-              <button onClick={() => void copy(reseller.code)} type="button">
-                คัดลอกโค้ด
+              <code className={styles.bigCode}>{reseller.code}</code>
+              <button onClick={() => void copy(reseller.code, "code")} type="button">
+                {copied === "code" ? "คัดลอกแล้ว ✓" : "คัดลอกโค้ด"}
               </button>
               {reseller.referralLink && (
-                <button onClick={() => void copy(String(reseller.referralLink))} type="button">
-                  คัดลอกลิงก์
+                <button onClick={() => void copy(String(reseller.referralLink), "link")} type="button">
+                  {copied === "link" ? "คัดลอกแล้ว ✓" : "คัดลอกลิงก์เติมเงิน"}
                 </button>
               )}
             </div>
@@ -233,11 +221,16 @@ export default function ResellersPage() {
               ))}
               {reseller.payouts.length === 0 && <li className={styles.empty}>ยังไม่มีการตัดยอด</li>}
             </ul>
-            <h3>รายการล่าสุด</h3>
+            <h3>
+              ลูกค้าของฉัน ({reseller.customers} คน{reseller.pending ? ` · รอชำระ ${reseller.pending}` : ""})
+            </h3>
             <ul className={styles.uses}>
               {reseller.uses.map((use) => (
                 <li key={use.id}>
-                  <b>{use.customer}</b>
+                  <b>
+                    {use.customerName ? `${use.customerName} · ` : ""}
+                    {use.customer}
+                  </b>
                   <span>
                     เติม ฿{bahtFromCents(use.baseAmountCents)} · ค่าคอม ฿{bahtFromCents(use.commissionCents)} ·{" "}
                     {formatDate(use.createdAt)}
@@ -249,6 +242,21 @@ export default function ResellersPage() {
             </ul>
           </div>
         )}
+
+        <div className={styles.card}>
+          <p className={profileStyles.eyebrow}>TOP RESELLERS</p>
+          <h1>ตัวแทนจำหน่ายยอดเยี่ยม</h1>
+          <ol className={styles.top}>
+            {top.map((entry) => (
+              <li key={entry.rank}>
+                <span className={styles.medal}>{MEDALS[entry.rank - 1]}</span>
+                <b>อันดับ {entry.rank}</b>
+                <span>ยอดขาย {entry.customers.toLocaleString()} คน</span>
+              </li>
+            ))}
+            {top.length === 0 && <li className={styles.empty}>ยังไม่มียอดขาย</li>}
+          </ol>
+        </div>
 
         {mine?.isManager && (
           <div className={styles.card}>

@@ -18,6 +18,8 @@ import {
   formatDiscount,
   discountPointsFor,
   renewSubscription,
+  fetchMyReseller,
+  type MyResellerView,
 } from "../lib/api";
 import { useSession } from "../providers";
 import { SupportLink } from "../components/SupportLink";
@@ -88,6 +90,26 @@ export default function ProfilePage() {
   const [renewingId, setRenewingId] = useState<string | null>(null);
   // Expiry emails link to /profile?renew=<subscriptionId>
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  // A reseller's own code, shown on their profile with copy buttons.
+  const [myReseller, setMyReseller] = useState<MyResellerView["reseller"]>(null);
+  const [copiedCode, setCopiedCode] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    fetchMyReseller()
+      .then((data) => setMyReseller(data.reseller))
+      .catch(() => setMyReseller(null));
+  }, [user]);
+
+  async function copyResellerText(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCode(label);
+      window.setTimeout(() => setCopiedCode(""), 2000);
+    } catch {
+      window.prompt("คัดลอก", text);
+    }
+  }
 
   useEffect(() => {
     const fromLink = new URLSearchParams(window.location.search).get("renew");
@@ -189,9 +211,27 @@ export default function ProfilePage() {
               หลังบ้าน Admin
             </Link>
           )}
-          <Link href="/resellers" className={styles.adminLink}>
-            ตัวแทนจำหน่าย
-          </Link>
+          {myReseller ? (
+            <div className={styles.resellerCard}>
+              <small>โค้ดตัวแทนของฉัน</small>
+              <code>{myReseller.code}</code>
+              <div>
+                <button onClick={() => void copyResellerText(myReseller.code, "code")} type="button">
+                  {copiedCode === "code" ? "คัดลอกแล้ว ✓" : "คัดลอกโค้ด"}
+                </button>
+                {myReseller.referralLink && (
+                  <button onClick={() => void copyResellerText(String(myReseller.referralLink), "link")} type="button">
+                    {copiedCode === "link" ? "คัดลอกแล้ว ✓" : "คัดลอกลิงก์"}
+                  </button>
+                )}
+              </div>
+              <Link href="/resellers">ลูกค้าของฉัน {myReseller.customers} คน · ดูทั้งหมด →</Link>
+            </div>
+          ) : (
+            <Link href="/resellers" className={styles.adminLink}>
+              ตัวแทนจำหน่าย
+            </Link>
+          )}
           <button onClick={() => void signOut().then(() => router.push("/"))}>
             ออกจากระบบ
           </button>

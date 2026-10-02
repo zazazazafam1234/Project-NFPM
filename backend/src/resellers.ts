@@ -214,7 +214,7 @@ export async function resellerRecentUses(resellerId: string, limit = 50) {
   const rows = await sql`
     SELECT x.id, x.status, x.base_amount_cents AS "baseAmountCents", x.discount_cents AS "discountCents",
       x.commission_cents AS "commissionCents", x.created_at AS "createdAt", x.redeemed_at AS "redeemedAt",
-      p.status AS "payoutStatus", u.email
+      p.status AS "payoutStatus", u.email, u.name
     FROM reseller_redemptions x
     JOIN "User" u ON u.id = x.user_id
     LEFT JOIN reseller_payouts p ON p.id = x.payout_id
@@ -222,7 +222,12 @@ export async function resellerRecentUses(resellerId: string, limit = 50) {
     ORDER BY x.created_at DESC
     LIMIT ${limit}
   `;
-  return rows.map(({ email, ...row }) => ({ ...row, customer: maskEmail(String(email)) }));
+  // First name only, with the email masked: enough for a reseller to recognise their customer.
+  return rows.map(({ email, name, ...row }) => ({
+    ...row,
+    customer: maskEmail(String(email)),
+    customerName: String(name ?? "").trim().split(/\s+/)[0] || null,
+  }));
 }
 
 /** The top three resellers for everyone to see, without names or codes. */
