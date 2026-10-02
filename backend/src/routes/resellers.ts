@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { getSessionUserId } from "../session";
-import { pushToGroups } from "../libs/line-bot";
+import { adminLink, pushToGroups } from "../libs/line-bot";
 import {
   DEFAULT_RESELLER_COMMISSION_CENTS,
   THAI_BANKS,
@@ -107,7 +107,7 @@ resellers.post("/requests", async (c) => {
       `ผู้ขอ: ${manager.name}`,
       `ตัวแทน: ${created.user.name} (${created.user.email})`,
       `ค่าคอม: ฿${(commission / 100).toFixed(2)}${maxUses ? ` · จำกัด ${maxUses} คน` : ""}`,
-      "อนุมัติได้ที่หลังบ้าน → ตัวแทนจำหน่าย",
+      `👉 อนุมัติ: ${adminLink("resellers") || "หลังบ้าน → ตัวแทนจำหน่าย"}`,
     ].join("\n"),
   ).catch(() => {});
   return c.json({ id: created.reseller.id }, 201);

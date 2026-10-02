@@ -75,6 +75,17 @@ export async function groupName(token: string, groupId: string) {
   }
 }
 
+/**
+ * Link to an admin section for LINE alerts that need action, e.g.
+ * adminLink("resellers") or adminLink("profiles", { q: "nab12c" }). Empty without WEB_ORIGIN.
+ */
+export function adminLink(section: string, params: Record<string, string> = {}) {
+  const site = (process.env.WEB_ORIGIN ?? "").replace(/\/+$/, "");
+  if (!site) return "";
+  const query = new URLSearchParams({ section, ...params });
+  return `${site}/admin?${query}`;
+}
+
 // Sends text to every connected group; returns how many groups received it.
 export async function pushToGroups(text: string) {
   const { token } = await getBotConfig();
@@ -122,7 +133,7 @@ export async function notifyTopUpCheck(topUpId: string) {
       `แจ้งครั้งที่: ${row.check_request_count}`,
       "",
       "ระบบกำลังเช็ค LINE ถี่ขึ้น (ทุก 10 วินาที) ถ้ายังไม่เข้าโปรดตรวจสอบยอดในบัญชีธนาคาร",
-      ...(site ? [`ดูรายการ: ${site}/admin`] : []),
+      ...(site ? [`👉 จัดการ: ${adminLink("payments")}`] : []),
     ].join("\n");
     const result = await pushToGroups(text);
     console.log(`[line-bot] top-up check alert topup=${topUpId} sent=${result.sent} failed=${result.failed}`);

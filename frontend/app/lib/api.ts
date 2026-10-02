@@ -43,8 +43,10 @@ export async function apiFetch<T>(
   return response.json() as Promise<T>;
 }
 
-export function googleLoginUrl() {
-  const redirectTo = `${window.location.origin}/profile`;
+/** `next` is a path on this site to return to after login (e.g. an admin link from LINE). */
+export function googleLoginUrl(next?: string | null) {
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/profile";
+  const redirectTo = `${window.location.origin}${safeNext}`;
   return `${apiUrl}/auth/google?redirectTo=${encodeURIComponent(redirectTo)}`;
 }
 

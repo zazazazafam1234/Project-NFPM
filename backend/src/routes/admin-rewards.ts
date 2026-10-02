@@ -158,7 +158,7 @@ rewards.get("/streamers", async (c) => {
 rewards.post("/streamers", async (c) => {
   const body = await c.req.json<RewardBody & { name?: string; link?: string | null; code?: string; maxUses?: number | null }>();
   const name = body.name?.trim();
-  if (!name) return c.json({ message: "กรุณาใส่ชื่อสตรีมเมอร์" }, 400);
+  if (!name) return c.json({ message: "กรุณาใส่ชื่อโค้ด" }, 400);
   const columns = rewardColumns(body, false);
   if (typeof columns === "string") return c.json({ message: columns }, 400);
   const maxUses = body.maxUses === null || body.maxUses === undefined ? null : Number(body.maxUses);
@@ -200,7 +200,7 @@ rewards.patch("/streamers/:id", async (c) => {
   const columns = rewardColumns(body, true);
   if (typeof columns === "string") return c.json({ message: columns }, 400);
   if (body.name !== undefined) {
-    if (!body.name.trim()) return c.json({ message: "กรุณาใส่ชื่อสตรีมเมอร์" }, 400);
+    if (!body.name.trim()) return c.json({ message: "กรุณาใส่ชื่อโค้ด" }, 400);
     columns.name = body.name.trim();
   }
   if (body.link !== undefined) columns.link = body.link?.trim() || null;
@@ -228,7 +228,7 @@ rewards.patch("/streamers/:id", async (c) => {
       WHERE id = ${c.req.param("id")}::uuid AND deleted_at IS NULL
       RETURNING id, code
     `;
-    if (!streamer) return c.json({ message: "ไม่พบสตรีมเมอร์นี้" }, 404);
+    if (!streamer) return c.json({ message: "ไม่พบโค้ดส่วนลดนี้" }, 404);
     return c.json({ ...streamer, referralLink: referralLink(streamer.code) });
   } catch (err) {
     if (err instanceof Error && /streamers_code_unique/.test(err.message)) {
@@ -244,7 +244,7 @@ rewards.delete("/streamers/:id", async (c) => {
     WHERE id = ${c.req.param("id")}::uuid AND deleted_at IS NULL
     RETURNING id
   `;
-  if (!streamer) return c.json({ message: "ไม่พบสตรีมเมอร์นี้" }, 404);
+  if (!streamer) return c.json({ message: "ไม่พบโค้ดส่วนลดนี้" }, 404);
   return c.json({ ok: true });
 });
 

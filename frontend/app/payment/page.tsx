@@ -391,11 +391,11 @@ export default function TopUpPage() {
             </div>
           )}
           <div className={styles.codeBox}>
-            <span>โค้ดส่วนลดจากสตรีมเมอร์ (ใช้ได้ครั้งแรกของบัญชีใหม่)</span>
+            <span>โค้ดส่วนลด (ถ้ามี)</span>
             <div>
               <input
                 autoCapitalize="characters"
-                placeholder="เช่น STREAMER1234"
+                placeholder="กรอกโค้ดส่วนลด"
                 value={codeInput}
                 onChange={(event) => {
                   setCodeInput(event.target.value.toUpperCase());
@@ -413,7 +413,7 @@ export default function TopUpPage() {
             </div>
             {codeInfo && (
               <small className={styles.codeOk}>
-                ✓ โค้ดของ {codeInfo.streamerName} · {describeReward(codeInfo)}
+                ✓ โค้ด {codeInfo.code} · {describeReward(codeInfo)}
                 {baseCents > 0 ? ` = ลดยอดโอน ${formatDiscount(rewardCentsFor(codeInfo, baseCents))}` : ""}
               </small>
             )}
@@ -431,7 +431,7 @@ export default function TopUpPage() {
               )}
               {codeInfo && (
                 <>
-                  <span>ส่วนลดโค้ด {codeInfo.streamerName}</span>
+                  <span>ส่วนลดโค้ด {codeInfo.code}</span>
                   <b>-{formatDiscount(rewardCentsFor(codeInfo, baseCents))}</b>
                 </>
               )}
@@ -544,7 +544,7 @@ export default function TopUpPage() {
                       )}
                       {(pendingTopUp.streamerRewardCents ?? 0) > 0 && (
                         <>
-                          <br />· โค้ด {pendingTopUp.streamerName} -{formatDiscount(pendingTopUp.streamerRewardCents)}
+                          <br />· โค้ดส่วนลด -{formatDiscount(pendingTopUp.streamerRewardCents)}
                         </>
                       )}
                     </p>

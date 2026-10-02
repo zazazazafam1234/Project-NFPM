@@ -55,7 +55,7 @@ const menu = [
   ["payments", "ตรวจสอบการชำระ", "฿"],
   ["users", "ผู้ใช้", "◍"],
   ["topupPromotions", "โปรเติมเงิน", "⬆"],
-  ["streamers", "Streamer / โค้ด", "★"],
+  ["streamers", "โค้ดส่วนลด", "★"],
   ["resellers", "ตัวแทนจำหน่าย", "♜"],
   ["decoys", "ห้องหลอก", "◌"],
   ["audit", "Audit log", "▣"],
@@ -147,6 +147,7 @@ const rowMotion = {
 export default function AdminPage() {
   const { user, isLoading: sessionLoading } = useSession();
   const [section, setSection] = useState<Section>("dashboard");
+  const [loginHref, setLoginHref] = useState("/register?next=/admin");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [inventory, setInventory] = useState<AdminInventory | null>(null);
@@ -165,6 +166,25 @@ export default function AdminPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Links from LINE alerts open a section directly: /admin?section=profiles&q=nab12c
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linked = menu.find(([key]) => key === params.get("section"))?.[0];
+    const search = params.get("q") ?? "";
+    queueMicrotask(() => {
+      if (linked) setSection(linked);
+      if (linked === "profiles" && search) {
+        setInventoryQuery((current) => ({ ...current, profilesSearch: search, profilesStatus: "all", profilesPage: 1 }));
+      }
+      setLoginHref(`/register?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    });
+  }, []);
+
+  function openSection(key: Section) {
+    setSection(key);
+    window.history.replaceState(null, "", `/admin?section=${key}`);
   }
 
   useEffect(() => {
@@ -190,7 +210,7 @@ export default function AdminPage() {
           <span>🔒</span>
           <h2>กรุณาเข้าสู่ระบบ</h2>
           <p>ต้องเข้าสู่ระบบด้วยบัญชี Admin ก่อน</p>
-          <Link href="/register" className={styles.guardBtn}>เข้าสู่ระบบ →</Link>
+          <Link href={loginHref} className={styles.guardBtn}>เข้าสู่ระบบ →</Link>
         </div>
       </main>
     );
@@ -221,7 +241,7 @@ export default function AdminPage() {
               className={section === key ? styles.activeNav : ""}
               key={key}
               onClick={() => {
-                setSection(key);
+                openSection(key);
                 setNotice("");
                 setError("");
               }}

@@ -246,7 +246,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
   const load = useCallback(() => {
     fetchAdminStreamers()
       .then((data) => setStreamers(data.streamers))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "โหลดสตรีมเมอร์ไม่สำเร็จ"));
+      .catch((err) => window.alert(err instanceof Error ? err.message : "โหลดโค้ดส่วนลดไม่สำเร็จ"));
   }, []);
   useEffect(() => {
     queueMicrotask(load);
@@ -278,7 +278,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
           maxUses: form.maxUses.trim() ? Number(form.maxUses) : null,
           ...rewardPayload(form),
         }),
-      id ? `บันทึกสตรีมเมอร์ ${form.name} สำเร็จ` : `เพิ่มสตรีมเมอร์ ${form.name} และสร้างโค้ดแล้ว`,
+      id ? `บันทึกโค้ดส่วนลด ${form.name} สำเร็จ` : `เพิ่มโค้ดส่วนลด ${form.name} แล้ว`,
       onDone,
     );
     if (ok) {
@@ -288,8 +288,8 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
   }
 
   async function remove(streamer: AdminStreamer) {
-    if (!window.confirm(`ลบสตรีมเมอร์ "${streamer.name}" ใช่ไหม? โค้ด ${streamer.code} จะใช้ไม่ได้อีก`)) return;
-    if (await run(() => deleteAdminStreamer(streamer.id), `ลบสตรีมเมอร์ ${streamer.name} แล้ว`, onDone)) load();
+    if (!window.confirm(`ลบโค้ดส่วนลด "${streamer.name}" ใช่ไหม? โค้ด ${streamer.code} จะใช้ไม่ได้อีก`)) return;
+    if (await run(() => deleteAdminStreamer(streamer.id), `ลบโค้ดส่วนลด ${streamer.name} แล้ว`, onDone)) load();
   }
 
   async function copy(text: string, label: string) {
@@ -305,8 +305,8 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
     <section className={styles.panel}>
       <div className={styles.panelHead}>
         <div>
-          <p className={styles.eyebrow}>STREAMER CODES</p>
-          <h2>โค้ดส่วนลดสตรีมเมอร์</h2>
+          <p className={styles.eyebrow}>DISCOUNT CODES</p>
+          <h2>โค้ดส่วนลด</h2>
           <p className={styles.muted}>
             ลูกค้าใหม่กรอกโค้ดตอนเติมครั้งแรก · 1 บัญชีใช้ได้ 1 ครั้ง · ลดยอดโอนทันทีตอนสร้าง QR
           </p>
@@ -320,7 +320,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
             }}
             type="button"
           >
-            เพิ่มสตรีมเมอร์
+            เพิ่มโค้ดส่วนลด
           </button>
         </div>
       </div>
@@ -328,11 +328,11 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
       {editing && (
         <div className={`${styles.formRows} ${rewardStyles.inlineForm}`}>
           <label>
-            ชื่อสตรีมเมอร์
+            ชื่อโค้ด (เช่น ชื่อแคมเปญหรือผู้ที่แจกโค้ด)
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
           </label>
           <label>
-            ลิงก์ช่อง (Twitch / YouTube / TikTok)
+            ลิงก์ (ถ้ามี)
             <input
               placeholder="https://..."
               value={form.link}
@@ -387,7 +387,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
                     {streamer.link}
                   </a>
                 ) : (
-                  <small>ไม่มีลิงก์ช่อง</small>
+                  <small>ไม่มีลิงก์</small>
                 )}
               </div>
               <em className={streamer.status === "active" ? styles.green : styles.yellow}>
@@ -440,7 +440,7 @@ export function StreamersPanel({ onDone }: { onDone: Notify }) {
             </footer>
           </article>
         ))}
-        {streamers.length === 0 && <p className={styles.emptyInline}>ยังไม่มีสตรีมเมอร์</p>}
+        {streamers.length === 0 && <p className={styles.emptyInline}>ยังไม่มีโค้ดส่วนลด</p>}
       </div>
     </section>
   );

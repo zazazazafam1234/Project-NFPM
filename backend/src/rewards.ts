@@ -100,7 +100,7 @@ export async function checkStreamerCode(db: Db, code: string, userId: string): P
         WHERE r.user_id = ${userId} AND r.status = 'pending' AND t.status = 'pending'
       ) AS code_waiting
   `;
-  if (history.used_code) return { ok: false, message: "บัญชีนี้เคยใช้โค้ดสตรีมเมอร์ไปแล้ว (ใช้ได้ 1 ครั้งต่อบัญชี)" };
+  if (history.used_code) return { ok: false, message: "บัญชีนี้เคยใช้โค้ดส่วนลดไปแล้ว (ใช้ได้ 1 ครั้งต่อบัญชี)" };
   if (history.code_waiting) {
     return { ok: false, message: "มีรายการเติมที่ใช้โค้ดรอชำระอยู่ กรุณาชำระ QR เดิม รอให้หมดอายุ หรือติดต่อแอดมินให้ยกเลิก" };
   }

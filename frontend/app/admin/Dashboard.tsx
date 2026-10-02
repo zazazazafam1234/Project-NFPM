@@ -383,15 +383,15 @@ export function Dashboard() {
           </div>
 
           <section className={styles.card}>
-            <h3>ลูกค้าจากสตรีมเมอร์</h3>
+            <h3>ลูกค้าจากโค้ดส่วนลด</h3>
             {report.streamers.length === 0 ? (
-              <p className={styles.empty}>ยังไม่มีสตรีมเมอร์ · เพิ่มได้ที่เมนู Streamer / โค้ด</p>
+              <p className={styles.empty}>ยังไม่มีโค้ดส่วนลด · เพิ่มได้ที่เมนูโค้ดส่วนลด</p>
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>สตรีมเมอร์</th>
+                      <th>โค้ดส่วนลด</th>
                       <th>ลูกค้าใหม่ช่วงนี้</th>
                       <th>ลูกค้าทั้งหมด</th>
                       <th>ยอดเติมช่วงนี้</th>

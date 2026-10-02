@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import sql from "../../db";
 import { decryptSecret, encryptSecret } from "../../crypto";
 import { sendPlainEmail } from "../gmail/mailsender";
-import { pushToGroups } from "../line-bot";
+import { adminLink, pushToGroups } from "../line-bot";
 
 /**
  * A purchase starts as a "pending" rental that holds the slot (PREPARE_HOLD_MINUTES
@@ -518,7 +518,14 @@ async function reportAddGaveUp(job: EmailJob, reason: string) {
     `สาเหตุ: ${reason.slice(0, 200)}`,
     "",
     "ส่งเมลให้ลูกค้าติดต่อทาง Discord แล้ว กรุณาเพิ่มอีเมลให้ลูกค้าด้วยตัวเอง",
+    ...actionLink("profiles", { q: job.profile_name }),
   ]);
+}
+
+// "👉 จัดการ: <link>" closing an alert that needs an admin, when WEB_ORIGIN is set.
+function actionLink(section: string, params: Record<string, string> = {}) {
+  const link = adminLink(section, params);
+  return link ? ["", `👉 จัดการ: ${link}`] : [];
 }
 
 async function alertAdmins(lines: string[]) {
@@ -633,6 +640,7 @@ async function rotate(rental: ExpiredRental, service: Service) {
         "",
         `กรุณาเช็กใน Netflix: ลบ ${rental.profile_name} แล้วหรือยัง และ ${newProfileName} ถูกสร้างแล้วแต่ยังไม่มี PIN หรือไม่`,
         "แก้เสร็จแล้วให้ระบบลองต่อได้ (จะใช้ชื่อและ PIN ใหม่เดิม) โดยล้างตัวนับ profile_reset_failed ของรายการนี้",
+        ...actionLink("profiles", { q: rental.profile_name }),
       ]);
     }
     return;
