@@ -128,6 +128,19 @@ def _update_profile_email_impl(
         page.set_default_timeout(timeout_ms)
         context.set_default_navigation_timeout(timeout_ms)
         page.set_default_navigation_timeout(timeout_ms)
+        # Netflix only shows a generic toast when it refuses the email; the real reason is
+        # in the response to the form's request, so POST responses are kept for the log.
+        api_responses: list = []
+
+        def remember_response(response) -> None:
+            # Only keep the object here: reading the body inside a sync event handler can block.
+            url = response.url
+            if response.request.method == "POST" and "netflix.com" in url and not any(
+                part in url for part in ("/log", "/cl2", "ichnaea", "/msl/")
+            ):
+                api_responses.append(response)
+
+        page.on("response", remember_response)
         try:
             step("open_manage_profiles")
             page.goto(MANAGE_PROFILES_URL, wait_until="domcontentloaded")
@@ -181,6 +194,9 @@ def _update_profile_email_impl(
                 timeout_ms=max(timeout_ms, 240000),
             )
             if outcome != "ok":
+                page.wait_for_timeout(500)
+                for response in api_responses[-5:]:
+                    emit_debug(debug, f"profile_email_api_response {_describe_response(response)}")
                 capture_page_debug(page, debug=debug, label=f"profile_email_{action}_failed", profile_dir=profile_dir)
                 return result(False, outcome, page.url)
 
@@ -379,3 +395,12 @@ def _safe_text(locator) -> str:
         return locator.inner_text(timeout=1000)
     except PlaywrightError:
         return ""
+
+
+def _describe_response(response) -> str:
+    try:
+        body = response.text()[:600]
+    except PlaywrightError as exc:
+        body = f"<unreadable: {exc}>"
+    path = response.url.split("netflix.com", 1)[-1][:120]
+    return f"status={response.status} path={path} body={body}"
