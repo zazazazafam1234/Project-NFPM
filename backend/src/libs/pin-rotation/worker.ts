@@ -28,6 +28,7 @@ export const MAX_ROTATION_ATTEMPTS = 3;
 const MAX_EMAIL_ATTEMPTS = 3;
 /** How long a pending purchase may hold its slot while the email is being added. */
 export const PREPARE_HOLD_MINUTES = 24 * 60;
+const EMAIL_IN_USE_PATTERN = /ใช้งานอยู่แล้ว|ถูกใช้แล้ว|มีบัญชี|already (in use|used|associated|exists)|in use|belongs to/i;
 const SUPPORT_DISCORD_URL = process.env.SUPPORT_DISCORD_URL ?? "https://discord.gg/9guggS5EXD";
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -331,7 +332,10 @@ async function addProfileEmail(job: EmailJob, service: Service) {
     console.log(`[profile-email] ✅ เพิ่มอีเมล ${job.user_email} ในโปรไฟล์ ${job.profile_name} แล้ว`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    if (reason.startsWith("email_rejected")) {
+    // Only an explicit "email already used" message is refunded right away. Netflix's
+    // generic "มีข้อผิดพลาดเกิดขึ้น โปรดลองอีกครั้ง" also shows for emails with no Netflix
+    // account, so it is retried like any other failure.
+    if (reason.startsWith("email_rejected") && EMAIL_IN_USE_PATTERN.test(reason)) {
       await refundRejectedEmail(job, reason);
       return;
     }

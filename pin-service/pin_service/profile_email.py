@@ -160,7 +160,12 @@ def _update_profile_email_impl(
 
             step("open_email_page")
             if link:
-                link.click(force=True)
+                # A real click lets Netflix's page script run its own navigation, which is
+                # where it asks to verify identity ("ยืนยันตัวตนกันก่อน") before the form.
+                try:
+                    link.click(timeout=5000)
+                except PlaywrightError:
+                    link.click(force=True)
             else:
                 page.goto(f"{NETFLIX}/account/profile/newProfileEmail/{profile_guid}", wait_until="domcontentloaded")
             wait_for_short_network_idle(page, debug=debug)
