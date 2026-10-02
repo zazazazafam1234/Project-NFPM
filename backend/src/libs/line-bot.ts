@@ -188,3 +188,31 @@ export async function notifyTopUpPaid(topUpId: string) {
     console.error("[line-bot] top-up paid alert failed", err instanceof Error ? err.message : err);
   }
 }
+
+// Alert for a first-time sign-up; failures are logged, never thrown.
+export async function notifyNewUser(userId: string) {
+  try {
+    const [row] = await sql`
+      SELECT u.name, u.email, u."createdAt",
+        (SELECT COUNT(*) FROM "User")::int AS total,
+        (SELECT COUNT(*) FROM "User"
+          WHERE ("createdAt" AT TIME ZONE 'Asia/Bangkok')::date = (NOW() AT TIME ZONE 'Asia/Bangkok')::date)::int AS today
+      FROM "User" u WHERE u.id = ${userId}
+    `;
+    if (!row) return;
+    const link = adminLink("users");
+    const text = [
+      "👋 มีผู้ใช้ใหม่สมัครเข้ามา",
+      "",
+      `ชื่อ: ${row.name}`,
+      `อีเมล: ${row.email}`,
+      `เวลา: ${bangkok(row.createdAt)}`,
+      `สมัครวันนี้ ${row.today} คน · ผู้ใช้ทั้งหมด ${row.total.toLocaleString()} คน`,
+      ...(link ? ["", `👉 ดูผู้ใช้: ${link}`] : []),
+    ].join("\n");
+    const result = await pushToGroups(text);
+    console.log(`[line-bot] new user alert user=${userId} sent=${result.sent} failed=${result.failed}`);
+  } catch (err) {
+    console.error("[line-bot] new user alert failed", err instanceof Error ? err.message : err);
+  }
+}

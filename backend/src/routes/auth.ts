@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import sql from "../db";
 import { createSession, clearSession, getSessionUserId } from "../session";
+import { notifyNewUser } from "../libs/line-bot";
 
 const auth = new Hono();
 
@@ -62,8 +63,11 @@ auth.get("/callback/google", async (c) => {
     VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, ${role}, 'active', NOW(), NOW())
     ON CONFLICT ("googleId") DO UPDATE
       SET name = EXCLUDED.name, image = EXCLUDED.image, role = ${role}, "updatedAt" = NOW()
-    RETURNING *
+    RETURNING *, (xmax = 0) AS is_new
   `;
+
+  // xmax = 0 only for a freshly inserted row: a first-time sign-up.
+  if (user.is_new) void notifyNewUser(user.id);
 
   if (user.status !== "active") {
     return c.json({ message: "บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อแอดมิน" }, 403);
