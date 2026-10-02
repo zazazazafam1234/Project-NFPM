@@ -783,6 +783,24 @@ export function fetchTopupPromotions() {
   return apiFetch<{ promotions: TopupPromotion[] }>("/points/promotions");
 }
 
+export type TopUpQuote = {
+  baseCents: number;
+  minPoints: number;
+  promotion: { id: string; name: string; cents: number } | null;
+  code: { code: string; kind: "streamer" | "reseller"; cents: number } | null;
+  codeError: string | null;
+  discountCents: number;
+  /** Transfer before the satang reference is added. */
+  chargeCents: number;
+};
+
+/** Same numbers the QR will charge for `points` with `code` (empty = no code). */
+export function fetchTopUpQuote(points: number, code: string) {
+  const params = new URLSearchParams({ points: String(points) });
+  if (code) params.set("code", code);
+  return apiFetch<TopUpQuote>(`/points/top-ups/quote?${params}`);
+}
+
 export function checkStreamerCode(code: string) {
   return apiFetch<StreamerCodeInfo>(`/points/codes/${encodeURIComponent(code.trim())}`);
 }

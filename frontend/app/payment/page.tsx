@@ -8,24 +8,19 @@ import { BrandLogo } from "../components/BrandLogo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import {
   apiFetch,
-  checkStreamerCode,
   describeReward,
+  fetchTopUpQuote,
   fetchTopupPromotions,
   fetchTopupSettings,
   formatDiscount,
-  rewardCentsFor,
-  type StreamerCodeInfo,
+  type TopUpQuote,
   type TopupPromotion,
 } from "../lib/api";
 import { useSession } from "../providers";
 import { SupportLink } from "../components/SupportLink";
 import styles from "./page.module.css";
 
-const topUps = [
-  { points: 50, price: 50, label: "เริ่มต้น" },
-  { points: 150, price: 150, label: "คุ้มค่า" },
-  { points: 350, price: 350, label: "ยอดนิยม" },
-];
+const quickAmounts = [50, 150, 350];
 const DEFAULT_MIN_TOPUP_POINTS = 10;
 const PAID_BUTTON_DELAY_MS = 60 * 1000;
 const CHECK_COOLDOWN_MS = 20 * 1000;
@@ -141,7 +136,6 @@ export default function TopUpPage() {
   const router = useRouter();
   const { user, refreshSession } = useSession();
   const [pointsInput, setPointsInput] = useState("150");
-  const [method, setMethod] = useState<"promptpay">("promptpay");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingTopUp, setPendingTopUp] = useState<TopUpResponse | null>(null);
@@ -149,9 +143,9 @@ export default function TopUpPage() {
   const [isSavingQr, setIsSavingQr] = useState(false);
   const [promotions, setPromotions] = useState<TopupPromotion[]>([]);
   const [codeInput, setCodeInput] = useState("");
-  const [codeInfo, setCodeInfo] = useState<StreamerCodeInfo | null>(null);
-  const [codeError, setCodeError] = useState("");
-  const [isCheckingCode, setIsCheckingCode] = useState(false);
+  // Server quote for the amount and code: the same numbers the QR will charge.
+  const [quote, setQuote] = useState<TopUpQuote | null>(null);
+  const [isQuoting, setIsQuoting] = useState(false);
 
   useEffect(() => {
     fetchTopupPromotions()
@@ -161,24 +155,6 @@ export default function TopUpPage() {
     const fromLink = new URLSearchParams(window.location.search).get("code");
     if (fromLink) queueMicrotask(() => setCodeInput(fromLink.toUpperCase()));
   }, []);
-
-  async function applyCode(code = codeInput) {
-    if (!code.trim()) return;
-    if (!user) {
-      setCodeError("กรุณาเข้าสู่ระบบก่อนใช้โค้ด");
-      return;
-    }
-    setIsCheckingCode(true);
-    setCodeError("");
-    try {
-      setCodeInfo(await checkStreamerCode(code));
-    } catch (err) {
-      setCodeInfo(null);
-      setCodeError(err instanceof Error ? err.message : "ใช้โค้ดไม่ได้");
-    } finally {
-      setIsCheckingCode(false);
-    }
-  }
 
   async function saveQrCode(topUp: TopUpResponse) {
     if (!topUp.qrImage) return;
@@ -212,16 +188,40 @@ export default function TopUpPage() {
   }
   const topUpPoints = Number(pointsInput);
   const isValidTopUp = Number.isInteger(topUpPoints) && topUpPoints >= minTopupPoints;
-  const selectedSuggestion = topUps.find((item) => item.points === topUpPoints);
-  const baseCents = isValidTopUp ? topUpPoints * 100 : 0;
-  const bestPromotion = promotions
-    .filter((promotion) => baseCents >= promotion.minAmountCents)
-    .map((promotion) => ({ promotion, cents: rewardCentsFor(promotion, baseCents) }))
-    .sort((a, b) => b.cents - a.cents)[0];
-  const preDiscountCents = Math.min(
-    (bestPromotion?.cents ?? 0) + (codeInfo ? rewardCentsFor(codeInfo, baseCents) : 0),
-    Math.max(baseCents - 100, 0),
-  );
+  const typedCode = codeInput.trim();
+
+  // Re-quote shortly after the amount or code changes; a valid code applies by itself.
+  useEffect(() => {
+    if (!isValidTopUp) {
+      queueMicrotask(() => setQuote(null));
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setIsQuoting(true);
+      fetchTopUpQuote(topUpPoints, typedCode)
+        .then((data) => {
+          if (!cancelled) setQuote(data);
+        })
+        .catch(() => {
+          if (!cancelled) setQuote(null);
+        })
+        .finally(() => {
+          if (!cancelled) setIsQuoting(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isValidTopUp, topUpPoints, typedCode, user?.id]);
+
+  const quoteMatches = quote && quote.baseCents === topUpPoints * 100;
+  const codeApplied = quoteMatches && typedCode ? quote.code : null;
+  const codeError = quoteMatches && typedCode ? quote.codeError : null;
+  const nextPromotion = promotions
+    .filter((promotion) => promotion.minAmountCents > topUpPoints * 100)
+    .sort((a, b) => a.minAmountCents - b.minAmountCents)[0];
 
   useEffect(() => {
     fetchTopupSettings()
@@ -300,8 +300,9 @@ export default function TopUpPage() {
         body: JSON.stringify({
           points: topUpPoints,
           amount: topUpPoints,
-          paymentMethod: method,
-          code: codeInfo?.code ?? null,
+          paymentMethod: "promptpay",
+          // Only a code the quote accepted; a bad one is ignored rather than blocking the QR.
+          code: codeApplied?.code ?? null,
         }),
       });
       setPendingTopUp(topUp);
@@ -352,18 +353,17 @@ export default function TopUpPage() {
           </div>
         </div>
         <div className={styles.paymentCard}>
-          <p className={styles.label}>01 · กรอกจำนวน Point</p>
+          <p className={styles.label}>เติมกี่บาท</p>
           <label className={styles.customAmount}>
-            <span>จำนวนที่ต้องการเติม</span>
             <div>
               <input
+                aria-label="จำนวนเงินที่ต้องการเติม"
                 inputMode="numeric"
                 min={minTopupPoints}
                 pattern="[0-9]*"
                 value={pointsInput}
                 onChange={(event) => {
-                  const value = event.target.value.replace(/\D/g, "");
-                  setPointsInput(value);
+                  setPointsInput(event.target.value.replace(/\D/g, ""));
                   setPendingTopUp(null);
                   setMessage("");
                 }}
@@ -372,120 +372,79 @@ export default function TopUpPage() {
             </div>
             <small>ขั้นต่ำ {minTopupPoints} บาท · 1 บาท = 1 Point</small>
           </label>
-          {promotions.length > 0 && (
-            <div className={styles.promoList}>
-              <p className={styles.label}>โปรเติมเงิน · ลดยอดโอนทันที</p>
-              {promotions.map((promotion) => (
-                <span
-                  className={bestPromotion?.promotion.id === promotion.id ? styles.promoActive : ""}
-                  key={promotion.id}
+          <div className={styles.quickAmounts} role="group" aria-label="จำนวนแนะนำ">
+            {quickAmounts
+              .filter((amount) => amount >= minTopupPoints)
+              .map((amount) => (
+                <button
+                  aria-pressed={topUpPoints === amount}
+                  className={topUpPoints === amount ? styles.quickActive : ""}
+                  key={amount}
+                  onClick={() => {
+                    setPointsInput(String(amount));
+                    setPendingTopUp(null);
+                    setMessage("");
+                  }}
+                  type="button"
                 >
-                  เติมครบ ฿{(promotion.minAmountCents / 100).toLocaleString("th-TH")} → {describeReward(promotion)}
-                </span>
+                  {amount} บาท
+                </button>
               ))}
-              {bestPromotion && (
-                <small>
-                  ยอดนี้ลด {formatDiscount(bestPromotion.cents)} จากโปร “{bestPromotion.promotion.name}”
-                </small>
-              )}
-            </div>
-          )}
+          </div>
+
           <div className={styles.codeBox}>
             <span>โค้ดส่วนลด (ถ้ามี)</span>
-            <div>
-              <input
-                autoCapitalize="characters"
-                placeholder="กรอกโค้ดส่วนลด"
-                value={codeInput}
-                onChange={(event) => {
-                  setCodeInput(event.target.value.toUpperCase());
-                  setCodeInfo(null);
-                  setCodeError("");
-                }}
-              />
-              <button
-                disabled={!codeInput.trim() || isCheckingCode}
-                onClick={() => void applyCode()}
-                type="button"
-              >
-                {isCheckingCode ? "กำลังตรวจ…" : "ใช้โค้ด"}
-              </button>
-            </div>
-            {codeInfo && (
-              <small className={styles.codeOk}>
-                ✓ โค้ด {codeInfo.code} · {describeReward(codeInfo)}
-                {baseCents > 0 ? ` = ลดยอดโอน ${formatDiscount(rewardCentsFor(codeInfo, baseCents))}` : ""}
-              </small>
+            <input
+              autoCapitalize="characters"
+              placeholder="พิมพ์โค้ด ระบบจะใช้ให้อัตโนมัติ"
+              value={codeInput}
+              onChange={(event) => {
+                setCodeInput(event.target.value.toUpperCase().replace(/\s/g, ""));
+                setPendingTopUp(null);
+              }}
+            />
+            {typedCode && isQuoting && <small className={styles.codeChecking}>กำลังตรวจโค้ด…</small>}
+            {!isQuoting && codeApplied && (
+              <small className={styles.codeOk}>✓ ใช้โค้ด {codeApplied.code} แล้ว · ลด {formatDiscount(codeApplied.cents)}</small>
             )}
-            {codeError && <small className={styles.codeError}>✕ {codeError}</small>}
+            {!isQuoting && codeError && <small className={styles.codeError}>✕ {codeError}</small>}
           </div>
-          {baseCents > 0 && preDiscountCents > 0 && (
+
+          {isValidTopUp && quoteMatches && (
             <div className={styles.discountSummary}>
               <span>เติม {topUpPoints.toLocaleString()} Point</span>
-              <b>฿{formatBaht(topUpPoints)}</b>
-              {bestPromotion && (
+              <b>฿{formatBaht(quote.baseCents / 100)}</b>
+              {quote.promotion && (
                 <>
-                  <span>ส่วนลดโปร “{bestPromotion.promotion.name}”</span>
-                  <b>-{formatDiscount(bestPromotion.cents)}</b>
+                  <span>ส่วนลดโปร “{quote.promotion.name}”</span>
+                  <b>-{formatDiscount(quote.promotion.cents)}</b>
                 </>
               )}
-              {codeInfo && (
+              {quote.code && (
                 <>
-                  <span>ส่วนลดโค้ด {codeInfo.code}</span>
-                  <b>-{formatDiscount(rewardCentsFor(codeInfo, baseCents))}</b>
+                  <span>ส่วนลดโค้ด {quote.code.code}</span>
+                  <b>-{formatDiscount(quote.code.cents)}</b>
                 </>
               )}
-              <span>ยอดที่ต้องจ่าย (+ เศษสตางค์ตอนสร้าง QR)</span>
-              <strong>฿{formatBaht((baseCents - preDiscountCents) / 100)}</strong>
+              <span className={styles.totalLabel}>ยอดที่ต้องโอน</span>
+              <strong>฿{formatBaht(quote.chargeCents / 100)}</strong>
+              <small className={styles.summaryNote}>
+                ตอนสร้าง QR จะมีเศษสตางค์ต่อท้าย (เช่น .37) เพื่อยืนยันการโอนอัตโนมัติ · เศษนี้คืนเป็นเงินส่วนลดให้คุณ
+                {quote.discountCents > 0 && quote.chargeCents === quote.minPoints * 100
+                  ? ` · ยอดโอนขั้นต่ำ ฿${quote.minPoints} ส่วนลดจึงลดได้ไม่เกินนี้`
+                  : ""}
+              </small>
             </div>
           )}
-          <p className={styles.label}>ราคาแนะนำ</p>
-          <div className={styles.topUpGrid} role="group" aria-label="จำนวน Point">
-            {topUps.filter((item) => item.points >= minTopupPoints).map((item) => (
-              <button
-                className={selectedSuggestion?.points === item.points ? styles.activePackage : ""}
-                key={item.points}
-                onClick={() => {
-                  setPointsInput(String(item.points));
-                  setPendingTopUp(null);
-                  setMessage("");
-                }}
-                aria-pressed={selectedSuggestion?.points === item.points}
-                type="button"
-              >
-                <small>{item.label}</small>
-                <strong>{item.points}</strong>
-                <span>Point · {item.price} บาท</span>
-              </button>
-            ))}
-          </div>
-          <p className={styles.label}>02 · เลือกช่องทางชำระเงิน</p>
-          <div className={styles.methods} role="group" aria-label="ช่องทางชำระเงิน">
-            <button
-              className={method === "promptpay" ? styles.active : ""}
-              aria-pressed={method === "promptpay"}
-              type="button"
-              onClick={() => {
-                setMethod("promptpay");
-                setMessage("");
-              }}
-            >
-              <span className={styles.promptpayIcon} aria-hidden="true">
-                <Image alt="" height={28} src="/icon-thaiqr.png" width={28} />
-              </span>
-              <span>
-                PromptPay<small>สแกน QR Code</small>
-              </span>
-              <i />
-            </button>
-            <button className={styles.disabledMethod} type="button" disabled>
-              <span className={styles.walletIcon}>T</span>
-              <span>
-                TrueMoney<small>เร็ว ๆ นี้</small>
-              </span>
-              <i />
-            </button>
-          </div>
+          {nextPromotion && isValidTopUp && (
+            <p className={styles.promoHint}>
+              💡 เติมครบ ฿{(nextPromotion.minAmountCents / 100).toLocaleString("th-TH")} ได้{describeReward(nextPromotion)}
+            </p>
+          )}
+
+          <p className={styles.payVia}>
+            <Image alt="" height={20} src="/icon-thaiqr.png" width={20} /> ชำระผ่าน PromptPay QR · Point เข้าอัตโนมัติหลังโอน
+          </p>
           {pendingTopUp?.qrImage && (
           <div className={`${styles.paymentDetail} ${styles.paymentResult}`}>
             {isWaiting && secondsUntilCheck > 0 && <CountdownRing seconds={secondsUntilCheck} total={PAID_BUTTON_DELAY_MS / 1000} />}
@@ -592,10 +551,12 @@ export default function TopUpPage() {
             onClick={() => void createTopUp()}
           >
             {isSubmitting
-              ? "กำลังสร้างรายการ…"
-              : user
-                ? "สร้างรายการเติม Point"
-                : "เข้าสู่ระบบเพื่อเติม Point"}{" "}
+              ? "กำลังสร้าง QR…"
+              : !user
+                ? "เข้าสู่ระบบเพื่อเติม Point"
+                : quoteMatches
+                  ? `สร้าง QR ชำระ ฿${formatBaht(quote.chargeCents / 100)}`
+                  : "สร้าง QR ชำระเงิน"}{" "}
             <span>→</span>
           </button>
           <div className={styles.supportRow}>

@@ -102,13 +102,14 @@ const topupViewColumns = () => sql`
   pa.name AS payment_account_name,
   promo.name AS promotion_name,
   st.name AS streamer_name,
-  sr.reward_cents AS streamer_reward_cents
+  COALESCE(sr.reward_cents, rr.discount_cents) AS streamer_reward_cents
 `;
 const topupViewJoins = () => sql`
   LEFT JOIN payment_accounts pa ON pa.id = pt.payment_account_id
   LEFT JOIN topup_promotions promo ON promo.id = pt.promotion_id
   LEFT JOIN streamer_redemptions sr ON sr.topup_id = pt.id AND sr.status <> 'void'
   LEFT JOIN streamers st ON st.id = sr.streamer_id
+  LEFT JOIN reseller_redemptions rr ON rr.topup_id = pt.id AND rr.status <> 'void'
 `;
 
 export type ActivePaymentAccount = {
@@ -228,6 +229,80 @@ async function getDefaultPaymentAccount(db = sql) {
   };
 }
 
+export type TopUpQuote = {
+  baseCents: number;
+  minPoints: number;
+  promotion: { id: string; name: string; cents: number } | null;
+  code: { code: string; kind: "streamer" | "reseller"; cents: number } | null;
+  /** Why the typed code cannot be used, if any. */
+  codeError: string | null;
+  discountCents: number;
+  /** Transfer before the satang reference is added. */
+  chargeCents: number;
+};
+
+/**
+ * What a top-up of `points` costs with the best promotion and an optional code.
+ * The preview on the top-up page and the QR itself both come from here, so the shown
+ * amount is the charged amount. Discounts stack but never take the transfer below the
+ * minimum top-up; when capped the code's share is trimmed first, so the lines always
+ * add up to the total.
+ */
+export async function quoteTopUp(
+  db: Db,
+  { userId, points, code }: { userId: string | null; points: number; code?: string | null },
+): Promise<TopUpQuote & { streamerCheck?: unknown; resellerCheck?: unknown }> {
+  const minPoints = await getMinTopupPoints();
+  const baseCents = points * 100;
+  const promotionRule = await bestTopupPromotion(db, baseCents);
+
+  let codeError: string | null = null;
+  let resellerCheck: Awaited<ReturnType<typeof checkResellerCode>> | null = null;
+  let streamerCheck: Awaited<ReturnType<typeof checkStreamerCode>> | null = null;
+  let codeCents = 0;
+  let codeInfo: TopUpQuote["code"] = null;
+  if (code?.trim()) {
+    if (!userId) {
+      codeError = "กรุณาเข้าสู่ระบบก่อนใช้โค้ด";
+    } else {
+      // One code box: a reseller code first, otherwise a plain discount code.
+      resellerCheck = await checkResellerCode(db, code, userId);
+      if (resellerCheck.ok) {
+        codeCents = resellerDiscountCents(baseCents, resellerCheck.percent);
+        codeInfo = { code: resellerCheck.reseller.code, kind: "reseller", cents: codeCents };
+      } else if (!resellerCheck.notFound) {
+        codeError = resellerCheck.message;
+      } else {
+        streamerCheck = await checkStreamerCode(db, code, userId);
+        if (streamerCheck.ok) {
+          codeCents = rewardCents(streamerCheck.streamer, baseCents);
+          codeInfo = { code: streamerCheck.streamer.code, kind: "streamer", cents: codeCents };
+        } else {
+          codeError = streamerCheck.message;
+        }
+      }
+    }
+  }
+
+  const cap = Math.max(0, baseCents - minPoints * 100);
+  const promotionCents = Math.min(promotionRule?.rewardCents ?? 0, cap);
+  codeCents = Math.min(codeCents, cap - promotionCents);
+  if (codeInfo) codeInfo = { ...codeInfo, cents: codeCents };
+  const discountCents = promotionCents + codeCents;
+
+  return {
+    baseCents,
+    minPoints,
+    promotion: promotionRule && promotionCents > 0 ? { id: promotionRule.id, name: promotionRule.name, cents: promotionCents } : null,
+    code: codeInfo,
+    codeError,
+    discountCents,
+    chargeCents: baseCents - discountCents,
+    resellerCheck,
+    streamerCheck,
+  };
+}
+
 export async function createPromptPayTopUp({
   userId,
   points,
@@ -257,26 +332,27 @@ export async function createPromptPayTopUp({
     `;
     if (!user) throw new Error("บัญชีนี้ไม่พร้อมใช้งาน");
 
-    // One code box: a reseller code first, otherwise a streamer code.
-    const resellerCheck = code?.trim() ? await checkResellerCode(db, code, userId) : null;
-    if (resellerCheck && !resellerCheck.ok && !resellerCheck.notFound) throw new Error(resellerCheck.message);
-    const codeCheck = code?.trim() && !resellerCheck?.ok ? await checkStreamerCode(db, code, userId) : null;
-    if (codeCheck && !codeCheck.ok) throw new Error(codeCheck.message);
+    const quote = await quoteTopUp(db, { userId, points, code });
+    if (quote.codeError) throw new Error(quote.codeError);
 
     const paymentAccount = await getDefaultPaymentAccount(db);
     if (!paymentAccount) {
       throw new Error("ยังไม่ได้ตั้งค่าบัญชี PromptPay ในหน้า Admin");
     }
 
-    // Promotion and streamer-code discounts come off the transfer; points stay in full.
-    const baseAmountCents = points * 100;
-    const promotion = await bestTopupPromotion(db, baseAmountCents);
-    const promotionCents = promotion?.rewardCents ?? 0;
-    const streamerCents = codeCheck?.ok ? rewardCents(codeCheck.streamer, baseAmountCents) : 0;
-    const resellerCents = resellerCheck?.ok ? resellerDiscountCents(baseAmountCents, resellerCheck.percent) : 0;
-    // Discounts stack, but the transfer never drops below the minimum top-up set by admins.
-    const discountCents = Math.max(0, Math.min(promotionCents + streamerCents + resellerCents, baseAmountCents - minPoints * 100));
-    const chargeCents = baseAmountCents - discountCents;
+    // Promotion and code discounts come off the transfer; points stay in full.
+    const baseAmountCents = quote.baseCents;
+    const promotion = quote.promotion;
+    const promotionCents = promotion?.cents ?? 0;
+    const discountCents = quote.discountCents;
+    const chargeCents = quote.chargeCents;
+    const codeCheck = quote.code?.kind === "streamer" ? (quote.streamerCheck as { ok: true; streamer: { id: string } }) : null;
+    const resellerCheck =
+      quote.code?.kind === "reseller"
+        ? (quote.resellerCheck as { ok: true; reseller: { id: string; commission_cents: number } })
+        : null;
+    const streamerCents = codeCheck ? quote.code!.cents : 0;
+    const resellerCents = resellerCheck ? quote.code!.cents : 0;
 
     const refDecimal = await nextAvailableRefDecimal(chargeCents, paymentAccount.id, db);
     const payableAmountCents = chargeCents + refDecimal;
@@ -297,13 +373,13 @@ export async function createPromptPayTopUp({
       )
       RETURNING id
     `;
-    if (codeCheck?.ok) {
+    if (codeCheck) {
       await db`
         INSERT INTO streamer_redemptions (streamer_id, user_id, topup_id, status, reward_cents)
         VALUES (${codeCheck.streamer.id}, ${userId}, ${inserted.id}, 'pending', ${streamerCents})
       `;
     }
-    if (resellerCheck?.ok) {
+    if (resellerCheck) {
       await db`
         INSERT INTO reseller_redemptions (
           reseller_id, user_id, topup_id, status, base_amount_cents, discount_cents, commission_cents

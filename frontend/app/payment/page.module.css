@@ -1028,3 +1028,61 @@
     padding-right: 0;
   }
 }
+
+/* Simplified top-up card */
+.quickAmounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 18px;
+}
+.quickAmounts button {
+  padding: 8px 14px;
+  border: 1px solid var(--c-ffffff16);
+  border-radius: 999px;
+  color: var(--c-cfc7daff);
+  background: var(--c-100e16ff);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.quickAmounts button.quickActive {
+  border-color: var(--c-a783ffff);
+  color: var(--c-f7f4ffff);
+  background: var(--c-7d58ec18, rgba(125, 88, 236, 0.1));
+}
+.codeChecking {
+  color: var(--c-948c9eff);
+  font-size: 11.5px;
+}
+.discountSummary .totalLabel {
+  padding-top: 6px;
+  border-top: 1px solid var(--c-ffffff12);
+  color: var(--c-f7f4ffff);
+  font-weight: 800;
+}
+.discountSummary .totalLabel + strong {
+  padding-top: 6px;
+  border-top: 1px solid var(--c-ffffff12);
+  font-size: 20px;
+}
+.summaryNote {
+  grid-column: 1 / -1;
+  color: var(--c-948c9eff);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.promoHint {
+  margin: -4px 0 14px;
+  color: var(--c-c7b7ffff);
+  font-size: 12px;
+}
+.payVia {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  color: var(--c-cfc7daff);
+  font-size: 12px;
+}

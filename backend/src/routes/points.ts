@@ -4,7 +4,14 @@ import sql from "../db";
 import { checkStreamerCode } from "../rewards";
 import { checkResellerCode } from "../resellers";
 import { getMinTopupPoints } from "../settings";
-import { cancelTopUpForUser, createPromptPayTopUp, getTopUpForUser, listTopUpsForUser, requestTopUpCheck } from "../topups";
+import {
+  cancelTopUpForUser,
+  createPromptPayTopUp,
+  getTopUpForUser,
+  listTopUpsForUser,
+  quoteTopUp,
+  requestTopUpCheck,
+} from "../topups";
 
 const points = new Hono();
 
@@ -88,6 +95,19 @@ points.get("/codes/:code", async (c) => {
     maxRewardCents: check.streamer.max_reward_cents,
   });
 });
+// What the top-up page shows before the QR: the same numbers the QR will charge.
+// Registered before /top-ups/:id so "quote" is not taken for an id.
+points.get("/top-ups/quote", async (c) => {
+  const userId = await getSessionUserId(c);
+  const amount = Number(c.req.query("points"));
+  if (!Number.isInteger(amount) || amount <= 0 || amount > 100000) {
+    return c.json({ message: "จำนวน Point ไม่ถูกต้อง" }, 400);
+  }
+  const quote = await quoteTopUp(sql, { userId, points: amount, code: c.req.query("code") ?? null });
+  const { streamerCheck: _s, resellerCheck: _r, ...publicQuote } = quote;
+  return c.json(publicQuote);
+});
+
 points.get("/top-ups/:id", async (c) => {
   const userId = await getSessionUserId(c);
   if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อน" }, 401);
