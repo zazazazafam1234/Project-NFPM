@@ -87,7 +87,10 @@ auth.get("/session", async (c) => {
         SELECT 1 FROM resellers r
         WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'approved'
           AND r.bank_account_number_ciphertext IS NULL
-      ) AS reseller_needs_bank
+      ) AS reseller_needs_bank,
+      EXISTS (
+        SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'approved'
+      ) AS is_reseller
     FROM "User" u
     WHERE u.id = ${userId} AND u.status = 'active'
   `;
@@ -105,6 +108,8 @@ auth.get("/session", async (c) => {
       status: user.status,
       // Appointed as a reseller but no bank account yet: the site asks for it.
       resellerNeedsBank: user.reseller_needs_bank,
+      // Reseller pages and links exist only for these; ordinary customers never see them.
+      resellerRole: user.is_reseller_manager || user.role === "admin" ? "manager" : user.is_reseller ? "reseller" : null,
     },
   });
 });

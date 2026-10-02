@@ -41,7 +41,21 @@ async function managerOf(c: Parameters<typeof getSessionUserId>[0]) {
   return user && (user.is_reseller_manager || user.role === "admin") ? user : null;
 }
 
+// Resellers, reseller managers and admins only; ordinary customers never see reseller data.
+async function canSeeResellers(c: Parameters<typeof getSessionUserId>[0]) {
+  const userId = await getSessionUserId(c);
+  if (!userId) return false;
+  const [row] = await sql`
+    SELECT u.role = 'admin' OR u.is_reseller_manager OR EXISTS (
+      SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.deleted_at IS NULL AND r.approval = 'approved'
+    ) AS allowed
+    FROM "User" u WHERE u.id = ${userId} AND u.status = 'active'
+  `;
+  return Boolean(row?.allowed);
+}
+
 resellers.get("/top", async (c) => {
+  if (!(await canSeeResellers(c))) return c.json({ message: "เฉพาะตัวแทนจำหน่าย" }, 403);
   return c.json({ top: await topResellers() });
 });
 
@@ -56,6 +70,9 @@ resellers.get("/me", async (c) => {
     WHERE u.id = ${userId} AND u.status = 'active'
   `;
   if (!user) return c.json({ message: "ไม่พบบัญชีผู้ใช้" }, 404);
+  if (!user.reseller_id && !user.is_reseller_manager && user.role !== "admin") {
+    return c.json({ message: "เฉพาะตัวแทนจำหน่าย" }, 403);
+  }
 
   const isManager = Boolean(user.is_reseller_manager) || user.role === "admin";
   const [discountPercent, payoutCycle] = await Promise.all([getResellerDiscountPercent(), getPayoutCycle()]);

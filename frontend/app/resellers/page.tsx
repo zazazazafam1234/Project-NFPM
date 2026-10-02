@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { ResellerBankForm } from "../components/ResellerBankForm";
@@ -68,6 +69,8 @@ function commissionStatus(use: { status: string; payoutStatus: string | null }) 
 
 export default function ResellersPage() {
   const { user, isLoading, refreshSession } = useSession();
+  const router = useRouter();
+  const allowed = Boolean(user?.resellerRole);
   const [top, setTop] = useState<ResellerTopEntry[]>([]);
   const [mine, setMine] = useState<MyResellerView | null>(null);
   const [editingBank, setEditingBank] = useState(false);
@@ -108,11 +111,19 @@ export default function ResellersPage() {
     }
   }
 
+  // Only resellers, reseller managers and admins; everyone else is sent away.
   useEffect(() => {
+    if (isLoading) return;
+    if (!user) router.replace("/register?next=/resellers");
+    else if (!user.resellerRole) router.replace("/profile");
+  }, [isLoading, router, user]);
+
+  useEffect(() => {
+    if (!allowed) return;
     fetchResellerTop()
       .then((data) => setTop(data.top))
       .catch(() => setTop([]));
-  }, []);
+  }, [allowed]);
 
   function loadMine() {
     fetchMyReseller()
@@ -121,9 +132,9 @@ export default function ResellersPage() {
   }
 
   useEffect(() => {
-    if (!user) return;
+    if (!allowed) return;
     loadMine();
-  }, [user]);
+  }, [allowed]);
 
   const [copied, setCopied] = useState("");
 
@@ -138,6 +149,8 @@ export default function ResellersPage() {
   }
 
   const reseller = mine?.reseller ?? null;
+
+  if (!allowed) return <main className={profileStyles.loading}>กำลังโหลด…</main>;
 
   return (
     <main className={profileStyles.page}>
@@ -154,14 +167,6 @@ export default function ResellersPage() {
       </header>
 
       <section className={styles.content}>
-        {!isLoading && !user && (
-          <div className={styles.card}>
-            <p>เข้าสู่ระบบเพื่อดูยอดขายของคุณ หากคุณเป็นตัวแทนจำหน่าย</p>
-            <Link href="/register" className={styles.cta}>
-              เข้าสู่ระบบ
-            </Link>
-          </div>
-        )}
 
         {reseller && (
           <div className={styles.card}>

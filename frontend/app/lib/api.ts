@@ -10,6 +10,8 @@ export type User = {
   status?: "active" | "suspended";
   /** Appointed as a reseller without a bank account yet: the bank popup asks for it. */
   resellerNeedsBank?: boolean;
+  /** Set only for resellers ("reseller") and reseller managers/admins ("manager"). */
+  resellerRole?: "reseller" | "manager" | null;
 };
 
 /** Whole baht of the discount wallet that come off a price (1 baht = 1 Point). */

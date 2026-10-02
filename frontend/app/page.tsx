@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { fetchStreamingRooms, type StreamingRoom } from "./lib/api";
+import { useSession } from "./providers";
 import { publicProfileLabel, unavailableSlotLabel } from "./lib/slots";
 import { SupportLink } from "./components/SupportLink";
 import styles from "./page.module.css";
@@ -66,6 +67,7 @@ function CapacityDots({ room }: { room: StreamingRoom }) {
 }
 
 export default function Home() {
+  const { user } = useSession();
   const stageRef = useRef<HTMLElement>(null);
   const slotDialogRef = useRef<HTMLDialogElement>(null);
   const [rooms, setRooms] = useState<StreamingRoom[]>([]);
@@ -132,7 +134,7 @@ export default function Home() {
             <a href="#how-it-works">ขั้นตอน</a>
             <a href="#faq">ช่วยเหลือ</a>
             <Link href="/shop">ร้านค้า</Link>
-            <Link href="/resellers">ตัวแทนจำหน่าย</Link>
+            {user?.resellerRole && <Link href="/resellers">ตัวแทนจำหน่าย</Link>}
             <Link href="/profile">บัญชี</Link>
           </div>
           <div className={styles.headerActions}>

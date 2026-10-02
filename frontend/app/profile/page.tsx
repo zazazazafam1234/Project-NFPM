@@ -95,11 +95,11 @@ export default function ProfilePage() {
   const [copiedCode, setCopiedCode] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.resellerRole) return;
     fetchMyReseller()
       .then((data) => setMyReseller(data.reseller))
       .catch(() => setMyReseller(null));
-  }, [user]);
+  }, [user?.resellerRole]);
 
   async function copyResellerText(text: string, label: string) {
     try {
@@ -227,11 +227,11 @@ export default function ProfilePage() {
               </div>
               <Link href="/resellers">ลูกค้าของฉัน {myReseller.customers} คน · ดูทั้งหมด →</Link>
             </div>
-          ) : (
+          ) : user.resellerRole ? (
             <Link href="/resellers" className={styles.adminLink}>
               ตัวแทนจำหน่าย
             </Link>
-          )}
+          ) : null}
           <button onClick={() => void signOut().then(() => router.push("/"))}>
             ออกจากระบบ
           </button>
