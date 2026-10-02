@@ -134,12 +134,29 @@ export default function CheckoutPage() {
           </div>
         </div>
         <div className={styles.paymentCard}>
-          <p className={styles.label}>Point Wallet ของคุณ</p>
-          <div className={`${styles.pointBalance} on-accent`}>
-            <span>✦</span>
-            <b>{user?.points.toLocaleString() ?? "—"}</b>
-            <small>POINTS AVAILABLE</small>
+          <p className={styles.label}>ราคาที่ต้องจ่าย</p>
+          {/* The chosen package's price leads; the wallet balance is a line under it. */}
+          <div className={`${styles.priceHero} on-accent`}>
+            {selectedPackage ? (
+              <>
+                <small>{selectedPackage.name}</small>
+                <div>
+                  <b>{finalPrice.toLocaleString()}</b>
+                  <span>Point</span>
+                  {discountPoints > 0 && <s>{selectedPackage.priceAmount.toLocaleString()}</s>}
+                </div>
+                <small>ใช้ได้ {formatDuration(selectedPackage.durationMinutes)}</small>
+              </>
+            ) : (
+              <small>เลือกโปรด้านล่าง</small>
+            )}
           </div>
+          <p className={styles.balanceLine}>
+            Point ของคุณ <b>{user ? user.points.toLocaleString() : "—"}</b>
+            {user && selectedPackage && !enoughPoints && (
+              <em> · ขาดอีก {(finalPrice - user.points).toLocaleString()} Point</em>
+            )}
+          </p>
 
           {availablePackages.length > 0 ? (
             <div className={styles.topUpGrid}>
@@ -150,11 +167,11 @@ export default function CheckoutPage() {
                   onClick={() => setPackageId(pkg.id)}
                   type="button"
                 >
-                  <small>{pkg.service.toUpperCase()}</small>
-                  <strong>{pkg.name}</strong>
-                  <span>
-                    {pkg.priceAmount} Point · {formatDuration(pkg.durationMinutes)}
-                  </span>
+                  <small>{pkg.name}</small>
+                  <strong className={styles.packagePrice}>
+                    {pkg.priceAmount.toLocaleString()} <span>Point</span>
+                  </strong>
+                  <span>{formatDuration(pkg.durationMinutes)}</span>
                 </button>
               ))}
             </div>
@@ -203,7 +220,9 @@ export default function CheckoutPage() {
             {isSubmitting
               ? "กำลังดำเนินการ…"
               : user
-                ? "ยืนยันใช้ Point"
+                ? selectedPackage
+                  ? `ยืนยันจ่าย ${finalPrice.toLocaleString()} Point`
+                  : "ยืนยันใช้ Point"
                 : "เข้าสู่ระบบเพื่อดำเนินการ"}{" "}
             <span>→</span>
           </button>

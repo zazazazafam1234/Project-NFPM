@@ -1086,3 +1086,57 @@
   color: var(--c-cfc7daff);
   font-size: 12px;
 }
+
+/* Checkout: the chosen package's price leads */
+.priceHero {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 18px 20px;
+  border-radius: 15px;
+  color: #17121e;
+  background: linear-gradient(135deg, var(--c-d4c0ffff), var(--c-8c67f5ff));
+}
+.priceHero small {
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.8;
+}
+.priceHero div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.priceHero b {
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.priceHero span {
+  font-size: 15px;
+  font-weight: 800;
+}
+.priceHero s {
+  font-size: 15px;
+  opacity: 0.6;
+}
+.balanceLine {
+  margin: 0 0 16px;
+  color: var(--c-cfc7daff);
+  font-size: 12px;
+}
+.balanceLine b {
+  color: var(--c-f7f4ffff);
+}
+.balanceLine em {
+  color: var(--c-ef6872ff, #ef6872);
+  font-style: normal;
+}
+.topUpGrid strong.packagePrice {
+  font-size: 26px;
+  line-height: 1.1;
+}
+.topUpGrid strong.packagePrice span {
+  color: var(--c-c7b7ffff);
+  font-size: 12px;
+}
