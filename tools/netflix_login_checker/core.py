@@ -924,6 +924,8 @@ def _launch_context(
             locale="en-US",
             viewport={"width": 1366, "height": 900},
             proxy=proxy,
+            # Hides navigator.webdriver, one of the signals Netflix uses to reject automated logins.
+            args=["--disable-blink-features=AutomationControlled"],
         )
         return None, context
 

@@ -82,6 +82,8 @@ services:
     environment:
       PIN_SERVICE_HOST: 0.0.0.0
       PIN_SERVICE_PROFILES_DIR: /data/profiles
+      # Headed Chromium on the Xvfb display started by the image's CMD.
+      PIN_SERVICE_HEADLESS: "false"
     volumes:
       - pin_profiles:/data/profiles
     shm_size: "1gb"
