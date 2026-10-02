@@ -87,20 +87,10 @@
   font-size: 13px;
   font-weight: 800;
 }
-.google span {
-  display: grid;
+.googleLogo {
+  flex: none;
   width: 22px;
   height: 22px;
-  place-items: center;
-  border-radius: 50%;
-  color: #fff;
-  background: conic-gradient(
-    var(--c-4285f4ff) 0 25%,
-    var(--c-34a853ff) 0 50%,
-    var(--c-fbbc05ff) 0 75%,
-    var(--c-ea4335ff) 0
-  );
-  font-size: 11px;
 }
 .primary {
   justify-content: space-between;
