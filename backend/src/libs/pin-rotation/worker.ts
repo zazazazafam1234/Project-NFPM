@@ -3,6 +3,7 @@ import sql from "../../db";
 import { decryptSecret, encryptSecret } from "../../crypto";
 import { sendPlainEmail } from "../gmail/mailsender";
 import { adminLink, pushToGroups } from "../line-bot";
+import { debugShotUrls } from "../../debugShots";
 
 /**
  * A purchase starts as a "pending" rental that holds the slot (PREPARE_HOLD_MINUTES
@@ -242,6 +243,21 @@ async function sendExpiredEmail(rental: ExpiredRental, { profileReset }: { profi
   }
 }
 
+/** A pin-service failure, with the screenshots it took (shown in LINE alerts). */
+class ServiceError extends Error {
+  constructor(
+    message: string,
+    readonly screenshots: string[],
+  ) {
+    super(message);
+  }
+}
+
+/** Public image URLs of a failure's screenshots, for LINE. */
+function failureImages(err: unknown) {
+  return err instanceof ServiceError ? debugShotUrls(err.screenshots) : [];
+}
+
 // Throws with the pin-service's reason unless it reports success.
 async function callService(service: Service, path: string, body: Record<string, unknown>) {
   const response = await fetch(`${service.url.replace(/\/+$/, "")}${path}`, {
@@ -250,8 +266,8 @@ async function callService(service: Service, path: string, body: Record<string, 
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const data = (await response.json().catch(() => ({}))) as { success?: boolean; reason?: string };
-  if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
+  const data = (await response.json().catch(() => ({}))) as { success?: boolean; reason?: string; screenshots?: string[] };
+  if (!response.ok || !data.success) throw new ServiceError(data.reason ?? `HTTP ${response.status}`, data.screenshots ?? []);
   return data.reason ?? "ok";
 }
 
@@ -267,8 +283,9 @@ async function callServiceJson(service: Service, path: string, body: Record<stri
     reason?: string;
     newProfileName?: string;
     newPin?: string;
+    screenshots?: string[];
   };
-  if (!response.ok || !data.success) throw new Error(data.reason ?? `HTTP ${response.status}`);
+  if (!response.ok || !data.success) throw new ServiceError(data.reason ?? `HTTP ${response.status}`, data.screenshots ?? []);
   return data;
 }
 
@@ -343,7 +360,7 @@ async function addProfileEmail(job: EmailJob, service: Service) {
     // generic "มีข้อผิดพลาดเกิดขึ้น โปรดลองอีกครั้ง" also shows for emails with no Netflix
     // account, so it is retried like any other failure.
     if (reason.startsWith("email_rejected") && EMAIL_IN_USE_PATTERN.test(reason)) {
-      await refundRejectedEmail(job, reason);
+      await refundRejectedEmail(job, reason, failureImages(err));
       return;
     }
     await recordAddFailure(job, attempt, err);
@@ -421,7 +438,7 @@ export async function refundPendingRental(subscriptionId: string, actorUserId: s
 }
 
 // Netflix refused the customer's email (it already belongs to a Netflix account): refund and tell them.
-async function refundRejectedEmail(job: EmailJob, reason: string) {
+async function refundRejectedEmail(job: EmailJob, reason: string, images: string[] = []) {
   const refund = await refundPendingRental(job.subscription_id, null, `Profile email rejected by Netflix: ${reason}`);
   if (!refund) return;
   const ref = orderRef(job.subscription_id);
@@ -456,7 +473,7 @@ async function refundRejectedEmail(job: EmailJob, reason: string) {
     `คืน: ${refund.pricePaid} Point${refund.discountPoints ? ` + ส่วนลด ${refund.discountPoints}` : ""}`,
     `บัญชีแม่: ${job.master_email} · โปรไฟล์: ${job.profile_name} (ปล่อยขายต่อแล้ว)`,
     `สาเหตุ: ${reason.slice(0, 200)}`,
-  ]);
+  ], images);
 }
 
 async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
@@ -471,7 +488,20 @@ async function recordAddFailure(job: EmailJob, attempt: number, err: unknown) {
       ? `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครบ ${MAX_EMAIL_ATTEMPTS} ครั้งแล้ว หยุดลอง (รอแอดมิน) reason=${reason}`
       : `[profile-email] ❌ เพิ่มอีเมลไม่สำเร็จ profile=${job.profile_name} ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
   );
-  if (attempt >= MAX_EMAIL_ATTEMPTS) await reportAddGaveUp(job, reason);
+  const images = failureImages(err);
+  if (attempt >= MAX_EMAIL_ATTEMPTS) {
+    await reportAddGaveUp(job, reason, images);
+  } else if (images.length) {
+    // Earlier attempts: only when there is a screenshot of what went wrong.
+    await alertAdmins(
+      [
+        `⚠️ เพิ่มอีเมลในโปรไฟล์ไม่สำเร็จ ครั้งที่ ${attempt}/${MAX_EMAIL_ATTEMPTS} (จะลองใหม่อัตโนมัติ)`,
+        `บัญชีแม่: ${job.master_email} · โปรไฟล์: ${job.profile_name} · ลูกค้า: ${job.user_email}`,
+        `สาเหตุ: ${reason.slice(0, 200)}`,
+      ],
+      images,
+    );
+  }
 }
 
 function orderRef(subscriptionId: string) {
@@ -488,7 +518,7 @@ function randomProfileName() {
 }
 
 // Last attempt failed: the customer is told to contact support on Discord and the admin LINE groups are alerted.
-async function reportAddGaveUp(job: EmailJob, reason: string) {
+async function reportAddGaveUp(job: EmailJob, reason: string, images: string[] = []) {
   const ref = orderRef(job.subscription_id);
   const text = [
     "ขออภัยครับ ระบบยังเตรียมบัญชีของคุณไม่สำเร็จ",
@@ -523,7 +553,7 @@ async function reportAddGaveUp(job: EmailJob, reason: string) {
     "",
     "ส่งเมลให้ลูกค้าติดต่อทาง Discord แล้ว กรุณาเพิ่มอีเมลให้ลูกค้าด้วยตัวเอง",
     ...actionLink("profiles", { q: job.profile_name }),
-  ]);
+  ], images);
 }
 
 // "👉 จัดการ: <link>" closing an alert that needs an admin, when WEB_ORIGIN is set.
@@ -532,9 +562,9 @@ function actionLink(section: string, params: Record<string, string> = {}) {
   return link ? ["", `👉 จัดการ: ${link}`] : [];
 }
 
-async function alertAdmins(lines: string[]) {
+async function alertAdmins(lines: string[], images: string[] = []) {
   try {
-    const result = await pushToGroups(lines.join("\n"));
+    const result = await pushToGroups(lines.join("\n"), images);
     console.log(`[profile-email] 🔔 แจ้งเตือน LINE sent=${result.sent} failed=${result.failed}${result.reason ? ` reason=${result.reason}` : ""}`);
   } catch (err) {
     console.error("[profile-email] ❌ แจ้งเตือน LINE ไม่สำเร็จ", err instanceof Error ? err.message : err);
@@ -633,6 +663,17 @@ async function rotate(rental: ExpiredRental, service: Service) {
         ? `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครบ ${MAX_ROTATION_ATTEMPTS} ครั้งแล้ว หยุดลอง (Slot ค้าง reserved รอแอดมิน) reason=${reason}`
         : `[pin-rotation] ❌ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ profile=${rental.profile_name} ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} จะลองใหม่ใน 1 นาที reason=${reason}`,
     );
+    const images = failureImages(err);
+    if (attempt < MAX_ROTATION_ATTEMPTS && images.length) {
+      await alertAdmins(
+        [
+          `⚠️ ลบและสร้างโปรไฟล์ใหม่ไม่สำเร็จ ครั้งที่ ${attempt}/${MAX_ROTATION_ATTEMPTS} (จะลองใหม่อัตโนมัติ)`,
+          `บัญชีแม่: ${rental.master_email} · ${rental.profile_name} → ${newProfileName}`,
+          `สาเหตุ: ${reason.slice(0, 200)}`,
+        ],
+        images,
+      );
+    }
     if (attempt >= MAX_ROTATION_ATTEMPTS) {
       // Netflix may be half done (old profile deleted, new one unlocked): an admin has to look.
       await alertAdmins([
@@ -645,7 +686,7 @@ async function rotate(rental: ExpiredRental, service: Service) {
         `กรุณาเช็กใน Netflix: ลบ ${rental.profile_name} แล้วหรือยัง และ ${newProfileName} ถูกสร้างแล้วแต่ยังไม่มี PIN หรือไม่`,
         "แก้เสร็จแล้วให้ระบบลองต่อได้ (จะใช้ชื่อและ PIN ใหม่เดิม) โดยล้างตัวนับ profile_reset_failed ของรายการนี้",
         ...actionLink("profiles", { q: rental.profile_name }),
-      ]);
+      ], images);
     }
     return;
   }

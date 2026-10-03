@@ -86,16 +86,22 @@ export function adminLink(section: string, params: Record<string, string> = {}) 
   return `${site}/admin?${query}`;
 }
 
-// Sends text to every connected group; returns how many groups received it.
-export async function pushToGroups(text: string) {
+// Sends text (and up to four https image URLs after it) to every connected group.
+export async function pushToGroups(text: string, imageUrls: string[] = []) {
   const { token } = await getBotConfig();
   if (!token) return { sent: 0, failed: 0, reason: "not_configured" };
   const groups = await sql<Array<{ group_id: string }>>`SELECT group_id FROM line_bot_groups WHERE left_at IS NULL`;
+  // LINE takes at most 5 messages per push and only https image URLs.
+  const images = imageUrls
+    .filter((url) => url.startsWith("https://"))
+    .slice(0, 4)
+    .map((url) => ({ type: "image", originalContentUrl: url, previewImageUrl: url }));
+  const messages = [{ type: "text", text }, ...images];
   let sent = 0;
   let failed = 0;
   for (const { group_id } of groups) {
     try {
-      await lineApi(token, "/message/push", { to: group_id, messages: [{ type: "text", text }] });
+      await lineApi(token, "/message/push", { to: group_id, messages });
       sent += 1;
     } catch (err) {
       failed += 1;

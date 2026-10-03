@@ -24,6 +24,7 @@ import hmac
 import json
 import os
 import random
+import re
 import threading
 from dataclasses import asdict
 from datetime import datetime
@@ -31,7 +32,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, has_request_context, jsonify, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 from netflix_login_checker.core import DEFAULT_PROFILES_DIR, login_netflix, short_error
@@ -58,6 +59,17 @@ def create_app() -> Flask:
     proxy_candidates = [] if prefer_static_proxy and proxy_server else _load_proxy_candidates()
     proxy_retries = _env_int("PIN_SERVICE_PROXY_RETRIES", 3 if proxy_candidates else 1)
     proxy_bad_ttl_s = _env_int("PIN_SERVICE_PROXY_BAD_TTL_SECONDS", 1800)
+
+    debug_dir = Path(os.environ.get("PIN_SERVICE_DEBUG_DIR") or Path(profiles_dir) / "_debug").expanduser().resolve()
+
+    # Screenshots of failures, for the backend to forward to LINE (service key required).
+    @app.get("/debug-shots/<name>")
+    def debug_shot(name: str):
+        if not service_key or not hmac.compare_digest(request.headers.get("x-service-key", ""), service_key):
+            return _response(False, "unauthorized", 401)
+        if not _SHOT_NAME.fullmatch(name):
+            return _response(False, "not_found", 404)
+        return send_from_directory(debug_dir, name, mimetype="image/png", max_age=0)
 
     @app.get("/health")
     def health():
@@ -286,12 +298,23 @@ def create_app() -> Flask:
     return app
 
 
+_SHOT_NAME = re.compile(r"[0-9]{8}-[0-9]{6}-[A-Za-z0-9_.-]+\.png")
+_SHOT_IN_LOG = re.compile(r"screenshot=(\S+\.png)")
+
+
 def _response(success: bool, reason: str, status: int, **extra):
+    # Screenshots taken while handling this request (failures), so the backend can show them.
+    shots = list(g.get("screenshots", [])) if has_request_context() else []
+    if shots:
+        extra.setdefault("screenshots", shots)
     return jsonify({"success": success, "reason": reason, **extra}), status
 
 
 def _log(request_id: str, message: str) -> None:
     print(f"[{datetime.now().isoformat(timespec='seconds')}] [pin-service:{request_id}] {message}", flush=True)
+    match = _SHOT_IN_LOG.search(message)
+    if match and has_request_context():
+        g.setdefault("screenshots", []).append(Path(match.group(1)).name)
 
 
 def _login_otp_provider(email: str, mailbox_password: str | None, debug, *, lengths: tuple[int, ...] = (4,)):
