@@ -28,7 +28,10 @@ export const MAX_ROTATION_ATTEMPTS = 3;
 const MAX_EMAIL_ATTEMPTS = 3;
 /** How long a pending purchase may hold its slot while the email is being added. */
 export const PREPARE_HOLD_MINUTES = 24 * 60;
-const EMAIL_IN_USE_PATTERN = /ใช้งานอยู่แล้ว|ถูกใช้แล้ว|มีบัญชี|already (in use|used|associated|exists)|in use|belongs to/i;
+// Netflix saying the customer's email already has an account / is taken (Thai or English).
+// Its generic "มีข้อผิดพลาดเกิดขึ้น โปรดลองอีกครั้ง" must not match: that one is retried.
+const EMAIL_IN_USE_PATTERN =
+  /มีบัญชี|มีอยู่แล้ว|อยู่แล้ว|ใช้งานอยู่|ถูกใช้|เชื่อมโยงกับ|ลงทะเบียน|already|in use|exists|associated|belongs to|registered|taken/i;
 const SUPPORT_DISCORD_URL = process.env.SUPPORT_DISCORD_URL ?? "https://discord.gg/9guggS5EXD";
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -425,9 +428,10 @@ async function refundRejectedEmail(job: EmailJob, reason: string) {
   console.log(`[profile-email] ↩️ Netflix ไม่รับอีเมล ${job.user_email} คืน ${refund.pricePaid} Point และปล่อย Slot ${job.profile_name} แล้ว`);
 
   const text = [
-    "ขออภัยครับ ระบบเพิ่มอีเมลของคุณในโปรไฟล์ Netflix ไม่ได้",
+    "ขออภัยครับ ระบบตรวจพบว่าอีเมลของคุณมีบัญชี Netflix อยู่แล้ว",
     "",
-    `อีเมล ${job.user_email} น่าจะมีบัญชี Netflix อยู่แล้ว หรือถูกใช้กับโปรไฟล์อื่นอยู่ Netflix จึงไม่อนุญาตให้เพิ่ม`,
+    `อีเมล ${job.user_email} มีบัญชี Netflix อยู่แล้ว (หรือผูกกับโปรไฟล์อื่นอยู่) Netflix จึงไม่อนุญาตให้เพิ่มเข้าโปรไฟล์ของร้าน`,
+    "ระบบจึงยกเลิกคำสั่งซื้อนี้ให้อัตโนมัติ และคืน Point เข้าบัญชีของคุณแล้ว",
     "",
     `รหัสคำสั่งซื้อ: ${ref}`,
     `แพ็กเกจ: ${job.package_name}`,
@@ -440,7 +444,7 @@ async function refundRejectedEmail(job: EmailJob, reason: string) {
     "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
   ].join("\n");
   try {
-    await sendPlainEmail({ to: job.user_email, subject: `อีเมลนี้มี Netflix อยู่แล้ว — คืน Point แล้ว (${ref})`, text });
+    await sendPlainEmail({ to: job.user_email, subject: `ตรวจพบว่าอีเมลนี้มีบัญชี Netflix อยู่แล้ว — คืน Point แล้ว (${ref})`, text });
   } catch (err) {
     console.error(`[profile-email] ❌ ส่งเมลแจ้งคืน Point ไม่สำเร็จ to=${job.user_email}`, err instanceof Error ? err.message : err);
   }

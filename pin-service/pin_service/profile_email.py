@@ -8,6 +8,7 @@ Remove (when the rental ends): same path, then "ลบอีเมล" > "บั
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -202,7 +203,7 @@ def _update_profile_email_impl(
                 for response in api_responses[-5:]:
                     emit_debug(debug, f"profile_email_api_response {_describe_response(response)}")
                 capture_page_debug(page, debug=debug, label=f"profile_email_{action}_failed", profile_dir=profile_dir)
-                if clear_cookies_on_error and outcome.startswith("email_rejected"):
+                if clear_cookies_on_error and outcome.startswith("email_rejected") and not _email_taken(outcome):
                     # Netflix's fix for "มีข้อผิดพลาดเกิดขึ้น โปรดลองอีกครั้ง": clear its cookies.
                     # This signs the master account out; the caller logs in again and retries.
                     step("clear_netflix_cookies")
@@ -419,3 +420,14 @@ def _describe_response(response) -> str:
     path = response.url.split("netflix.com", 1)[-1][:120]
     return f"status={response.status} path={path} body={body}"
 
+
+# Netflix saying the email already has an account (Thai or English). Clearing cookies and
+# retrying cannot help there, so the backend refunds right away instead.
+_EMAIL_TAKEN = re.compile(
+    r"มีบัญชี|มีอยู่แล้ว|อยู่แล้ว|ใช้งานอยู่|ถูกใช้|เชื่อมโยงกับ|ลงทะเบียน|already|in use|exists|associated|belongs to|registered|taken",
+    re.I,
+)
+
+
+def _email_taken(reason: str) -> bool:
+    return bool(_EMAIL_TAKEN.search(reason))
