@@ -62,7 +62,10 @@ auth.get("/callback/google", async (c) => {
     INSERT INTO "User" (id, "googleId", email, name, image, points, role, status, "createdAt", "updatedAt")
     VALUES (${crypto.randomUUID()}, ${g.sub}, ${g.email}, ${g.name}, ${g.picture ?? null}, 0, ${role}, 'active', NOW(), NOW())
     ON CONFLICT ("googleId") DO UPDATE
-      SET name = EXCLUDED.name, image = EXCLUDED.image, role = ${role}, "updatedAt" = NOW()
+      -- ADMIN_EMAILS can only grant admin: a role given in the admin panel survives logins.
+      SET name = EXCLUDED.name, image = EXCLUDED.image,
+          role = CASE WHEN ${role} = 'admin' THEN 'admin' ELSE "User".role END,
+          "updatedAt" = NOW()
     RETURNING *, (xmax = 0) AS is_new
   `;
 
