@@ -31,6 +31,10 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 }
 
+function outstandingCommission(stat: ResellerStat) {
+  return stat.commissionOpenCents + stat.commissionPendingCents;
+}
+
 function Stats({ stat }: { stat: ResellerStat }) {
   return (
     <dl className={styles.stats}>
@@ -42,8 +46,8 @@ function Stats({ stat }: { stat: ResellerStat }) {
         </dd>
       </div>
       <div>
-        <dt>ค่าคอมทั้งหมด</dt>
-        <dd>฿{bahtFromCents(stat.commissionEarnedCents)}</dd>
+        <dt>ค่าคอมค้างจ่าย</dt>
+        <dd>฿{bahtFromCents(outstandingCommission(stat))}</dd>
       </div>
       <div>
         <dt>ยังไม่ถึงรอบตัดยอด</dt>
@@ -311,8 +315,9 @@ export default function ResellersPage() {
                     {stat.userName} · {stat.code}
                   </b>
                   <span>
-                    ยอดขาย {stat.customers} คน · ค่าคอมทั้งหมด ฿{bahtFromCents(stat.commissionEarnedCents)} (รอโอน ฿
-                    {bahtFromCents(stat.commissionPendingCents)} · ยังไม่ถึงรอบ ฿{bahtFromCents(stat.commissionOpenCents)})
+                    ยอดขาย {stat.customers} คน · ค่าคอมค้างจ่าย ฿{bahtFromCents(outstandingCommission(stat))} (รอโอน ฿
+                    {bahtFromCents(stat.commissionPendingCents)} · ยังไม่ถึงรอบ ฿{bahtFromCents(stat.commissionOpenCents)} · โอนแล้ว ฿
+                    {bahtFromCents(stat.commissionPaidCents)})
                   </span>
                   <em data-status={stat.status === "active" ? "redeemed" : "pending"}>
                     {stat.status === "active" ? "เปิด" : "ปิด"}

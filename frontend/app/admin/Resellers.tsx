@@ -51,6 +51,10 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 }
 
+function outstandingCommission(reseller: ResellerStat) {
+  return reseller.commissionOpenCents + reseller.commissionPendingCents;
+}
+
 type Confirm = { title: string; message: string; label: string; danger?: boolean; action: () => Promise<void> };
 
 export function ResellersPanel({ onDone }: { onDone: Notify }) {
@@ -415,8 +419,8 @@ export function ResellersPanel({ onDone }: { onDone: Notify }) {
                   </dd>
                 </div>
                 <div>
-                  <dt>ค่าคอมทั้งหมด</dt>
-                  <dd>฿{bahtFromCents(reseller.commissionEarnedCents)}</dd>
+                  <dt>ค่าคอมค้างจ่าย</dt>
+                  <dd>฿{bahtFromCents(outstandingCommission(reseller))}</dd>
                 </div>
                 <div>
                   <dt>ยังไม่ถึงรอบ / รอโอน / โอนแล้ว</dt>

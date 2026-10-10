@@ -383,15 +383,6 @@ subscriptions.post("/:id/renew", async (c) => {
         throw new Error(`ต่ออายุรายการนี้ไม่ได้แล้ว (เลยกำหนด ${RENEW_GRACE_HOURS} ชม. หลังหมดอายุ หรือถูกปิด/ต่ออายุไปแล้ว)`);
       }
 
-      const baseDate = new Date(current.expires_at) > new Date()
-        ? new Date(current.expires_at)
-        : new Date();
-      const nextExpiresAt = addMinutes(baseDate, current.duration_minutes);
-
-      if (new Date(current.master_expired_at) < nextExpiresAt) {
-        throw new Error("บัญชีแม่หมดอายุก่อนระยะเวลาต่ออายุ กรุณาติดต่อแอดมิน");
-      }
-
       const [user] = await sql`
         SELECT *
         FROM "User"
@@ -416,13 +407,28 @@ subscriptions.post("/:id/renew", async (c) => {
           user_id, profile_id, package_id, parent_subscription_id, status,
           payment_method, price_paid, started_at, expires_at, metadata
         )
-        VALUES (
-          ${userId}, ${current.profile_id}, ${current.package_id}, ${current.id},
-          'active', 'points', ${pricePaid}, ${baseDate.toISOString()}, ${nextExpiresAt.toISOString()},
+        SELECT
+          ${userId},
+          s.profile_id,
+          s.package_id,
+          s.id,
+          'active',
+          'points',
+          ${pricePaid},
+          GREATEST(s.expires_at, NOW()),
+          GREATEST(s.expires_at, NOW()) + make_interval(mins => pkg.duration_minutes),
           ${sql.json({ discountPoints })}
-        )
+        FROM subscriptions s
+        JOIN packages pkg ON pkg.id = s.package_id
+        JOIN profiles p ON p.id = s.profile_id
+        JOIN master_emails me ON me.id = p.master_email_id
+        WHERE s.id = ${current.id}::uuid
+          AND me.master_expired_at >= GREATEST(s.expires_at, NOW()) + make_interval(mins => pkg.duration_minutes)
         RETURNING id, started_at, expires_at, status
       `;
+      if (!renewal) {
+        throw new Error("บัญชีแม่หมดอายุก่อนระยะเวลาต่ออายุ กรุณาติดต่อแอดมิน");
+      }
       await spendDiscount(sql, {
         userId,
         points: discountPoints,
@@ -437,7 +443,7 @@ subscriptions.post("/:id/renew", async (c) => {
 
       await sql`
         UPDATE profiles
-        SET status = 'rented', profile_expires_at = ${nextExpiresAt.toISOString()}, updated_at = NOW()
+        SET status = 'rented', profile_expires_at = ${renewal.expires_at}, updated_at = NOW()
         WHERE id = ${current.profile_id}
       `;
 
