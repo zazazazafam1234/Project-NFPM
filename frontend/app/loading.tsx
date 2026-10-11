@@ -10,8 +10,8 @@ export default function Loading() {
           <BrandLogo showName={false} />
         </div>
         <div className={styles.spinner} />
-        <p>กำลังเตรียม Fast Movie ให้คุณ</p>
-        <span>PLEASE WAIT</span>
+        <p>แป๊บนึงนะ กำลังเตรียมป๊อปคอร์น 🍿</p>
+        <span>LOADING…</span>
       </section>
     </main>
   );

@@ -95,7 +95,7 @@ export function ResellerBankPrompt() {
   return (
     <div className={styles.backdrop} role="presentation">
       <section aria-labelledby="reseller-bank-title" aria-modal="true" className={styles.modal} role="dialog">
-        <p className={styles.eyebrow}>RESELLER</p>
+        <p className={styles.eyebrow}>🎉 ยินดีด้วย!</p>
         <h2 id="reseller-bank-title">คุณได้รับแต่งตั้งเป็นตัวแทนจำหน่าย</h2>
         <p className={styles.muted}>กรอกบัญชีธนาคารสำหรับรับค่าคอมมิชชัน (แก้ไขภายหลังได้ที่หน้าตัวแทนจำหน่าย)</p>
         <ResellerBankForm banks={banks} onSaved={() => void refreshSession()} />

@@ -80,7 +80,7 @@ export default function CheckoutPage() {
       return;
     }
     if (!selectedSlot || !selectedPackage) {
-      setMessage("กรุณาเลือก slot และโปรโมชันก่อน");
+      setMessage("เลือกโปรไฟล์กับโปรก่อนนะ");
       return;
     }
     setIsSubmitting(true);
@@ -113,30 +113,30 @@ export default function CheckoutPage() {
       </header>
       <section className={styles.content}>
         <div className={styles.intro}>
-          <p className={styles.eyebrow}>ROOM SLOT CHECKOUT</p>
+          <p className={styles.eyebrow}>🛒 STEP 2 · เลือกโปร</p>
           <h1>
             เลือกโปร
             <br />
-            <em>ที่เหมาะกับคุณ</em>
+            <mark>ที่ใช่สำหรับคุณ</mark>
           </h1>
           <p>
             {selectedRoom && selectedSlot
               ? `${selectedRoom.name} · ${selectedSlotLabel}`
-              : "กรุณาเลือก slot จากหน้าร้านก่อน"}
+              : "ยังไม่ได้เลือกโปรไฟล์ กลับไปเลือกที่หน้าร้านก่อนนะ"}
           </p>
           <div className={styles.summary}>
             <div>
               <span>{selectedRoom?.service.toUpperCase() ?? "FAST MOVIE"}</span>
-              <strong>{selectedSlotLabel ?? "ยังไม่ได้เลือก slot"}</strong>
+              <strong>{selectedSlotLabel ?? "ยังไม่ได้เลือกโปรไฟล์"}</strong>
               <small>{selectedRoom?.label ?? "เลือกห้องจากหน้าร้าน"}</small>
             </div>
-            <b>✦</b>
+            <b aria-hidden="true">🎬</b>
           </div>
         </div>
         <div className={styles.paymentCard}>
-          <p className={styles.label}>ราคาที่ต้องจ่าย</p>
+          <p className={styles.label}>💸 ราคาที่ต้องจ่าย</p>
           {/* The chosen package's price leads; the wallet balance is a line under it. */}
-          <div className={`${styles.priceHero} on-accent`}>
+          <div className={styles.priceHero}>
             {selectedPackage ? (
               <>
                 <small>{selectedPackage.name}</small>
@@ -148,13 +148,13 @@ export default function CheckoutPage() {
                 <small>ใช้ได้ {formatDuration(selectedPackage.durationMinutes)}</small>
               </>
             ) : (
-              <small>เลือกโปรด้านล่าง</small>
+              <small>เลือกโปรด้านล่างได้เลย 👇</small>
             )}
           </div>
           <p className={styles.balanceLine}>
             Point ของคุณ <b>{user ? user.points.toLocaleString() : "—"}</b>
             {user && selectedPackage && !enoughPoints && (
-              <em> · ขาดอีก {(finalPrice - user.points).toLocaleString()} Point</em>
+              <em> · ขาดอีก {(finalPrice - user.points).toLocaleString()} Point 💸</em>
             )}
           </p>
 
@@ -177,7 +177,7 @@ export default function CheckoutPage() {
             </div>
           ) : (
             <p className={styles.message}>
-              Slot นี้ยังไม่มีโปรโมชันที่ใช้ได้ หรือถูกจองไปแล้ว กรุณากลับไปเลือก slot ใหม่
+              โปรไฟล์นี้ยังไม่มีโปรให้เลือก หรือมีคนจองไปแล้ว 😢 ลองกลับไปเลือกโปรไฟล์อื่นนะ
             </p>
           )}
 
@@ -194,12 +194,12 @@ export default function CheckoutPage() {
           )}
           <p className={styles.afterPay}>
             {!selectedPackage
-              ? "เลือก slot ที่พร้อมใช้งานก่อน"
+              ? "เลือกโปรไฟล์ที่ว่างก่อนนะ"
               : user
                 ? enoughPoints
-                  ? `คุณจะเหลือ ${(user.points - finalPrice).toLocaleString()} Point หลังเลือกโปรนี้`
-                  : "Point ไม่เพียงพอ กรุณาเติม Point ก่อน"
-                : "เข้าสู่ระบบด้วย Google เพื่อใช้ Point"}
+                  ? `ซื้อแล้วจะเหลือ ${(user.points - finalPrice).toLocaleString()} Point`
+                  : "Point ไม่พอ เติมก่อนนิดนึงนะ 💸"
+                : "เข้าสู่ระบบด้วย Google ก่อน ถึงจะใช้ Point ได้"}
           </p>
           {message && <p className={styles.message}>{message}</p>}
           <Link className={styles.profileLink} href="/payment">
@@ -223,7 +223,7 @@ export default function CheckoutPage() {
                 ? selectedPackage
                   ? `ยืนยันจ่าย ${finalPrice.toLocaleString()} Point`
                   : "ยืนยันใช้ Point"
-                : "เข้าสู่ระบบเพื่อดำเนินการ"}{" "}
+                : "เข้าสู่ระบบก่อน"}{" "}
             <span>→</span>
           </button>
           <div className={styles.supportRow}>
@@ -239,14 +239,14 @@ export default function CheckoutPage() {
             aria-modal="true"
             aria-labelledby="purchase-success-title"
           >
-            <span className={styles.successIcon} aria-hidden="true">✓</span>
-            <h2 id="purchase-success-title">ซื้อสำเร็จ</h2>
+            <span className={styles.successIcon} aria-hidden="true">🎉</span>
+            <h2 id="purchase-success-title">เย้! ซื้อสำเร็จแล้ว</h2>
             <p>
-              ระบบกำลังเพิ่มอีเมล
-              {user?.email ? <b> {user.email}</b> : null} ในโปรไฟล์ เมื่อพร้อมใช้งานจะส่ง PIN ไปที่อีเมลนี้
+              กำลังเพิ่มอีเมล
+              {user?.email ? <b> {user.email}</b> : null} ในโปรไฟล์ให้อยู่ พร้อมเมื่อไหร่จะส่ง PIN ไปที่อีเมลนี้เลย
             </p>
             <p className={styles.successHint}>
-              หากไม่พบในกล่องจดหมาย กรุณาตรวจสอบในโฟลเดอร์สแปม (Spam / จดหมายขยะ)
+              ถ้าหาไม่เจอ ลองเช็คในโฟลเดอร์สแปม (Spam / จดหมายขยะ) ด้วยนะ
             </p>
             <button
               className={styles.paidButton}
@@ -254,7 +254,7 @@ export default function CheckoutPage() {
               autoFocus
               onClick={() => router.push("/profile")}
             >
-              ไปหน้าโปรไฟล์ <span>→</span>
+              ไปที่บัญชีของฉัน <span>→</span>
             </button>
           </div>
         </div>

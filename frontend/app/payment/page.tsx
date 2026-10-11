@@ -267,13 +267,13 @@ export default function TopUpPage() {
           if (topUp.status === "paid") {
             window.clearInterval(interval);
             await refreshSession();
-            setMessage("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
-            window.alert("ชำระเงินสำเร็จ เติม Point เข้าบัญชีแล้ว");
+            setMessage("เติม Point สำเร็จแล้ว 🎉");
+            window.alert("เติม Point สำเร็จแล้ว 🎉");
             router.push("/profile");
           }
           if (topUp.status === "expired") {
             window.clearInterval(interval);
-            setMessage("รายการ QR หมดอายุแล้ว กรุณาสร้างรายการใหม่");
+            setMessage("QR นี้หมดอายุแล้ว สร้างใหม่ได้เลยนะ");
           }
         })
         .catch(() => undefined);
@@ -306,7 +306,7 @@ export default function TopUpPage() {
         }),
       });
       setPendingTopUp(topUp);
-      setMessage("สร้าง QR แล้ว กรุณาโอนยอดให้ตรงรวมทศนิยมเพื่อยืนยันอัตโนมัติ");
+      setMessage("สร้าง QR แล้ว! โอนให้ตรงยอดรวมทศนิยมนะ ระบบจะยืนยันให้อัตโนมัติ");
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -333,27 +333,27 @@ export default function TopUpPage() {
       </header>
       <section className={styles.content}>
         <div className={styles.intro}>
-          <p className={styles.eyebrow}>FAST POINTS</p>
+          <p className={styles.eyebrow}>💰 เติม Point</p>
           <h1>
             เติม Point
             <br />
-            <em>ก่อนเลือกโปร</em>
+            <mark>แล้วไปดูกันเลย</mark>
           </h1>
           <p>
-            ใช้ Point เป็นเครดิตกลางสำหรับเลือกซื้อทุกโปร
-            ไม่มีการชำระเงินตรงในหน้าห้อง
+            Point ใช้ซื้อได้ทุกโปรในเว็บ เติมครั้งเดียวแล้วเลือกห้องได้เลย
+            ไม่ต้องจ่ายเงินแยกทีละห้อง
           </p>
           <div className={styles.summary}>
             <div>
-              <span>Point ที่มี</span>
+              <span>Point ที่มีตอนนี้</span>
               <strong>{user ? user.points.toLocaleString() : "—"}</strong>
-              <small>POINTS AVAILABLE</small>
+              <small>1 บาท = 1 Point</small>
             </div>
-            <b>✦</b>
+            <b aria-hidden="true">💰</b>
           </div>
         </div>
         <div className={styles.paymentCard}>
-          <p className={styles.label}>เติมกี่บาท</p>
+          <p className={styles.label}>จะเติมเท่าไหร่ดี? 🤔</p>
           <label className={styles.customAmount}>
             <div>
               <input
@@ -393,10 +393,10 @@ export default function TopUpPage() {
           </div>
 
           <div className={styles.codeBox}>
-            <span>โค้ดส่วนลด (ถ้ามี)</span>
+            <span>🎟️ มีโค้ดส่วนลดไหม? (ถ้ามี)</span>
             <input
               autoCapitalize="characters"
-              placeholder="พิมพ์โค้ด ระบบจะใช้ให้อัตโนมัติ"
+              placeholder="พิมพ์โค้ดได้เลย ระบบใช้ให้อัตโนมัติ"
               value={codeInput}
               onChange={(event) => {
                 setCodeInput(event.target.value.toUpperCase().replace(/\s/g, ""));
@@ -530,7 +530,7 @@ export default function TopUpPage() {
           {isWaiting && secondsUntilCheck === 0 && (
             <div className={styles.paidCheck}>
               <button disabled={checkCooldown > 0} onClick={() => void reportPaid()} type="button">
-                {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "ฉันจ่ายเงินแล้ว ยังไม่เข้า"}
+                {checkCooldown > 0 ? `กำลังตรวจสอบ… (${checkCooldown})` : "โอนแล้ว แต่ Point ยังไม่เข้า"}
               </button>
               {checkNote && <small>{checkNote}</small>}
               <SupportLink label="ยังไม่เข้า? แจ้งทีมงานทาง Discord" />
@@ -553,7 +553,7 @@ export default function TopUpPage() {
               {isSubmitting
                 ? "กำลังสร้าง QR…"
                 : !user
-                  ? "เข้าสู่ระบบเพื่อเติม Point"
+                  ? "เข้าสู่ระบบก่อนเติม Point"
                   : quoteMatches
                     ? `สร้าง QR ชำระ ฿${formatBaht(quote.chargeCents / 100)}`
                     : "สร้าง QR ชำระเงิน"}{" "}

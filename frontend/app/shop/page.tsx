@@ -9,6 +9,8 @@ import { useSession } from "../providers";
 import { publicProfileLabel, unavailableSlotLabel } from "../lib/slots";
 import styles from "./page.module.css";
 
+const ROOM_TONES = [styles.tonePurple, styles.tonePink, styles.toneCyan, styles.toneLime];
+
 function CapacityDots({ room }: { room: StreamingRoom }) {
   return (
     <>
@@ -58,13 +60,13 @@ export default function ShopPage() {
           <BrandLogo />
         </Link>
         <nav className={styles.navLinks} aria-label="เมนูหลัก">
-          <Link href="/#packages">แพ็กเกจ</Link>
-          <Link href="/#how-it-works">ขั้นตอน</Link>
-          <Link href="/#faq">ช่วยเหลือ</Link>
+          <Link href="/#packages">ห้องว่าง</Link>
+          <Link href="/#how-it-works">วิธีใช้</Link>
+          <Link href="/#faq">ถาม-ตอบ</Link>
           <Link href="/shop" aria-current="page">
             ร้านค้า
           </Link>
-          <Link href="/profile">บัญชี</Link>
+          <Link href="/profile">บัญชีฉัน</Link>
         </nav>
         <div className={styles.headerActions}>
           <ThemeToggle />
@@ -81,18 +83,18 @@ export default function ShopPage() {
 
       <div className={styles.hero}>
         <div className={styles.heroAura} aria-hidden="true" />
-        <p className={styles.eyebrow}>02 — BROWSE ROOMS</p>
-        <h1>เลือกห้องที่ใช่<br /><em>แล้วเข้าไปเลือก Slot</em></h1>
-        <p>เลือก Slot ที่มีสัญญาณสีเขียว จากนั้นค่อยเลือกโปรที่เหมาะกับคุณในขั้นตอนถัดไป</p>
+        <p className={styles.eyebrow}>🛍️ ร้านค้า</p>
+        <h1>เลือกห้องที่ใช่<br /><mark>แล้วจองโปรไฟล์เลย</mark></h1>
+        <p>โปรไฟล์ที่มีจุดสีเขียวคือยังว่างอยู่ กดเลือกได้เลย แล้วค่อยไปเลือกโปรที่ชอบในขั้นต่อไป</p>
         <div className={styles.heroStats}>
-          <span><i aria-hidden="true" />{totalSlots} Slot พร้อมเช่า</span>
-          <span>{visibleRooms.length} ห้องที่เลือกดู</span>
+          <span><i aria-hidden="true" />ว่าง {totalSlots} โปรไฟล์</span>
+          <span>🎬 {visibleRooms.length} ห้อง</span>
         </div>
       </div>
 
       <div className={styles.layout}>
         <aside className={styles.sidebar}>
-          <p className={styles.sideLabel}>บริการ</p>
+          <p className={styles.sideLabel}>เลือกดูตามแอป</p>
           <ul className={styles.catList}>
             <li>
               <button
@@ -100,7 +102,7 @@ export default function ShopPage() {
                 type="button"
                 onClick={() => setService(null)}
               >
-                <span>▦</span>
+                <span aria-hidden="true">✨</span>
                 <span>ทั้งหมด</span>
                 <small>{rooms.length}</small>
               </button>
@@ -112,7 +114,7 @@ export default function ShopPage() {
                   type="button"
                   onClick={() => setService(item)}
                 >
-                  <span>N</span>
+                  <span aria-hidden="true">{item.slice(0, 1).toUpperCase()}</span>
                   <span>{item.toUpperCase()}</span>
                   <small>{rooms.filter((room) => room.service === item).length}</small>
                 </button>
@@ -123,8 +125,8 @@ export default function ShopPage() {
 
         <section className={styles.main}>
           <div className={styles.gridHeader}>
-            <h2>{service ? `${service.toUpperCase()} Rooms` : "ห้องทั้งหมด"}</h2>
-            <span className={styles.count}>{totalSlots} slot พร้อมเช่า</span>
+            <h2>{service ? `ห้อง ${service.toUpperCase()} 🎬` : "ห้องทั้งหมด 🎬"}</h2>
+            <span className={styles.count}>ว่าง {totalSlots} ที่</span>
           </div>
 
           {loading ? (
@@ -134,41 +136,44 @@ export default function ShopPage() {
               ))}
             </div>
           ) : visibleRooms.length === 0 ? (
-            <p className={styles.empty}>ยังไม่มีห้องที่พร้อมใช้งานในบริการนี้</p>
+            <p className={styles.empty}>
+              <span aria-hidden="true">😅</span>
+              ยังไม่มีห้องว่างในบริการนี้ ลองดูบริการอื่นก่อนนะ
+            </p>
           ) : (
             <div className={styles.roomGrid}>
-              {visibleRooms.map((room) => (
-                <article key={room.id} className={styles.roomCardLarge}>
+              {visibleRooms.map((room, roomIndex) => (
+                <article
+                  key={room.id}
+                  className={`${styles.roomCardLarge} ${ROOM_TONES[roomIndex % ROOM_TONES.length]}`}
+                >
                   <div className={styles.roomHead}>
                     <div className={styles.roomIdentity}>
                       <span className={styles.serviceMark} aria-hidden="true">
                         {room.service.slice(0, 1).toUpperCase()}
                       </span>
-                      <div className="on-accent">
-                        <p className={styles.cardCat}>{room.service.toUpperCase()} ROOM</p>
+                      <div>
+                        <p className={styles.cardCat}>{room.service.toUpperCase()}</p>
                         <h3>{room.name}</h3>
                         <span>{room.label}</span>
                       </div>
                     </div>
                     <b className={room.availableSlots > 0 ? styles.stockOk : styles.stockOut}>
                       <i aria-hidden="true" />
-                      {room.availableSlots > 0 ? "พร้อมเลือก" : "เต็มแล้ว"}
+                      {room.availableSlots > 0 ? `ว่าง ${room.availableSlots} ที่` : "เต็มแล้ว 😢"}
                     </b>
                   </div>
 
                   <div className={styles.roomOccupancy}>
-                    <div className={styles.capacityDots} aria-label={`มีผู้ใช้งาน ${room.occupiedSlots} จาก ${room.capacity} Slot`}>
+                    <div className={styles.capacityDots} aria-label={`มีคนใช้ ${room.occupiedSlots} จาก ${room.capacity} โปรไฟล์`}>
                       <CapacityDots room={room} />
                     </div>
-                    <span><b>{room.occupiedSlots}/{room.capacity}</b> ผู้ใช้งาน</span>
+                    <span>มีคนใช้ <b>{room.occupiedSlots}/{room.capacity}</b></span>
                   </div>
 
                   <div className={styles.slotSectionHeader}>
-                    <div>
-                      <p>AVAILABLE PROFILES</p>
-                      <h4>เลือก Slot ที่ว่าง</h4>
-                    </div>
-                    <span>{room.availableSlots} ว่าง</span>
+                    <h4>จะเอาโปรไฟล์ไหนดี?</h4>
+                    <span>ว่าง {room.availableSlots}</span>
                   </div>
                   <div className={styles.slotGrid}>
                     {room.slots.map((slot, slotIndex) => {
@@ -181,15 +186,15 @@ export default function ShopPage() {
                           href={href}
                           key={slot.id}
                         >
-                          <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
+                          <i className={styles.slotNumber} aria-hidden="true">{slotIndex + 1}</i>
                           <strong>{profileLabel}</strong>
                           <span>
-                            ว่าง · เริ่ม {lowestPackage?.priceAmount.toLocaleString() ?? "—"} PT
+                            ว่างอยู่ · เริ่ม {lowestPackage?.priceAmount.toLocaleString() ?? "—"} PT
                           </span>
                         </Link>
                       ) : (
                         <button className={styles.slotUnavailable} disabled key={slot.id}>
-                          <i className={styles.slotNumber} aria-hidden="true">{String(slotIndex + 1).padStart(2, "0")}</i>
+                          <i className={styles.slotNumber} aria-hidden="true">{slotIndex + 1}</i>
                           <strong>{profileLabel}</strong>
                           <span>{unavailableSlotLabel(slot.status)}</span>
                         </button>

@@ -10,6 +10,21 @@ import { publicProfileLabel, unavailableSlotLabel } from "./lib/slots";
 import { SupportLink } from "./components/SupportLink";
 import styles from "./page.module.css";
 
+const HIGHLIGHTS = [
+  ["⚡", "เสร็จใน 3 นาที"],
+  ["💸", "เริ่มแค่ 12 บาท"],
+  ["🤖", "ระบบ Auto"],
+  ["🙋", "มีแอดมินช่วย"],
+] as const;
+
+const ROOM_TONES = [styles.tonePurple, styles.tonePink, styles.toneCyan, styles.toneLime];
+
+const STEPS = [
+  ["💰", "เติม Point", "จ่ายผ่าน PromptPay หรือ Wallet ได้เลย"],
+  ["👀", "เลือกห้อง + โปรไฟล์", "เห็นชัดๆ ว่าโปรไฟล์ไหนยังว่างอยู่"],
+  ["🍿", "เลือกโปร แล้วดูเลย", "ระบบล็อกโปรไฟล์ แล้วโชว์ข้อมูลเข้าดูให้ทันที"],
+] as const;
+
 type RevealSectionProps = {
   children: ReactNode;
   className: string;
@@ -122,188 +137,224 @@ export default function Home() {
 
   return (
     <>
-      <main ref={stageRef} className={styles.scrollStage}>
-      <section className={styles.hero} id="home">
-        <div className={styles.heroParallax} aria-hidden="true" />
-        <nav className={styles.nav} aria-label="เมนูหลัก">
+      <main ref={stageRef} className={`${styles.palette} ${styles.scrollStage}`}>
+        <section className={styles.hero} id="home">
+          <div className={styles.heroParallax} aria-hidden="true" />
+          <nav className={styles.nav} aria-label="เมนูหลัก">
+            <a className={styles.brand} href="#home">
+              <BrandLogo />
+            </a>
+            <div className={styles.navLinks}>
+              <a href="#packages">ห้องว่าง</a>
+              <a href="#how-it-works">วิธีใช้</a>
+              <a href="#faq">ถาม-ตอบ</a>
+              <Link href="/shop">ร้านค้า</Link>
+              {user?.resellerRole && <Link href="/resellers">ตัวแทนจำหน่าย</Link>}
+              <Link href="/profile">บัญชีฉัน</Link>
+            </div>
+            <div className={styles.headerActions}>
+              <ThemeToggle />
+              <Link className={styles.mobileLogin} href="/register">
+                เข้าสู่ระบบ
+              </Link>
+              <a className={styles.navCta} href="#packages">
+                <i /> ว่าง {availableCount} ที่
+              </a>
+            </div>
+          </nav>
+          <div className={styles.heroContent}>
+            <div>
+              <p className={styles.heroTag}>🍿 Movie night mode: ON</p>
+              <h1>
+                คืนนี้
+                <br />
+                <mark>ดูอะไรดี?</mark>
+              </h1>
+              <div className={styles.heroActions}>
+                <a className={styles.primaryButton} href="#packages">
+                  เลือกห้องเลย <span aria-hidden="true">🎬</span>
+                </a>
+                <a className={styles.ghostButton} href="#how-it-works">
+                  ใช้ยังไงนะ?
+                </a>
+              </div>
+              <ul className={styles.trustRow}>
+                {HIGHLIGHTS.map(([icon, text]) => (
+                  <li key={text}>
+                    <span aria-hidden="true">{icon}</span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className={styles.heroArt} aria-hidden="true">
+              <div className={styles.heroPoster}>
+                <div className={styles.posterSheen} />
+                <p>
+                  NOW
+                  <br />
+                  <b>PLAYING</b>
+                </p>
+                <div className={styles.posterLight} />
+                <div className={styles.posterTicket}>
+                  <span>ADMIT ONE</span>
+                  <strong>FAST MOVIE</strong>
+                </div>
+              </div>
+              <span className={`${styles.sticker} ${styles.stickerPrice}`}>
+                เริ่ม
+                <b>12฿</b>
+              </span>
+              <span className={`${styles.sticker} ${styles.stickerSeats}`}>
+                ว่าง {availableCount} ที่!
+              </span>
+              <span className={`${styles.sticker} ${styles.stickerEmoji}`}>🍿</span>
+            </div>
+          </div>
+        </section>
+
+        <div className={styles.marquee} aria-hidden="true">
+          <div className={styles.marqueeTrack}>
+            {Array.from({ length: 2 }, (_, copy) => (
+              <span key={copy}>
+                {HIGHLIGHTS.map(([icon, text]) => (
+                  <span key={text}>
+                    {icon} {text} <b>✦</b>
+                  </span>
+                ))}
+                <span>
+                  🎬 คืนนี้ดูอะไรดี? <b>✦</b>
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <RevealSection
+          className={`${styles.section} ${styles.roomsSection}`}
+          id="packages"
+        >
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>STEP 1 · เลือกห้อง</p>
+            <h2>ห้องไหนยังว่าง? 👀</h2>
+            <p>
+              กดเข้าห้องแล้วเลือกโปรไฟล์ที่ว่าง ส่วนโปรรายวัน รายสัปดาห์ หรือรายเดือน
+              ค่อยเลือกในขั้นต่อไป
+            </p>
+          </div>
+          <div className={styles.roomGrid}>
+            {roomsLoading ? (
+              Array.from({ length: 3 }, (_, index) => (
+                <div className={styles.roomSkeleton} key={index} />
+              ))
+            ) : rooms.length === 0 ? (
+              <p className={styles.roomsEmpty}>
+                <span aria-hidden="true">😅</span>
+                ตอนนี้ยังไม่มีห้องว่างเลย ลองแวะมาใหม่อีกทีนะ
+              </p>
+            ) : (
+              rooms.map((room, index) => {
+                const isOpen = room.availableSlots > 0;
+
+                return (
+                  <button
+                    aria-haspopup="dialog"
+                    aria-label={`เลือกโปรไฟล์ใน ${room.name}`}
+                    className={`${styles.roomCard} ${ROOM_TONES[index % ROOM_TONES.length]}`}
+                    key={room.id}
+                    onClick={() => setActiveRoom(room)}
+                    type="button"
+                  >
+                    <span className={styles.roomBanner}>
+                      <span className={styles.roomIndex}>
+                        #{String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span className={styles.roomMark}>
+                        {room.service.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className={styles.roomService}>{room.service}</span>
+                    </span>
+
+                    <span className={styles.roomBody}>
+                      <small className={isOpen ? styles.roomOpen : styles.roomFull}>
+                        <i aria-hidden="true" />
+                        {isOpen ? `ว่าง ${room.availableSlots} ที่` : "เต็มแล้ว 😢"}
+                      </small>
+                      <strong>{room.name}</strong>
+                      <em>{room.label}</em>
+                      <span className={styles.roomCapacity}>
+                        <span className={styles.capacityDots} aria-hidden="true">
+                          <CapacityDots room={room} />
+                        </span>
+                        มีคนใช้ {room.occupiedSlots}/{room.capacity}
+                      </span>
+                    </span>
+                    <span className={styles.roomCta}>
+                      {isOpen ? "เข้าห้องเลย" : "ดูในห้อง"} <b aria-hidden="true">→</b>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </RevealSection>
+
+        <RevealSection className={styles.section} id="how-it-works">
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>HOW IT WORKS</p>
+            <h2>ง่ายแค่ 3 สเต็ป ✌️</h2>
+          </div>
+          <ol className={styles.steps}>
+            {STEPS.map(([icon, title, copy], index) => (
+              <li key={title}>
+                <span className={styles.stepIcon} aria-hidden="true">
+                  {icon}
+                </span>
+                <span className={styles.stepNumber}>{index + 1}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </li>
+            ))}
+          </ol>
+        </RevealSection>
+
+        <RevealSection className={`${styles.section} ${styles.faq}`} id="faq">
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>FAQ</p>
+            <h2>สงสัยอะไร ถามได้เลย 💬</h2>
+          </div>
+          <div className={styles.faqList}>
+            <details>
+              <summary>ทำไมต้องเลือกห้องก่อนล่ะ?</summary>
+              <p>
+                จะได้เห็นว่าแต่ละบัญชีมีโปรไฟล์ไหนว่างจริงๆ แล้วเลือกโปรที่เหมาะกับโปรไฟล์นั้นได้เอง
+              </p>
+            </details>
+            <details>
+              <summary>เติม Point แล้ว ต้องทำอะไรต่อ?</summary>
+              <p>
+                เลือกห้อง เลือกโปรไฟล์ แล้วเลือกโปรที่อยากได้ ระบบจะหัก Point และล็อกโปรไฟล์ให้ทันที
+              </p>
+            </details>
+          </div>
+          <div className={styles.faqSupport}>
+            <p>ยังไม่เจอคำตอบ หรือติดปัญหาตรงไหน? ทักแอดมินได้เลย 🙌</p>
+            <SupportLink />
+          </div>
+        </RevealSection>
+
+        <footer className={styles.footer}>
           <a className={styles.brand} href="#home">
             <BrandLogo />
           </a>
-          <div className={styles.navLinks}>
-            <a href="#packages">แพ็กเกจ</a>
-            <a href="#how-it-works">ขั้นตอน</a>
-            <a href="#faq">ช่วยเหลือ</a>
-            <Link href="/shop">ร้านค้า</Link>
-            {user?.resellerRole && <Link href="/resellers">ตัวแทนจำหน่าย</Link>}
-            <Link href="/profile">บัญชี</Link>
-          </div>
-          <div className={styles.headerActions}>
-            <ThemeToggle />
-            <Link className={styles.mobileLogin} href="/register">
-              เข้าสู่ระบบ
-            </Link>
-            <a className={styles.navCta} href="#packages">
-              <i /> พร้อมเช่า {availableCount} โปรไฟล์
-            </a>
-          </div>
-        </nav>
-        <div className={styles.heroContent}>
-          <div>
-            <p className={styles.eyebrow}>YOUR MOVIE NIGHT STARTS HERE</p>
-            <h1>
-              คืนนี้มีเรื่องให้ดู
-              <br />
-              <em>แล้วหรือยัง?</em>
-            </h1>
-            <a className={styles.primaryButton} href="#packages">
-              เลือกแพ็กเกจ <span>→</span>
-            </a>
-            <div className={styles.trustRow}>
-              <span>จบใน 3 นาที</span>
-              <span>ราคาเริ่ม 12 บาท</span>
-              <span>มีแอดมินดูแล</span>
-              <span>ระบบ Auto</span>
-            </div>
-          </div>
-          <div className={styles.heroPoster} aria-hidden="true">
-            <div className={styles.posterSheen} />
-            <div className={styles.posterLight} />
-            <p>
-              NOW
-              <br />
-              <b>PLAYING</b>
-            </p>
-            <span className="on-accent">
-              FAST
-              <br />
-              MOVIE
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <RevealSection
-        className={`${styles.section} ${styles.roomsSection}`}
-        id="packages"
-      >
-        <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>01 — PICK A ROOM</p>
-          <h2>เลือกห้อง แล้วเลือก Slot ที่ว่าง</h2>
-          <p>หลังเลือก Slot แล้วค่อยเลือกโปรรายวัน รายสัปดาห์ หรือรายเดือนในขั้นตอนถัดไป</p>
-        </div>
-        <div className={styles.roomGrid}>
-          {roomsLoading ? (
-            Array.from({ length: 3 }, (_, index) => (
-              <div className={styles.roomSkeleton} key={index} />
-            ))
-          ) : rooms.length === 0 ? (
-            <p className={styles.roomsEmpty}>ยังไม่มีห้องที่พร้อมใช้งาน</p>
-          ) : (
-            rooms.map((room, index) => {
-              const occupiedCount = room.occupiedSlots;
-
-              return (
-                <button
-                  aria-haspopup="dialog"
-                  aria-label={`เลือก Slot ใน ${room.name}`}
-                  className={styles.roomCard}
-                  key={room.id}
-                  onClick={() => setActiveRoom(room)}
-                  type="button"
-                >
-                  <span className={styles.roomIndex}>
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className={styles.netflixMark}>
-                    {room.service.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className={styles.nowPlaying}>
-                    ROOM
-                    <br />
-                    <b>{room.service}</b>
-                  </span>
-
-                  <span className={styles.roomFooter}>
-                    <small
-                      className={
-                        room.availableSlots > 0 ? styles.roomOpen : styles.roomFull
-                      }
-                    >
-                      <i aria-hidden="true" />
-                      {room.availableSlots > 0 ? "มี Slot ว่าง" : "เต็มแล้ว"}
-                    </small>
-                    <span className={styles.roomCapacity}>
-                      <span className={styles.capacityDots} aria-hidden="true">
-                        <CapacityDots room={room} />
-                      </span>
-                      ผู้ใช้งาน {occupiedCount}/{room.capacity}
-                    </span>
-                    <strong>{room.name}</strong>
-                    <em>{room.label}</em>
-                  </span>
-                  <span className={styles.selectedBadge}>
-                    เลือก Slot ในห้อง →
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </RevealSection>
-
-      <RevealSection className={styles.section} id="how-it-works">
-        <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>HOW IT WORKS</p>
-          <h2>เติม Point เลือกห้อง เลือกโปร</h2>
-        </div>
-        <div className={styles.steps}>
-          {[
-            ["01", "เติม Point", "เลือก PromptPay หรือ Wallet"],
-            ["02", "เลือกห้องและ Slot", "เห็นชัดว่า Profile ไหนยังว่าง"],
-            ["03", "เลือกโปรและรับข้อมูล", "ระบบล็อกโปรไฟล์และแสดงข้อมูลเข้าชม"],
-          ].map(([number, title, copy]) => (
-            <article key={number}>
-              <span>{number}</span>
-              <h3>{title}</h3>
-              <p>{copy}</p>
-            </article>
-          ))}
-        </div>
-      </RevealSection>
-      <RevealSection className={`${styles.section} ${styles.faq}`} id="faq">
-        <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>FAQ</p>
-          <h2>คำถามที่พบบ่อย</h2>
-        </div>
-        <div className={styles.faqList}>
-          <details>
-            <summary>ทำไมต้องเลือกห้องก่อน?</summary>
-            <p>เพื่อให้เห็น slot ที่ว่างจริงในแต่ละบัญชี แล้วเลือกโปรที่เหมาะกับ slot นั้นได้เอง</p>
-          </details>
-          <details>
-            <summary>หลังเติม Pointต้องทำอะไรต่อ?</summary>
-            <p>
-              เลือกห้อง เลือก slot แล้วเลือกโปรที่ต้องการ ระบบจะหัก Point และล็อก profile ให้ทันที
-            </p>
-          </details>
-        </div>
-        <div className={styles.faqSupport}>
-          <p>ยังหาคำตอบไม่เจอ หรือมีปัญหาการใช้งาน?</p>
-          <SupportLink />
-        </div>
-      </RevealSection>
-      <footer className={styles.footer}>
-        <a className={styles.brand} href="#home">
-          <BrandLogo />
-        </a>
-        <p>บริการช่วยจัดการการเข้าถึงความบันเทิงออนไลน์</p>
-        <p>© 2026 Fast Movie</p>
-      </footer>
+          <p>ทำให้คืนดูหนังของคุณง่ายขึ้น 🍿</p>
+          <p>© 2026 Fast Movie</p>
+        </footer>
       </main>
       {activeRoom && (
         <dialog
           aria-labelledby="slot-dialog-title"
-          className={styles.slotDialog}
+          className={`${styles.palette} ${styles.slotDialog}`}
           onCancel={(event) => {
             event.preventDefault();
             setActiveRoom(null);
@@ -315,13 +366,16 @@ export default function Home() {
           ref={slotDialogRef}
         >
           <div className={styles.slotDialogHeader}>
+            <div className={styles.slotServiceMark} aria-hidden="true">
+              {activeRoom.service.slice(0, 1).toUpperCase()}
+            </div>
             <div className={styles.slotDialogTitle}>
-              <p className={styles.eyebrow}>01 — SELECT A SLOT</p>
+              <p className={styles.eyebrow}>{activeRoom.service}</p>
               <h2 id="slot-dialog-title">{activeRoom.name}</h2>
               <p className={styles.slotDialogSubtitle}>{activeRoom.label}</p>
             </div>
             <button
-              aria-label="ปิดหน้าต่าง"
+              aria-label="ปิด"
               autoFocus
               className={styles.slotDialogClose}
               onClick={() => setActiveRoom(null)}
@@ -332,31 +386,30 @@ export default function Home() {
           </div>
           <div className={styles.slotDialogBody}>
             <div className={styles.slotRoomPanel}>
-              <div className={styles.slotServiceMark} aria-hidden="true">
-                {activeRoom.service.slice(0, 1).toUpperCase()}
-              </div>
-              <div className={`${styles.slotRoomStatus} on-accent`}>
-                <span className={activeRoom.availableSlots > 0 ? styles.slotSummaryOpen : styles.slotSummaryFull}>
-                  <i aria-hidden="true" />
-                  {activeRoom.availableSlots > 0 ? "พร้อมเลือก Slot" : "ห้องเต็มแล้ว"}
-                </span>
-                <strong>{activeRoom.service}</strong>
-                <small>{activeRoom.label}</small>
-              </div>
+              <span
+                className={
+                  activeRoom.availableSlots > 0
+                    ? styles.slotSummaryOpen
+                    : styles.slotSummaryFull
+                }
+              >
+                <i aria-hidden="true" />
+                {activeRoom.availableSlots > 0
+                  ? "มีที่ว่างรอคุณอยู่ ✨"
+                  : "ห้องนี้เต็มแล้ว 😢"}
+              </span>
               <div className={styles.slotUsage}>
                 <span className={styles.capacityDots} aria-hidden="true">
                   <CapacityDots room={activeRoom} />
                 </span>
-                <b>{activeRoom.occupiedSlots}/{activeRoom.capacity}</b>
-                <small>ผู้ใช้งาน</small>
+                <small>
+                  มีคนใช้ <b>{activeRoom.occupiedSlots}/{activeRoom.capacity}</b>
+                </small>
               </div>
             </div>
             <div className={styles.slotChoiceHeading}>
-              <div>
-                <p>AVAILABLE PROFILES</p>
-                <h3>เลือก Slot ที่ว่าง</h3>
-              </div>
-              <span>{activeRoom.availableSlots} ว่าง</span>
+              <h3>จะเอาโปรไฟล์ไหนดี?</h3>
+              <span>ว่าง {activeRoom.availableSlots}</span>
             </div>
             <div className={styles.slotChoices}>
               {activeRoom.slots.map((slot, index) => {
@@ -364,7 +417,7 @@ export default function Home() {
                 const canChoose = slot.isAvailable && Boolean(lowestPackage);
                 const profileLabel = publicProfileLabel(index);
                 const slotStatus = slot.isAvailable
-                  ? "ไม่มีโปรโมชัน"
+                  ? "ยังไม่มีโปรให้เลือก"
                   : unavailableSlotLabel(slot.status);
 
                 return canChoose ? (
@@ -373,27 +426,31 @@ export default function Home() {
                     href={`/checkout?room=${encodeURIComponent(activeRoom.id)}&profile=${encodeURIComponent(slot.id)}`}
                     key={slot.id}
                   >
-                    <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    <span className={styles.slotChoiceIcon} aria-hidden="true">
+                      {index + 1}
+                    </span>
                     <span className={styles.slotChoiceInfo}>
                       <strong>{profileLabel}</strong>
-                      <small>ว่าง · เริ่ม {lowestPackage.priceAmount.toLocaleString()} PT</small>
+                      <small>ว่างอยู่ · เริ่ม {lowestPackage.priceAmount.toLocaleString()} PT</small>
                     </span>
                     <span className={styles.slotChoiceArrow} aria-hidden="true">→</span>
                   </Link>
                 ) : (
                   <div className={`${styles.slotChoice} ${styles.slotChoiceUnavailable}`} key={slot.id}>
-                    <span className={styles.slotChoiceIcon} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    <span className={styles.slotChoiceIcon} aria-hidden="true">
+                      {index + 1}
+                    </span>
                     <span className={styles.slotChoiceInfo}>
                       <strong>{profileLabel}</strong>
                       <small>{slotStatus}</small>
                     </span>
-                    <span className={styles.slotUnavailableLabel}>ไม่พร้อมใช้งาน</span>
+                    <span className={styles.slotUnavailableLabel}>ไม่ว่าง</span>
                   </div>
                 );
               })}
             </div>
             <p className={styles.slotDialogNote}>
-              เลือก Slot เพื่อไปยังหน้าตรวจสอบโปรและชำระด้วย Point
+              กดเลือกโปรไฟล์ แล้วไปเลือกโปรกับจ่าย Point ต่อได้เลย 👉
             </p>
           </div>
         </dialog>

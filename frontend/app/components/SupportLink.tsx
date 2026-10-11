@@ -2,7 +2,7 @@ import styles from "./SupportLink.module.css";
 
 export const SUPPORT_DISCORD_URL = "https://discord.gg/9guggS5EXD";
 
-export function SupportLink({ label = "มีปัญหา? ติดต่อเราทาง Discord", className = "" }: { label?: string; className?: string }) {
+export function SupportLink({ label = "ทักแอดมินทาง Discord", className = "" }: { label?: string; className?: string }) {
   return (
     <a className={`${styles.support} ${className}`} href={SUPPORT_DISCORD_URL} rel="noreferrer" target="_blank">
       <svg aria-hidden="true" viewBox="0 0 24 24">

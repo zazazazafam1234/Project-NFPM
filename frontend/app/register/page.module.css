@@ -1,76 +1,105 @@
 .page {
+  position: relative;
   min-height: 100vh;
-  min-height: 100svh;
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  overflow-x: clip;
-  padding: 24px;
-  color: var(--c-f7f5ffff);
-  background: var(--c-09080fff);
+  overflow: hidden;
+  padding: 40px 16px 24px;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-body);
+  isolation: isolate;
+}
+.page::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: radial-gradient(var(--line) 1.4px, transparent 1.6px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 70%);
 }
 .glow {
   position: fixed;
+  z-index: -2;
   pointer-events: none;
-  width: 600px;
-  height: 600px;
+  width: 620px;
+  height: 620px;
   border-radius: 50%;
-  background: var(--c-7a4beaff);
-  opacity: 0.26;
-  filter: blur(135px);
-  animation: drift 8s ease-in-out infinite alternate;
+  background:
+    radial-gradient(circle at 30% 30%, var(--purple), transparent 60%),
+    radial-gradient(circle at 70% 70%, var(--pink), transparent 60%);
+  opacity: 0.4;
+  filter: blur(110px);
+  animation: drift 9s ease-in-out infinite alternate;
 }
 .card {
   position: relative;
-  width: min(100%, 510px);
+  width: min(100%, 500px);
   min-width: 0;
-  padding: 38px;
-  border: 1px solid var(--c-ffffff1e);
-  border-radius: 28px;
-  background: var(--c-17141fca);
-  box-shadow: 0 35px 90px var(--s-00000099);
+  padding: 36px;
+  border: 1.5px solid var(--line);
+  border-radius: 34px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow:
+    10px 10px 0 var(--purple),
+    0 40px 90px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(20px);
+  animation: pop-in 0.6s var(--ease-pop) both;
+}
+.sticker {
+  position: absolute;
+  top: -30px;
+  right: 72px;
+  font-size: 54px;
+  transform: rotate(14deg);
+  animation: wiggle 3s 0.8s ease-in-out infinite;
 }
 .brand {
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   align-items: center;
-  color: var(--c-ffffffff);
+  color: var(--ink);
   text-decoration: none;
-  font-size: 15px;
-  font-weight: 800;
-}
-.brand span {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  margin-right: 8px;
-  place-items: center;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--c-a980ffff), var(--c-7145ffff));
+  font-family: var(--font-display);
+  font-size: 16px;
 }
 .eyebrow {
-  margin: 65px 0 13px;
-  color: var(--c-b195ffff);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 1.5px;
+  display: inline-block;
+  margin: 52px 0 16px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 16%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
 }
 .card h1 {
   margin: 0;
-  font-size: clamp(34px, 5vw, 52px);
-  line-height: 1.04;
-  letter-spacing: -2.5px;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 6vw, 52px);
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
-.card h1 em {
-  color: var(--c-b99fffff);
-  font-style: normal;
+.card h1 mark {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 0 0.14em;
+  border-radius: 0.18em;
+  color: var(--on-pop);
+  background: var(--yellow);
+  box-shadow: 5px 5px 0 var(--pink);
+  transform: rotate(-2deg);
 }
 .copy {
-  max-width: 390px;
-  margin: 21px 0 30px;
-  color: var(--c-a8a1b0ff);
-  font-size: 14px;
-  line-height: 1.75;
+  max-width: 400px;
+  margin: 22px 0 28px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.7;
 }
 .google,
 .primary {
@@ -79,40 +108,61 @@
   justify-content: center;
   gap: 12px;
   width: 100%;
-  padding: 15px;
-  border-radius: 13px;
-  color: var(--c-1d1824ff);
-  background: var(--c-ffffffff);
+  min-height: 56px;
+  padding: 0 22px;
+  border-radius: 999px;
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 17px;
+  transition:
+    transform 0.2s var(--ease-pop),
+    box-shadow 0.2s ease;
+}
+.google {
+  border: 1.5px solid var(--line);
+  color: #1e1436;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+.google:hover,
+.primary:hover {
+  transform: translateY(-3px) rotate(-1deg);
 }
 .googleLogo {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 .primary {
   justify-content: space-between;
-  margin-top: 25px;
+  margin-top: 28px;
   color: #fff;
-  background: linear-gradient(135deg, var(--c-8b62ffff), var(--c-6841edff));
+  background: linear-gradient(120deg, var(--purple), var(--pink));
+  box-shadow: 0 14px 32px var(--glow);
+}
+.primary b {
+  font-weight: inherit;
 }
 .note {
-  margin: 17px 0 0;
-  color: var(--c-80798cff);
-  font-size: 10px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.6;
   text-align: center;
 }
 .loader {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   margin: 80px auto;
-  border: 3px solid var(--c-ffffff20);
-  border-top-color: var(--c-aa8effff);
+  border: 4px solid var(--surface-2);
+  border-top-color: var(--pink);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+.themeToggle {
+  position: absolute;
+  top: 26px;
+  right: 26px;
 }
 @keyframes spin {
   to {
@@ -124,20 +174,43 @@
     transform: translate(60px, -40px) scale(1.08);
   }
 }
-@media (max-width: 540px) {
-  .page {
-    padding: 18px;
-  }
-  .card {
-    padding: 28px 23px;
-  }
-  .eyebrow {
-    margin-top: 48px;
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.94);
   }
 }
-
-.themeToggle {
-  position: absolute;
-  top: 22px;
-  right: 22px;
+@keyframes wiggle {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  25% {
+    rotate: 10deg;
+  }
+  75% {
+    rotate: -8deg;
+  }
+}
+@media (max-width: 540px) {
+  .card {
+    padding: 28px 22px;
+    box-shadow:
+      6px 6px 0 var(--purple),
+      0 30px 70px rgba(0, 0, 0, 0.3);
+  }
+  .eyebrow {
+    margin-top: 44px;
+  }
+  .sticker {
+    right: 66px;
+    font-size: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glow,
+  .card,
+  .sticker {
+    animation: none;
+  }
 }

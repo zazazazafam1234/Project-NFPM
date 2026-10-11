@@ -154,7 +154,7 @@ export default function ResellersPage() {
 
   const reseller = mine?.reseller ?? null;
 
-  if (!allowed) return <main className={profileStyles.loading}>กำลังโหลด…</main>;
+  if (!allowed) return <main className={profileStyles.loading}>แป๊บนึงนะ กำลังโหลด… 🍿</main>;
 
   return (
     <main className={profileStyles.page}>
@@ -174,7 +174,7 @@ export default function ResellersPage() {
 
         {reseller && (
           <div className={styles.card}>
-            <p className={profileStyles.eyebrow}>MY RESELLER CODE</p>
+            <p className={profileStyles.eyebrow}>🎟️ โค้ดของฉัน</p>
             <h2>โค้ดตัวแทนของฉัน</h2>
             <div className={styles.codeRow}>
               <code className={styles.bigCode}>{reseller.code}</code>
@@ -253,7 +253,7 @@ export default function ResellersPage() {
         )}
 
         <div className={styles.card}>
-          <p className={profileStyles.eyebrow}>TOP RESELLERS</p>
+          <p className={profileStyles.eyebrow}>🏆 TOP 3</p>
           <h1>ตัวแทนจำหน่ายยอดเยี่ยม</h1>
           <ol className={styles.top}>
             {top.map((entry) => (
@@ -271,7 +271,7 @@ export default function ResellersPage() {
           <div className={styles.card}>
             <div className={styles.cardHead}>
               <div>
-                <p className={profileStyles.eyebrow}>RESELLER MANAGER</p>
+                <p className={profileStyles.eyebrow}>📋 ผู้ดูแลตัวแทน</p>
                 <h2>คำขอเพิ่มตัวแทนของฉัน</h2>
               </div>
               <button
@@ -306,7 +306,7 @@ export default function ResellersPage() {
 
         {mine?.all && (
           <div className={styles.card}>
-            <p className={profileStyles.eyebrow}>ALL RESELLERS</p>
+            <p className={profileStyles.eyebrow}>👥 ตัวแทนทั้งหมด</p>
             <h2>ยอดขายตัวแทนทุกคน</h2>
             <ul className={styles.uses}>
               {mine.all.map((stat) => (
@@ -334,7 +334,7 @@ export default function ResellersPage() {
 
         {mine?.payouts && (
           <div className={styles.card}>
-            <p className={profileStyles.eyebrow}>PAYOUTS</p>
+            <p className={profileStyles.eyebrow}>💸 ค่าคอม</p>
             <h2>การตัดยอดและโอนค่าคอม</h2>
             <ul className={styles.uses}>
               {mine.payouts.map((payout) => (

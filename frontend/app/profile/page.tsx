@@ -179,7 +179,7 @@ export default function ProfilePage() {
   }
 
   if (isLoading || !user)
-    return <main className={styles.loading}>กำลังโหลดโปรไฟล์…</main>;
+    return <main className={styles.loading}>แป๊บนึงนะ กำลังโหลดบัญชีของคุณ… 🍿</main>;
 
   return (
     <main className={styles.page}>
@@ -190,7 +190,7 @@ export default function ProfilePage() {
         <div className={styles.headerActions}>
           <ThemeToggle />
           <Link href="/" className={styles.back}>
-            เลือกห้อง
+            🎬 เลือกห้อง
           </Link>
         </div>
       </header>
@@ -203,7 +203,7 @@ export default function ProfilePage() {
               user.name.slice(0, 1)
             )}
           </div>
-          <p className={styles.eyebrow}>YOUR PROFILE</p>
+          <p className={styles.eyebrow}>👋 หวัดดี!</p>
           <h1>{user.name}</h1>
           <p>{user.email}</p>
           {user.role === "admin" && (
@@ -213,7 +213,7 @@ export default function ProfilePage() {
           )}
           {myReseller ? (
             <div className={styles.resellerCard}>
-              <small>โค้ดตัวแทนของฉัน</small>
+              <small>🎟️ โค้ดตัวแทนของฉัน</small>
               <code>{myReseller.code}</code>
               <div>
                 <button onClick={() => void copyResellerText(myReseller.code, "code")} type="button">
@@ -238,17 +238,17 @@ export default function ProfilePage() {
         </div>
 
         <div className={styles.wallet}>
-          <p className={styles.eyebrow}>FAST POINTS</p>
+          <p className={styles.eyebrow}>💰 Point ของฉัน</p>
           <span className={styles.coin}>PT</span>
           <strong>{user.points.toLocaleString()}</strong>
-          <small>POINTS AVAILABLE</small>
+          <small>Point ที่ใช้ได้</small>
           <p className={styles.discountBalance}>
-            เงินส่วนลดสะสม <b>{formatDiscount(user.discountCents)}</b>
+            ส่วนลดสะสม <b>{formatDiscount(user.discountCents)}</b>
           </p>
           <div className={styles.walletRule} />
-          <p>ใช้ Point เพื่อเลือกซื้อโปรได้ทันทีในหน้าชำระเงิน · เงินส่วนลดครบ ฿1 ใช้ลดราคาให้อัตโนมัติ</p>
-          <Link href="/payment">
-            เติม Point <b>ไปหน้าเติมเงิน</b>
+          <p>เอา Point ไปซื้อโปรได้เลยตอนจ่ายเงิน · ส่วนลดสะสมครบ ฿1 ระบบหักให้อัตโนมัติ</p>
+          <Link className={styles.topUpLink} href="/payment">
+            เติม Point เลย <b aria-hidden="true">→</b>
           </Link>
           <SupportLink className={styles.walletSupport} />
         </div>
@@ -256,8 +256,8 @@ export default function ProfilePage() {
         <section className={styles.history}>
           <div className={styles.historyHead}>
             <div>
-              <p className={styles.eyebrow}>RECENT ACTIVITY</p>
-              <h2>รายการล่าสุด</h2>
+              <p className={styles.eyebrow}>📜 ประวัติ</p>
+              <h2>ทำอะไรไปบ้างนะ?</h2>
             </div>
             <div className={styles.tabs}>
               <button
@@ -265,7 +265,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => setTab("orders")}
               >
-                คำสั่งซื้อ
+                ที่ซื้อไว้
                 {orders.length + subscriptions.length > 0 && (
                   <span className={styles.badge}>
                     {orders.length + subscriptions.length}
@@ -296,10 +296,10 @@ export default function ProfilePage() {
           </div>
 
           {activityLoading ? (
-            <p className={styles.activityEmpty}>กำลังโหลด…</p>
+            <p className={styles.activityEmpty}>กำลังโหลด… ⏳</p>
           ) : tab === "orders" ? (
             orders.length === 0 && subscriptions.length === 0 ? (
-              <p className={styles.activityEmpty}>ยังไม่มีคำสั่งซื้อ</p>
+              <p className={styles.activityEmpty}>ยังไม่ได้ซื้ออะไรเลย ไปเลือกห้องกันเถอะ 🍿</p>
             ) : (
               <div className={styles.listWrapper}>
               <ul className={styles.list}>
@@ -316,7 +316,7 @@ export default function ProfilePage() {
                       <div className={styles.itemBody}>
                         <strong>คำสั่งซื้อ {s.packageName}</strong>
                         <span className={styles.itemSub}>
-                          <b>Slot:</b> {s.profileName}
+                          <b>โปรไฟล์:</b> {s.profileName}
                           {expiry && (
                             <em className={expiry.expired ? styles.expired : styles.active}>
                               {expiry.expired ? " · หมดอายุ " : " · ถึง "}
@@ -391,7 +391,7 @@ export default function ProfilePage() {
             )
           ) : tab === "topups" ? (
             topUps.length === 0 ? (
-              <p className={styles.activityEmpty}>ยังไม่มีประวัติเติมเงิน</p>
+              <p className={styles.activityEmpty}>ยังไม่เคยเติม Point เลย 💸</p>
             ) : (
               <div className={styles.listWrapper}>
                 {activityError && <p className={styles.activityError}>{activityError}</p>}
@@ -438,7 +438,7 @@ export default function ProfilePage() {
               </div>
             )
           ) : transactions.length === 0 ? (
-            <p className={styles.activityEmpty}>ยังไม่มีรายการ Point</p>
+            <p className={styles.activityEmpty}>ยังไม่มีความเคลื่อนไหวของ Point</p>
           ) : (
             <div className={styles.listWrapper}>
             <ul className={styles.list}>

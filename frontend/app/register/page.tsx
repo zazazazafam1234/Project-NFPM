@@ -25,30 +25,31 @@ export default function RegisterPage() {
         <Link className={styles.brand} href="/">
           <BrandLogo />
         </Link>
+        <span className={styles.sticker} aria-hidden="true">🎟️</span>
         {isLoading ? (
           <div className={styles.loader} />
         ) : user ? (
           <>
-            <p className={styles.eyebrow}>SIGNED IN</p>
+            <p className={styles.eyebrow}>👋 กลับมาแล้ว!</p>
             <h1>
-              ยินดีต้อนรับกลับมา
+              หวัดดี
               <br />
-              {user.name}
+              <mark>{user.name}</mark>
             </h1>
             <Link className={styles.primary} href={next ?? "/profile"}>
-              {next ? "ไปต่อ" : "ไปที่โปรไฟล์"} <b>→</b>
+              {next ? "ไปต่อเลย" : "ไปที่บัญชีของฉัน"} <b>→</b>
             </Link>
           </>
         ) : (
           <>
-            <p className={styles.eyebrow}>FAST MOVIE ACCOUNT</p>
+            <p className={styles.eyebrow}>🍿 FAST MOVIE ACCOUNT</p>
             <h1>
-              เริ่มต้นด้วยบัญชี
+              มาเริ่มกันเลย!
               <br />
-              <em>Google ของคุณ</em>
+              <mark>แค่กด Google</mark>
             </h1>
             <p className={styles.copy}>
-              สะสม Point ใช้แลกโปร และติดตามทุกห้องที่คุณเลือกไว้ได้ในที่เดียว
+              เก็บ Point ไว้แลกโปร แล้วดูห้องที่คุณเลือกไว้ทั้งหมดได้ในที่เดียว ไม่ต้องจำรหัสผ่านใหม่ด้วย
             </p>
             <a className={styles.google} href={googleLoginUrl(next)}>
               <svg aria-hidden="true" className={styles.googleLogo} viewBox="0 0 48 48">
@@ -69,11 +70,10 @@ export default function RegisterPage() {
                   d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"
                 />
               </svg>
-              ดำเนินการต่อด้วย Google
+              เข้าสู่ระบบด้วย Google
             </a>
             <p className={styles.note}>
-              เมื่อดำเนินการต่อ
-              คุณยอมรับเงื่อนไขการใช้งานและนโยบายความเป็นส่วนตัว
+              การเข้าสู่ระบบถือว่าคุณยอมรับเงื่อนไขการใช้งานและนโยบายความเป็นส่วนตัว
             </p>
           </>
         )}

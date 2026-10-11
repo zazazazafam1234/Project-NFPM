@@ -1,8 +1,8 @@
 @import "tailwindcss";
 :root {
-  --background: #100d18;
-  --foreground: #eee9ef;
-  --scrollbar-thumb: #7953ed;
+  --background: #100b1f;
+  --foreground: #fff7fd;
+  --scrollbar-thumb: #8d5cff;
 }
 * {
   box-sizing: border-box;
@@ -44,7 +44,7 @@ textarea {
   color-scheme: dark;
 }
 :root[data-theme="light"] {
-  --background: #f6f4fb;
-  --foreground: #1c1826;
+  --background: #fff8ee;
+  --foreground: #1e1436;
   color-scheme: light;
 }

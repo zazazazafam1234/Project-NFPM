@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Noto_Sans_Thai } from "next/font/google";
+import { Mitr, Noto_Sans_Thai } from "next/font/google";
 import "./theme.css";
+import "./pop.css";
 import "./globals.css";
 import { PageTracker } from "./components/PageTracker";
 import { SupportButton } from "./components/SupportButton";
@@ -9,6 +10,12 @@ import { SessionProvider } from "./providers";
 
 const notoSansThai = Noto_Sans_Thai({
   variable: "--font-noto-thai",
+  subsets: ["thai", "latin"],
+});
+
+const mitr = Mitr({
+  variable: "--font-mitr",
+  weight: ["500", "600"],
   subsets: ["thai", "latin"],
 });
 
@@ -28,7 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="th"
-      className={`${notoSansThai.variable} h-full antialiased`}
+      className={`${notoSansThai.variable} ${mitr.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

@@ -1,0 +1,40 @@
+/* "Midnight Pop" design tokens shared by every customer-facing page. */
+:root {
+  --bg: #100b1f;
+  --bg-soft: #160f2b;
+  --surface: #1d1636;
+  --surface-2: #2a2148;
+  --ink: #fff7fd;
+  --muted: #b8afd3;
+  --line: rgba(255, 255, 255, 0.12);
+  --edge: #050309;
+  --purple: #8d5cff;
+  --pink: #ff4fa3;
+  --yellow: #ffd43b;
+  --cyan: #3fdcff;
+  --lime: #b5f04a;
+  --red: #ff5d6c;
+  --on-pop: #1a1030;
+  --glow: rgba(141, 92, 255, 0.35);
+  --font-body: var(--font-noto-thai), "Noto Sans Thai", Tahoma, sans-serif;
+  --font-display: var(--font-mitr), var(--font-noto-thai), "Noto Sans Thai", Tahoma, sans-serif;
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:root[data-theme="light"] {
+  --bg: #fff8ee;
+  --bg-soft: #fff1df;
+  --surface: #ffffff;
+  --surface-2: #f3ebff;
+  --ink: #1e1436;
+  --muted: #645a7f;
+  --line: rgba(30, 20, 54, 0.14);
+  --edge: #1e1436;
+  --purple: #7444f2;
+  --pink: #f0368f;
+  --yellow: #ffcd1f;
+  --cyan: #19c3eb;
+  --lime: #9be22d;
+  --red: #e83b4c;
+  --glow: rgba(116, 68, 242, 0.22);
+}
