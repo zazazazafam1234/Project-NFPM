@@ -19,6 +19,7 @@ import {
   saveMasterEmail,
   savePaymentAccount,
   saveProfile,
+  sendProfileAccessEmail,
   setDefaultPaymentAccount,
   suspendAdminUser,
   updateAdminPackage,
@@ -1493,6 +1494,7 @@ function ProfilesPanel({
   const [deletingProfile, setDeletingProfile] = useState<{ id: string; name: string } | null>(null);
   const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string; pending?: boolean } | null>(null);
   const [viewingRentalId, setViewingRentalId] = useState<string | null>(null);
+  const [sendingAccessEmail, setSendingAccessEmail] = useState<"customer" | "admin" | null>(null);
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
   const profiles = inventory?.profiles ?? [];
@@ -1580,6 +1582,22 @@ function ProfilesPanel({
     setDeletingProfile(null);
     const removed = await runEdit(() => deleteProfile(profileId), `ลบ Slot ${profileName} แล้ว`, onDone);
     if (removed && editingId === profileId) setEditingId(null);
+  }
+
+  async function sendAccessEmail(profileId: string, profileName: string, delivery: "customer" | "admin") {
+    setSendingAccessEmail(delivery);
+    try {
+      const result = await sendProfileAccessEmail(profileId, delivery);
+      const message = delivery === "admin"
+        ? `ส่งอีเมลทดสอบข้อมูล ${profileName} ไปที่ ${result.recipient} แล้ว`
+        : `ส่งข้อมูลห้องและ PIN ของ ${profileName} ให้ลูกค้าที่ ${result.recipient} แล้ว`;
+      onDone(message);
+      window.alert(message);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ส่งอีเมลไม่สำเร็จ");
+    } finally {
+      setSendingAccessEmail(null);
+    }
   }
 
   return (
@@ -1937,6 +1955,22 @@ function ProfilesPanel({
             <dd>#{viewingRental.rental.subscriptionId.replace(/-/g, "").slice(0, 8).toUpperCase()}</dd>
           </dl>
           <div className={styles.rentalActions}>
+            <button
+              className={styles.accessEmailAction}
+              disabled={!viewingRental.rental.ready || sendingAccessEmail !== null}
+              onClick={() => void sendAccessEmail(viewingRental.id, viewingRental.profile_name, "admin")}
+              type="button"
+            >
+              {sendingAccessEmail === "admin" ? "กำลังส่ง…" : "ทดสอบส่งเมลให้ฉัน"}
+            </button>
+            <button
+              className={styles.accessEmailAction}
+              disabled={!viewingRental.rental.ready || sendingAccessEmail !== null}
+              onClick={() => void sendAccessEmail(viewingRental.id, viewingRental.profile_name, "customer")}
+              type="button"
+            >
+              {sendingAccessEmail === "customer" ? "กำลังส่ง…" : "ส่งข้อมูลให้ลูกค้าซ้ำ"}
+            </button>
             <button
               className={styles.danger}
               onClick={() => {

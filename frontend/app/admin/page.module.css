@@ -937,6 +937,8 @@
 }
 .rentalActions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 .rentalActions button {
@@ -946,4 +948,12 @@
   color: var(--c-ef6872ff);
   background: transparent;
   cursor: pointer;
+}
+.rentalActions button.accessEmailAction {
+  border-color: var(--c-ffffff1d);
+  color: var(--c-c8bed8ff);
+}
+.rentalActions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }

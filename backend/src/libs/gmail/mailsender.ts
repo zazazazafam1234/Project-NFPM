@@ -44,6 +44,16 @@ export type SubscriptionOrder = {
   expiresAt: Date | string;
 };
 
+/** The customer only receives their own Netflix login, profile name and profile PIN. */
+export type ProfileAccessEmail = {
+  to: string;
+  packageName: string;
+  profileName: string;
+  startedAt: Date | string;
+  expiresAt: Date | string;
+  pin: string | null;
+};
+
 function formatBangkokDateTime(value: Date | string) {
   const text = new Date(value).toLocaleString("th-TH", {
     day: "numeric",
@@ -131,6 +141,34 @@ export async function sendPlainEmail({ to, subject, text }: { to: string; subjec
   const result = await sendRawEmail({ to, subject, textBody: text });
   console.log(`[gmail] sent email to=${to} subject="${subject}" messageId=${result.messageId}`);
   return result;
+}
+
+/** Send the same "ready to use" message used after a profile is prepared. */
+export async function sendProfileAccessEmail({
+  to,
+  packageName,
+  profileName,
+  startedAt,
+  expiresAt,
+  pin,
+}: ProfileAccessEmail) {
+  const text = [
+    "บัญชีของคุณพร้อมใช้งานแล้ว ขอบคุณที่ใช้บริการครับ",
+    "",
+    `แพ็กเกจ: ${packageName}`,
+    `วันที่ซื้อ: ${formatBangkokDateTime(startedAt)}`,
+    `หมดอายุ: ${formatBangkokDateTime(expiresAt)}`,
+    "",
+    "วิธีเข้าใช้งาน (กรุณาอย่าแชร์ PIN ให้ผู้อื่น)",
+    `1. เข้าสู่ระบบ Netflix ด้วยอีเมลของคุณ: ${to}`,
+    `2. เลือกโปรไฟล์: ${profileName}`,
+    ...(pin ? [`3. ใส่ PIN: ${pin}`] : []),
+    "",
+    "หากพบปัญหาในการเข้าใช้งาน กรุณาติดต่อแอดมิน",
+    "",
+    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
+  ].join("\n");
+  return sendPlainEmail({ to, subject: `บัญชีพร้อมใช้งานแล้ว — จอ ${profileName}`, text });
 }
 
 /**

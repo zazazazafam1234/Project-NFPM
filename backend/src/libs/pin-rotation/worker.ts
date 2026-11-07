@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import sql from "../../db";
 import { decryptSecret, encryptSecret } from "../../crypto";
-import { sendPlainEmail } from "../gmail/mailsender";
+import { sendPlainEmail, sendProfileAccessEmail } from "../gmail/mailsender";
 import { adminLink, pushToGroups } from "../line-bot";
 import { debugShotUrls } from "../../debugShots";
 
@@ -574,24 +574,15 @@ async function alertAdmins(lines: string[], images: string[] = []) {
 // "Ready to use" email with the profile PIN, sent once the customer's email is on the profile.
 async function sendReadyEmail(job: EmailJob) {
   const pin = job.profile_pin_ciphertext ? decryptSecret(job.profile_pin_ciphertext) : null;
-  const text = [
-    "บัญชีของคุณพร้อมใช้งานแล้ว ขอบคุณที่ใช้บริการครับ",
-    "",
-    `แพ็กเกจ: ${job.package_name}`,
-    `วันที่ซื้อ: ${formatBangkok(job.started_at)} น.`,
-    `หมดอายุ: ${formatBangkok(job.expires_at)} น.`,
-    "",
-    "วิธีเข้าใช้งาน (กรุณาอย่าแชร์ PIN ให้ผู้อื่น)",
-    `1. เข้าสู่ระบบ Netflix ด้วยอีเมลของคุณ: ${job.user_email}`,
-    `2. เลือกโปรไฟล์: ${job.profile_name}`,
-    ...(pin ? [`3. ใส่ PIN: ${pin}`] : []),
-    "",
-    "หากพบปัญหาในการเข้าใช้งาน กรุณาติดต่อแอดมิน",
-    "",
-    "อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ",
-  ].join("\n");
   try {
-    await sendPlainEmail({ to: job.user_email, subject: `บัญชีพร้อมใช้งานแล้ว — จอ ${job.profile_name}`, text });
+    await sendProfileAccessEmail({
+      to: job.user_email,
+      packageName: job.package_name,
+      profileName: job.profile_name,
+      startedAt: job.started_at,
+      expiresAt: job.expires_at,
+      pin,
+    });
     await logEvent(job.subscription_id, "ready_email_sent", `Ready email sent to ${job.user_email}`);
     console.log(`[profile-email] 📧 ส่งเมลแจ้งพร้อมใช้งานแล้ว profile=${job.profile_name} to=${job.user_email}`);
   } catch (err) {

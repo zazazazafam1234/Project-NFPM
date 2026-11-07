@@ -445,6 +445,69 @@
   font-size: 12px;
   font-weight: 700;
 }
+.accessCard {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--purple) 35%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--purple) 7%, var(--bg-soft));
+}
+.accessTitle {
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+.accessRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.accessRow span {
+  color: var(--muted);
+}
+.accessRow b {
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+.accessRow button,
+.accessActions button,
+.accessActions a {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+.accessRow button:disabled,
+.accessActions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.accessActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 2px;
+}
+.accessActions a {
+  display: inline-flex;
+  align-items: center;
+  color: #fff;
+  border-color: transparent;
+  background: var(--purple);
+}
 :root[data-theme="light"] .renewNote {
   color: #b07a00;
 }

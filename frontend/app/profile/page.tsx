@@ -18,6 +18,7 @@ import {
   formatDiscount,
   discountPointsFor,
   renewSubscription,
+  resendSubscriptionAccessEmail,
   fetchMyReseller,
   type MyResellerView,
 } from "../lib/api";
@@ -93,6 +94,8 @@ export default function ProfilePage() {
   // A reseller's own code, shown on their profile with copy buttons.
   const [myReseller, setMyReseller] = useState<MyResellerView["reseller"]>(null);
   const [copiedCode, setCopiedCode] = useState("");
+  const [copiedAccess, setCopiedAccess] = useState("");
+  const [resendingAccessId, setResendingAccessId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.resellerRole) return;
@@ -108,6 +111,28 @@ export default function ProfilePage() {
       window.setTimeout(() => setCopiedCode(""), 2000);
     } catch {
       window.prompt("คัดลอก", text);
+    }
+  }
+
+  async function copyAccessText(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAccess(label);
+      window.setTimeout(() => setCopiedAccess(""), 2000);
+    } catch {
+      window.prompt("คัดลอก", text);
+    }
+  }
+
+  async function resendAccessEmail(subscription: Subscription) {
+    setResendingAccessId(subscription.id);
+    try {
+      await resendSubscriptionAccessEmail(subscription.id);
+      window.alert("ส่งข้อมูลห้องและ PIN ไปที่อีเมลของคุณอีกครั้งแล้ว");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ส่งอีเมลไม่สำเร็จ");
+    } finally {
+      setResendingAccessId(null);
     }
   }
 
@@ -328,6 +353,44 @@ export default function ProfilePage() {
                           <span className={styles.renewNote}>
                             ⏳ ต่ออายุได้ถึง {formatDateTime(s.renewDeadline)} · ใช้โปรไฟล์และ PIN เดิม
                           </span>
+                        )}
+                        {s.status === "active" && s.ready && !expiry?.expired && (
+                          <div className={styles.accessCard}>
+                            <div className={styles.accessTitle}>ข้อมูลเข้าใช้งาน</div>
+                            <div className={styles.accessRow}>
+                              <span>ห้อง / โปรไฟล์</span>
+                              <b>{s.profileName}</b>
+                              <button
+                                onClick={() => void copyAccessText(s.profileName, `${s.id}:profile`)}
+                                type="button"
+                              >
+                                {copiedAccess === `${s.id}:profile` ? "คัดลอกแล้ว" : "คัดลอกห้อง"}
+                              </button>
+                            </div>
+                            <div className={styles.accessRow}>
+                              <span>PIN</span>
+                              <b>{s.pin ?? "-"}</b>
+                              <button
+                                disabled={!s.pin}
+                                onClick={() => s.pin && void copyAccessText(s.pin, `${s.id}:pin`)}
+                                type="button"
+                              >
+                                {copiedAccess === `${s.id}:pin` ? "คัดลอกแล้ว" : "คัดลอกรหัส"}
+                              </button>
+                            </div>
+                            <div className={styles.accessActions}>
+                              <a href="https://www.netflix.com/browse" rel="noreferrer" target="_blank">
+                                เข้า Netflix
+                              </a>
+                              <button
+                                disabled={resendingAccessId === s.id}
+                                onClick={() => void resendAccessEmail(s)}
+                                type="button"
+                              >
+                                {resendingAccessId === s.id ? "กำลังส่ง…" : "ส่งอีเมลข้อมูลซ้ำ"}
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                       <div className={styles.itemRight}>

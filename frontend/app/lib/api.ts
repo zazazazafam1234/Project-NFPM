@@ -223,6 +223,8 @@ export type Subscription = {
   durationDays: number;
   durationMinutes: number;
   profileName: string;
+  /** PIN is returned only for the logged-in renter while the subscription is ready and active. */
+  pin: string | null;
   /** The customer's email is on the Netflix profile; the "ready" email with the PIN has gone out. */
   ready: boolean;
   /** Renewable until renewDeadline (12 h after expiry) with the same profile and PIN. */
@@ -237,6 +239,10 @@ export function fetchSubscriptions() {
 
 export function renewSubscription(subscriptionId: string) {
   return apiFetch<PurchaseSubscriptionResponse>(`/subscriptions/${subscriptionId}/renew`, { method: "POST" });
+}
+
+export function resendSubscriptionAccessEmail(subscriptionId: string) {
+  return apiFetch<{ ok: true }>(`/subscriptions/${subscriptionId}/resend-access-email`, { method: "POST" });
 }
 
 export type AdminInventory = {
@@ -549,6 +555,13 @@ export function updateProfileStatus(profileId: string, status: string) {
 export function expireProfileRental(profileId: string) {
   return apiFetch<{ ended: number; pinRotation: boolean }>(`/admin/profiles/${profileId}/expire`, {
     method: "POST",
+  });
+}
+
+export function sendProfileAccessEmail(profileId: string, delivery: "customer" | "admin") {
+  return apiFetch<{ ok: true; recipient: string }>(`/admin/profiles/${profileId}/send-access-email`, {
+    method: "POST",
+    body: JSON.stringify({ delivery }),
   });
 }
 

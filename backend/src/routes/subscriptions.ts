@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import sql from "../db";
 import { getSessionUserId } from "../session";
-import { sendPlainEmail } from "../libs/gmail/mailsender";
+import { decryptSecret } from "../crypto";
+import { sendPlainEmail, sendProfileAccessEmail } from "../libs/gmail/mailsender";
 import { PREPARE_HOLD_MINUTES, RENEW_GRACE_HOURS, pinRotationEnabled, runPinWorkerSoon } from "../libs/pin-rotation/worker";
 
 const subscriptions = new Hono();
@@ -109,6 +110,13 @@ subscriptions.get("/", async (c) => {
       pkg.duration_days AS "durationDays",
       pkg.duration_minutes AS "durationMinutes",
       p.profile_name AS "profileName",
+      CASE
+        WHEN s.status = 'active'
+          AND s.expires_at > NOW()
+          AND LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)
+        THEN p.profile_pin_ciphertext
+        ELSE NULL
+      END AS "profilePinCiphertext",
       (LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)) AS "ready",
       pkg.price_amount AS "renewPrice",
       (${renewable()}) AS "canRenew"
@@ -136,12 +144,74 @@ subscriptions.get("/", async (c) => {
       durationDays: row.durationDays,
       durationMinutes: row.durationMinutes,
       profileName: row.profileName,
+      // This response is scoped to the logged-in renter. Never expose the master-account password.
+      pin: row.ready && row.profilePinCiphertext ? decryptSecret(row.profilePinCiphertext) : null,
       ready: row.ready,
       canRenew: row.canRenew,
       renewPrice: row.renewPrice,
       renewDeadline: new Date(new Date(row.expires_at).getTime() + RENEW_GRACE_HOURS * 60 * 60 * 1000),
     })),
   });
+});
+
+/** Let the renter ask for their own access details again if the original ready email was delayed or lost. */
+subscriptions.post("/:id/resend-access-email", async (c) => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({ message: "กรุณาเข้าสู่ระบบก่อนใช้งาน" }, 401);
+
+  const subscriptionId = c.req.param("id");
+  const [subscription] = await sql`
+    SELECT
+      s.id,
+      s.started_at,
+      s.expires_at,
+      s.status,
+      u.email AS user_email,
+      pkg.name AS package_name,
+      p.profile_name,
+      p.profile_pin_ciphertext,
+      (LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)) AS ready
+    FROM subscriptions s
+    JOIN "User" u ON u.id = s.user_id
+    JOIN packages pkg ON pkg.id = s.package_id
+    JOIN profiles p ON p.id = s.profile_id
+    WHERE s.id = ${subscriptionId}::uuid
+      AND s.user_id = ${userId}
+      AND s.status = 'active'
+      AND s.expires_at > NOW()
+    LIMIT 1
+  `;
+  if (!subscription) return c.json({ message: "ไม่พบการเช่าที่ยังใช้งานได้" }, 404);
+  if (!subscription.ready) return c.json({ message: "บัญชียังเตรียมไม่เสร็จ จึงยังส่งข้อมูลเข้าใช้งานไม่ได้" }, 409);
+
+  const [recent] = await sql`
+    SELECT id
+    FROM subscription_events
+    WHERE subscription_id = ${subscription.id}::uuid
+      AND event_type = 'ready_email_resent'
+      AND created_at > NOW() - INTERVAL '60 seconds'
+    LIMIT 1
+  `;
+  if (recent) return c.json({ message: "เพิ่งส่งอีเมลไป กรุณารอ 1 นาทีก่อนส่งซ้ำ" }, 429);
+
+  try {
+    await sendProfileAccessEmail({
+      to: subscription.user_email,
+      packageName: subscription.package_name,
+      profileName: subscription.profile_name,
+      startedAt: subscription.started_at,
+      expiresAt: subscription.expires_at,
+      pin: subscription.profile_pin_ciphertext ? decryptSecret(subscription.profile_pin_ciphertext) : null,
+    });
+    await sql`
+      INSERT INTO subscription_events (subscription_id, actor_user_id, event_type, message)
+      VALUES (${subscription.id}, ${userId}, 'ready_email_resent', 'Customer requested ready email again')
+    `;
+    return c.json({ ok: true });
+  } catch (err) {
+    console.error("[subscriptions] resend access email failed", err);
+    return c.json({ message: "ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่หรือติดต่อแอดมิน" }, 502);
+  }
 });
 
 subscriptions.post("/", async (c) => {

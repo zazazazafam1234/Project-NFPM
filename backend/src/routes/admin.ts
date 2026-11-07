@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import sql from "../db";
 import { getAdminSession, requireAdmin } from "../adminAuth";
 import { decryptSecret, encryptSecret } from "../crypto";
+import { sendProfileAccessEmail } from "../libs/gmail/mailsender";
 import reports from "./reports";
 import adminRewards from "./admin-rewards";
 import adminResellers from "./admin-resellers";
@@ -1513,6 +1514,78 @@ admin.post("/profiles/:id/expire", async (c) => {
   const ended = await expireProfileRentalNow(id, actor?.id ?? null);
   if (ended === 0) return c.json({ message: "Slot นี้ไม่มีการเช่าที่ยังไม่หมดเวลา" }, 400);
   return c.json({ ended, pinRotation: pinRotationEnabled() });
+});
+
+/** Re-send a renter's ready email, or send the same message to the acting admin for testing. */
+admin.post("/profiles/:id/send-access-email", async (c) => {
+  const profileId = c.req.param("id");
+  const body = await c.req
+    .json<{ delivery?: "customer" | "admin" }>()
+    .catch(() => ({} as { delivery?: "customer" | "admin" }));
+  const delivery = body.delivery === "admin" ? "admin" : "customer";
+  const actor = await getAdminSession(c);
+
+  if (delivery === "admin" && !actor?.email) {
+    return c.json({ message: "ต้องเข้าสู่ระบบด้วยบัญชีแอดมินเพื่อส่งอีเมลทดสอบ" }, 400);
+  }
+
+  const [rental] = await sql`
+    SELECT
+      s.id AS subscription_id,
+      s.started_at,
+      s.expires_at,
+      u.email AS user_email,
+      pkg.name AS package_name,
+      p.profile_name,
+      p.profile_pin_ciphertext,
+      (LOWER(COALESCE(p.metadata->>'profileEmail', '')) = LOWER(u.email)) AS ready
+    FROM subscriptions s
+    JOIN "User" u ON u.id = s.user_id
+    JOIN packages pkg ON pkg.id = s.package_id
+    JOIN profiles p ON p.id = s.profile_id
+    WHERE p.id = ${profileId}::uuid
+      AND s.status = 'active'
+      AND s.expires_at > NOW()
+    ORDER BY s.started_at DESC
+    LIMIT 1
+  `;
+  if (!rental) return c.json({ message: "Slot นี้ไม่มีการเช่าที่ยังใช้งานได้" }, 404);
+  if (!rental.ready) return c.json({ message: "บัญชียังเตรียมไม่เสร็จ จึงยังส่งข้อมูลเข้าใช้งานไม่ได้" }, 409);
+
+  const recipient = delivery === "admin" ? actor!.email : rental.user_email;
+  try {
+    await sendProfileAccessEmail({
+      to: recipient,
+      packageName: rental.package_name,
+      profileName: rental.profile_name,
+      startedAt: rental.started_at,
+      expiresAt: rental.expires_at,
+      pin: rental.profile_pin_ciphertext ? decryptSecret(rental.profile_pin_ciphertext) : null,
+    });
+    await sql`
+      INSERT INTO subscription_events (subscription_id, actor_user_id, event_type, message)
+      VALUES (
+        ${rental.subscription_id},
+        ${actor?.id ?? null},
+        ${delivery === "admin" ? "ready_email_test_sent" : "ready_email_resent_by_admin"},
+        ${delivery === "admin" ? `Test access email sent to admin ${recipient}` : `Access email resent to customer ${recipient}`}
+      )
+    `;
+    await sql`
+      INSERT INTO admin_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+      VALUES (
+        ${actor?.id ?? null},
+        ${delivery === "admin" ? "profile.access_email_test_sent" : "profile.access_email_resent"},
+        'profile',
+        ${profileId},
+        ${JSON.stringify({ subscriptionId: rental.subscription_id, delivery, recipient })}
+      )
+    `;
+    return c.json({ ok: true, recipient });
+  } catch (err) {
+    console.error("[admin] send access email failed", err);
+    return c.json({ message: "ส่งอีเมลไม่สำเร็จ กรุณาตรวจสอบ Gmail token แล้วลองใหม่" }, 502);
+  }
 });
 
 admin.delete("/profiles/:id", async (c) => {
