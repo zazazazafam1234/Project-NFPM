@@ -1417,6 +1417,33 @@ admin.post("/profiles", async (c) => {
   }
 });
 
+/** The PIN is fetched only on demand by an authenticated admin; it is never included in inventory lists. */
+admin.get("/profiles/:id/pin", async (c) => {
+  const id = c.req.param("id");
+  const actor = await getAdminSession(c);
+  const [profile] = await sql`
+    SELECT id, profile_name, profile_pin_ciphertext
+    FROM profiles
+    WHERE id = ${id}::uuid
+      AND deleted_at IS NULL
+    LIMIT 1
+  `;
+  if (!profile) return c.json({ message: "ไม่พบ Slot" }, 404);
+  if (!profile.profile_pin_ciphertext) return c.json({ message: "Slot นี้ยังไม่มี PIN" }, 404);
+
+  try {
+    const pin = decryptSecret(profile.profile_pin_ciphertext);
+    await sql`
+      INSERT INTO admin_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+      VALUES (${actor?.id ?? null}, 'profile.pin_requested', 'profile', ${profile.id}, ${JSON.stringify({ profileName: profile.profile_name })})
+    `;
+    return c.json({ pin });
+  } catch (err) {
+    console.error("[admin] profile PIN decrypt failed", err);
+    return c.json({ message: "ไม่สามารถอ่าน PIN ของ Slot นี้ได้" }, 500);
+  }
+});
+
 admin.patch("/profiles/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{

@@ -552,6 +552,10 @@ export function updateProfileStatus(profileId: string, status: string) {
   });
 }
 
+export function fetchProfilePin(profileId: string) {
+  return apiFetch<{ pin: string }>(`/admin/profiles/${profileId}/pin`);
+}
+
 export function expireProfileRental(profileId: string) {
   return apiFetch<{ ended: number; pinRotation: boolean }>(`/admin/profiles/${profileId}/expire`, {
     method: "POST",

@@ -12,6 +12,7 @@ import {
   deletePaymentAccount,
   deleteProfile,
   expireProfileRental,
+  fetchProfilePin,
   fetchAuditLogs,
   fetchAdminInventory,
   fetchAdminSettings,
@@ -1495,6 +1496,7 @@ function ProfilesPanel({
   const [expiringProfile, setExpiringProfile] = useState<{ id: string; name: string; pending?: boolean } | null>(null);
   const [viewingRentalId, setViewingRentalId] = useState<string | null>(null);
   const [sendingAccessEmail, setSendingAccessEmail] = useState<"customer" | "admin" | null>(null);
+  const [copyingPinProfileId, setCopyingPinProfileId] = useState<string | null>(null);
   const selectedMasterEmailId = form.masterEmailId || firstAccount;
   const selectedEditMasterEmailId = editForm.masterEmailId || firstAccount;
   const profiles = inventory?.profiles ?? [];
@@ -1600,6 +1602,23 @@ function ProfilesPanel({
     }
   }
 
+  async function copyProfilePin(profileId: string, profileName: string) {
+    setCopyingPinProfileId(profileId);
+    try {
+      const { pin } = await fetchProfilePin(profileId);
+      try {
+        await navigator.clipboard.writeText(pin);
+        onDone(`คัดลอก PIN ของ ${profileName} แล้ว`);
+      } catch {
+        window.prompt(`PIN ของ ${profileName}`, pin);
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "ไม่สามารถคัดลอก PIN ได้");
+    } finally {
+      setCopyingPinProfileId(null);
+    }
+  }
+
   return (
     <>
       <section className={styles.panel}>
@@ -1699,6 +1718,13 @@ function ProfilesPanel({
                 type="button"
               >
                 แก้ไข
+              </button>
+              <button
+                disabled={copyingPinProfileId === profile.id}
+                onClick={() => void copyProfilePin(profile.id, profile.profile_name)}
+                type="button"
+              >
+                {copyingPinProfileId === profile.id ? "กำลังคัดลอก…" : "คัดลอก PIN"}
               </button>
               {(profile.rental || profile.status === "rented") && (
                 <button
